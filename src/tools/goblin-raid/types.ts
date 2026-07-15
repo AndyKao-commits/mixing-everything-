@@ -1,3 +1,7 @@
+export type MonsterShape = 'humanoid' | 'beast' | 'undead' | 'flyer'
+
+export type ZoneId = 'mistwood' | 'ruins' | 'marsh'
+
 export type MonsterData = {
   id: string
   name: string
@@ -9,6 +13,8 @@ export type MonsterData = {
   xp: number
   color: string
   description: string
+  shape: MonsterShape
+  zones: ZoneId[]
 }
 
 export type StatKey = 'strength' | 'vitality' | 'luck' | 'defense'
@@ -57,8 +63,6 @@ export type GamePhase = 'boot' | 'explore' | 'combat' | 'loot' | 'defeat'
 export type Dir = 'up' | 'down' | 'left' | 'right'
 
 export type Vec = { x: number; y: number }
-
-export type ZoneId = 'mistwood' | 'ruins' | 'marsh'
 
 export type ZoneDef = {
   id: ZoneId

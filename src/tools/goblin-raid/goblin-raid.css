@@ -386,6 +386,65 @@
   color: color-mix(in srgb, var(--mon, #9fd0b8) 80%, white);
 }
 
+.combat-desc {
+  margin-top: 0.15rem;
+  color: #b7c9ba;
+  font-size: clamp(0.72rem, 2.6vw, 0.86rem);
+  line-height: 1.35;
+  max-width: 28ch;
+}
+
+.duel__side.is-hit .portrait,
+.duel__side.is-crit .portrait {
+  animation: raid-hit 320ms ease;
+}
+
+.duel__side.is-crit .portrait {
+  filter: saturate(1.35) brightness(1.15);
+}
+
+.duel__side.is-miss .portrait {
+  animation: raid-miss 280ms ease;
+}
+
+.duel__side.is-hurt .portrait {
+  animation: raid-hurt 340ms ease;
+}
+
+.duel__side.is-heal .portrait {
+  animation: raid-heal 420ms ease;
+}
+
+.raid-combat.is-hit,
+.raid-combat.is-crit {
+  background:
+    radial-gradient(circle at 78% 22%, color-mix(in srgb, var(--mon, #6f9b4c) 55%, transparent), transparent 46%),
+    linear-gradient(180deg, rgba(8, 16, 12, 0.66), rgba(8, 16, 12, 0.9));
+}
+
+@keyframes raid-hit {
+  0% { transform: translateX(0); }
+  30% { transform: translateX(6px) scale(0.96); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes raid-miss {
+  0%, 100% { transform: translateX(0); opacity: 1; }
+  40% { transform: translateX(-5px); opacity: 0.7; }
+}
+
+@keyframes raid-hurt {
+  0% { transform: translateX(0); filter: none; }
+  35% { transform: translateX(-5px); filter: saturate(0.5) brightness(0.8); }
+  100% { transform: translateX(0); filter: none; }
+}
+
+@keyframes raid-heal {
+  0% { filter: none; }
+  40% { filter: drop-shadow(0 0 10px rgba(120, 220, 160, 0.75)); }
+  100% { filter: none; }
+}
+
 .combat-hp {
   min-width: 5.5rem;
   display: grid;
@@ -674,6 +733,86 @@
 
 .portrait__ear--l { left: 4%; transform: rotate(-25deg); }
 .portrait__ear--r { right: 4%; transform: rotate(25deg); }
+
+.portrait__wing,
+.portrait__snout {
+  display: none;
+  position: absolute;
+}
+
+.portrait--beast .portrait__body {
+  inset: 28% 12% 10%;
+  border-radius: 40% 40% 28% 28%;
+}
+
+.portrait--beast .portrait__ear {
+  top: 18%;
+  border-bottom-width: 16px;
+}
+
+.portrait--beast .portrait__snout {
+  display: block;
+  left: 50%;
+  bottom: 14%;
+  width: 14px;
+  height: 8px;
+  margin-left: -7px;
+  border-radius: 0 0 8px 8px;
+  background: color-mix(in srgb, var(--mon, #6f9b4c) 55%, #111);
+}
+
+.portrait--beast .portrait__eye {
+  top: 46%;
+}
+
+.portrait--undead .portrait__body {
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 40%),
+    color-mix(in srgb, var(--mon, #c9d0d6) 75%, #2a2f34);
+}
+
+.portrait--undead .portrait__ear {
+  display: none;
+}
+
+.portrait--undead .portrait__eye {
+  border-radius: 1px;
+  background: #7cf0ff;
+  box-shadow: 0 0 6px rgba(124, 240, 255, 0.7);
+}
+
+.portrait--flyer .portrait__body {
+  inset: 28% 24% 18%;
+  border-radius: 50%;
+}
+
+.portrait--flyer .portrait__ear {
+  display: none;
+}
+
+.portrait--flyer .portrait__wing {
+  display: block;
+  top: 34%;
+  width: 16px;
+  height: 10px;
+  border-radius: 50% 10% 50% 10%;
+  background: color-mix(in srgb, var(--mon, #9a6ab0) 80%, #111);
+}
+
+.portrait--flyer .portrait__wing--l {
+  left: 2%;
+  transform: rotate(-18deg);
+}
+
+.portrait--flyer .portrait__wing--r {
+  right: 2%;
+  transform: rotate(18deg) scaleX(-1);
+}
+
+.portrait--flyer .portrait__eye {
+  top: 48%;
+}
 
 @keyframes raid-in {
   from { opacity: 0; transform: translateY(8px); }
