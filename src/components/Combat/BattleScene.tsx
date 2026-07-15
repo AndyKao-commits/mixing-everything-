@@ -7,6 +7,7 @@ import { formatNumber } from '@/utils/math'
 import { GhostButton, PrimaryButton, StatPill } from '@/components/UI/Primitives'
 import { RARITY_COLOR, RARITY_LABEL } from '@/data/rarity'
 import { HeroPortrait, EnemyPortrait } from '@/components/Combat/Portrait'
+import { CombatFxOverlay } from '@/components/Combat/CombatFxOverlay'
 
 const FLOAT_COLOR: Record<string, string> = {
   white: '#f5f7f6',
@@ -53,7 +54,13 @@ export function BattleScene() {
   const enemy = runtime.enemy
   const shaking = runtime.fx.some((fx) => fx.type === 'shake')
   const hitFx = runtime.fx.some((fx) => fx.type === 'hit' || fx.type === 'crit')
+  const critFx = runtime.fx.some((fx) => fx.type === 'crit')
   const hurtFx = runtime.fx.some((fx) => fx.type === 'shake' && player.combo === 0)
+  const fxActive = [
+    ...(hitFx ? (['hit', 'slash'] as const) : []),
+    ...(critFx ? (['crit', 'lightning'] as const) : []),
+    ...(runtime.fx.some((fx) => fx.type === 'boss') ? (['fire'] as const) : []),
+  ]
   const enemyHp = enemy ? Math.round((enemy.hp / enemy.maxHp) * 100) : 0
   const playerHp = Math.min(100, (player.hp / stats.maxHp) * 100)
 
@@ -167,6 +174,7 @@ export function BattleScene() {
         </div>
 
         <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+          <CombatFxOverlay active={[...fxActive]} />
           <AnimatePresence>
             {runtime.floating.map((f) => (
               <motion.div

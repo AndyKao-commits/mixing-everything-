@@ -1,5 +1,6 @@
 'use client'
 
+import { HERO_SKINS } from '@/data/art'
 import { useGame, usePrestigeInfo } from '@/game/GameProvider'
 import { Panel, GhostButton, PrimaryButton } from '@/components/UI/Primitives'
 
@@ -7,6 +8,13 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { player, actions } = useGame()
   const prestige = usePrestigeInfo()
   const s = player.settings
+  const unlockedSkins = new Set<string>([
+    'default',
+    ...(player.achievements.includes('skin-ember') ? ['ember'] : []),
+    'assassin',
+    'mage',
+    'tank',
+  ])
 
   return (
     <Panel title="設定 / 轉生" onClose={onClose}>
@@ -39,20 +47,25 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         <GhostButton onClick={() => actions.patchSettings({ language: s.language === 'zh' ? 'en' : 'zh' })}>
           語言：{s.language}
         </GhostButton>
-        <GhostButton
-          onClick={() =>
-            actions.setHeroSkin(
-              player.heroSkin === 'ember'
-                ? 'default'
-                : player.achievements.includes('skin-ember')
-                  ? 'ember'
-                  : 'default',
-            )
-          }
-        >
-          英雄外形：{player.heroSkin === 'ember' ? '餘燼' : '預設'}
-          {!player.achievements.includes('skin-ember') ? '（商店可解鎖餘燼）' : ''}
-        </GhostButton>
+
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 text-sm font-semibold">英雄外形</div>
+          <div className="flex flex-wrap gap-2">
+            {HERO_SKINS.filter((skin) => unlockedSkins.has(skin.skin || 'default')).map((skin) => (
+              <GhostButton
+                key={skin.id}
+                className={player.heroSkin === skin.skin ? 'border-raid-accent' : ''}
+                onClick={() => actions.setHeroSkin(skin.skin || 'default')}
+              >
+                {skin.label}
+              </GhostButton>
+            ))}
+          </div>
+          {!player.achievements.includes('skin-ember') ? (
+            <p className="mt-2 text-[11px] text-raid-muted">餘燼外形可在商店解鎖</p>
+          ) : null}
+        </div>
+
         <PrimaryButton onClick={actions.save}>立即存檔</PrimaryButton>
       </div>
 
