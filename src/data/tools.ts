@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { CounterTool } from '../tools/counter/CounterTool'
+import { GoblinRaidTool } from '../tools/goblin-raid/GoblinRaidTool'
 import { NotesTool } from '../tools/notes/NotesTool'
 
 export type ToolStatus = 'ready' | 'draft'
@@ -32,6 +33,15 @@ export const tools: ToolDefinition[] = [
     status: 'ready',
     tags: ['demo', '文字'],
     Component: NotesTool,
+  },
+  {
+    id: 'goblin-raid',
+    name: '哥布林討伐',
+    nameEn: 'Goblin Raid',
+    description: '等結果時隨手玩：四向走霧林、遇敵打怪練等。不存檔，重整就重來。',
+    status: 'ready',
+    tags: ['遊戲', '奇幻'],
+    Component: GoblinRaidTool,
   },
 ]
 

@@ -1,0 +1,271 @@
+.goblin-raid {
+  display: grid;
+  gap: 0.9rem;
+  width: 100%;
+}
+
+.goblin-raid__hud {
+  display: grid;
+  grid-template-columns: 1.4fr 1.4fr auto;
+  gap: 0.7rem;
+}
+
+.goblin-raid__stat {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.goblin-raid__stat span {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.goblin-raid__stat strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.goblin-raid__stat--atk {
+  justify-items: end;
+  text-align: right;
+}
+
+.goblin-raid .bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(19, 36, 31, 0.12);
+  overflow: hidden;
+}
+
+.goblin-raid .bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #1f6b52, #6fbf8e);
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.goblin-raid .bar--xp i {
+  background: linear-gradient(90deg, #c47b2c, #e8b45a);
+}
+
+.goblin-raid .bar--enemy i {
+  background: linear-gradient(90deg, #a33b24, #e4572e);
+}
+
+.goblin-raid__stage {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(19, 36, 31, 0.12);
+  background: #1b2d24;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.goblin-raid__canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  vertical-align: top;
+}
+
+.goblin-raid__combat {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  background:
+    radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--mon, #6f9b4c) 45%, transparent), transparent 45%),
+    linear-gradient(180deg, rgba(14, 24, 20, 0.88), rgba(14, 24, 20, 0.94));
+  color: #eef4ef;
+  animation: raid-in 220ms ease both;
+}
+
+.combat-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+}
+
+.combat-head h2 {
+  color: #fff;
+  font-size: 1.45rem;
+}
+
+.combat-head .eyebrow {
+  color: color-mix(in srgb, var(--mon, #9fd0b8) 80%, white);
+}
+
+.combat-hp {
+  min-width: 8rem;
+  display: grid;
+  gap: 0.3rem;
+  text-align: right;
+  font-size: 0.9rem;
+}
+
+.combat-sprite {
+  display: grid;
+  place-items: center;
+}
+
+.combat-sprite span {
+  width: 86px;
+  height: 86px;
+  border-radius: 28px 28px 18px 18px;
+  background:
+    radial-gradient(circle at 30% 28%, #fff6, transparent 28%),
+    linear-gradient(160deg, color-mix(in srgb, var(--mon, #6f9b4c) 85%, #fff), #1a2218);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  position: relative;
+  animation: float 2.4s ease-in-out infinite;
+}
+
+.combat-sprite span::before,
+.combat-sprite span::after {
+  content: '';
+  position: absolute;
+  top: 34px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #13241f;
+}
+
+.combat-sprite span::before {
+  left: 24px;
+}
+
+.combat-sprite span::after {
+  right: 24px;
+}
+
+.combat-log {
+  list-style: none;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.5rem;
+  font-size: 0.92rem;
+  color: rgba(238, 244, 239, 0.88);
+}
+
+.combat-actions {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.goblin-raid__combat .btn--ghost {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #eef4ef;
+}
+
+.goblin-raid__combat .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.goblin-raid__banner {
+  position: absolute;
+  inset: auto 0.8rem 0.8rem;
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  background: rgba(255, 248, 238, 0.94);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  animation: raid-in 220ms ease both;
+}
+
+.goblin-raid__hint {
+  color: var(--ink-soft);
+  line-height: 1.55;
+  min-height: 1.55em;
+}
+
+.goblin-raid__pad {
+  display: none;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.goblin-raid__pad-mid {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.goblin-raid__pad button {
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(19, 36, 31, 0.14);
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--ink);
+  font-size: 1.1rem;
+  touch-action: none;
+}
+
+.goblin-raid__pad button:active {
+  background: rgba(31, 107, 82, 0.16);
+}
+
+.goblin-raid__meta {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+@keyframes raid-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 800px) {
+  .goblin-raid__hud {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .goblin-raid__stat--atk {
+    grid-column: 1 / -1;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .goblin-raid__pad {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .combat-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goblin-raid__combat,
+  .goblin-raid__banner,
+  .combat-sprite span {
+    animation: none;
+  }
+}
