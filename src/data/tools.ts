@@ -51,7 +51,7 @@ export const tools: ToolDefinition[] = [
     id: 'fieldlife',
     name: 'Fieldlife 3D',
     nameEn: 'Fieldlife 3D',
-    description: '3D 野原沙盒：AI 練功打怪升等，寫下自己的遊戲人生。私用訓練用。',
+    description: '《餘燼野原》：AI 自己活出篇章——練功、解鎖記憶、閉卷得稱號。私用訓練沙盒。',
     status: 'ready',
     tags: ['遊戲', '3D', 'AI'],
     presentation: 'fullscreen',

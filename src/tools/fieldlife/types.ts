@@ -59,6 +59,8 @@ export type Observation = {
   nearestHp: number
   nearbyCount: number
   exploreNorm: number
+  /** Story progress 0–1 for the learning agent. */
+  chapterNorm: number
 }
 
 export type StepResult = {
@@ -73,7 +75,30 @@ export type StepResult = {
     stepsAlive: number
     explored: number
     lastEvent: string
+    lifeName: string
+    chapterTitle: string
+    fateTitle: string | null
   }
+}
+
+export type StorySnapshot = {
+  lifeName: string
+  chapterId: string
+  chapterTitle: string
+  chapterSubtitle: string
+  chapterIndex: number
+  chronicle: { tick: number; kind: string; text: string }[]
+  memories: string[]
+  fateTitle: string | null
+  fateEpitaph: string | null
+  atmosphere: {
+    sky: number
+    fog: number
+    ground: number
+    accent: number
+    sunIntensity: number
+  }
+  loreTitle: string
 }
 
 export type SimSnapshot = {
@@ -85,6 +110,7 @@ export type SimSnapshot = {
   lastEvent: string
   episode: number
   totalReward: number
+  story: StorySnapshot
 }
 
 export type TrainStats = {
@@ -95,4 +121,7 @@ export type TrainStats = {
   kills: number
   deaths: number
   explored: number
+  lifeName?: string
+  fateTitle?: string
+  chapterTitle?: string
 }

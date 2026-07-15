@@ -41,8 +41,8 @@ export class LinearAgent {
 
   constructor(learningRate = 0.08) {
     this.learningRate = learningRate
-    // 6 actions × 10 features
-    this.weights = Array.from({ length: 60 }, () => (Math.random() - 0.5) * 0.05)
+    // 6 actions × 11 features
+    this.weights = Array.from({ length: 66 }, () => (Math.random() - 0.5) * 0.05)
   }
 
   private feats(obs: Observation): number[] {
@@ -57,6 +57,7 @@ export class LinearAgent {
       obs.nearestAngle,
       obs.nearestHp,
       obs.nearbyCount,
+      obs.chapterNorm,
     ]
   }
 
@@ -141,6 +142,9 @@ export function burstTrain(
       kills: snap.hero.kills,
       deaths: snap.hero.deaths,
       explored: snap.hero.explored,
+      lifeName: snap.story.lifeName,
+      fateTitle: snap.story.fateTitle ?? undefined,
+      chapterTitle: snap.story.chapterTitle,
     })
   }
   return log

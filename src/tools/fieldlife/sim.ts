@@ -6,7 +6,25 @@ import type {
   Obstacle,
   SimSnapshot,
   StepResult,
+  StorySnapshot,
 } from './types'
+import {
+  battleFlavor,
+  birthLine,
+  closingLines,
+  collectNewMemories,
+  getChapterById,
+  judgeFate,
+  omenLine,
+  pickLifeName,
+  resolveChapter,
+  restFlavor,
+  WORLD_LORE,
+  type Atmosphere,
+  type ChapterId,
+  type ChronicleEntry,
+  type LifeMetrics,
+} from './story'
 
 const WORLD_SIZE = 48
 const EXPLORE_CELL = 2
@@ -27,7 +45,7 @@ type MonsterTemplate = {
 const TEMPLATES: MonsterTemplate[] = [
   {
     kind: 'slime',
-    name: '碧苔史萊姆',
+    name: '碧苔（學會呼吸的雨）',
     maxHp: 18,
     attack: 3,
     defense: 0,
@@ -39,7 +57,7 @@ const TEMPLATES: MonsterTemplate[] = [
   },
   {
     kind: 'wolf',
-    name: '暮色狼',
+    name: '暮色狼（牧失落者）',
     maxHp: 28,
     attack: 6,
     defense: 1,
@@ -51,7 +69,7 @@ const TEMPLATES: MonsterTemplate[] = [
   },
   {
     kind: 'crystal',
-    name: '碎光晶靈',
+    name: '碎光晶靈（落下的天空）',
     maxHp: 40,
     attack: 8,
     defense: 2,
@@ -105,11 +123,11 @@ function xpNeeded(level: number): number {
   return Math.round(40 * Math.pow(1.32, level - 1))
 }
 
-function createHero(id: number): Entity {
+function createHero(id: number, name: string): Entity {
   return {
     id,
     kind: 'hero',
-    name: '旅人',
+    name,
     x: 0,
     z: 0,
     yaw: 0,
@@ -134,7 +152,6 @@ function createHero(id: number): Entity {
 }
 
 function createMonster(id: number, template: MonsterTemplate, x: number, z: number): Entity {
-  const levelScale = 1
   return {
     id,
     kind: template.kind,
@@ -142,8 +159,8 @@ function createMonster(id: number, template: MonsterTemplate, x: number, z: numb
     x,
     z,
     yaw: Math.random() * Math.PI * 2,
-    hp: template.maxHp * levelScale,
-    maxHp: template.maxHp * levelScale,
+    hp: template.maxHp,
+    maxHp: template.maxHp,
     attack: template.attack,
     defense: template.defense,
     speed: template.speed,
@@ -203,9 +220,24 @@ export class FieldlifeSim {
   private visited = new Set<string>()
   private seed: number
 
+  private lifeName = '餘灰・無名'
+  private chapterId: ChapterId = 'firstfall'
+  private atmosphere: Atmosphere = getChapterById('firstfall').atmosphere
+  private chronicle: ChronicleEntry[] = []
+  private memoryIds = new Set<string>()
+  private memories: string[] = []
+  private rests = 0
+  private slimeKills = 0
+  private wolfKills = 0
+  private crystalKills = 0
+  private fateTitle: string | null = null
+  private fateEpitaph: string | null = null
+  private closed = false
+  private lastOmenAt = 0
+
   constructor(seed = (Date.now() % 1_000_000) + 1) {
     this.seed = seed || 1
-    this.hero = createHero(this.allocId())
+    this.hero = createHero(this.allocId(), this.lifeName)
     this.reset()
   }
 
@@ -214,22 +246,95 @@ export class FieldlifeSim {
   }
 
   private rng(): number {
-    // xorshift32
     this.seed ^= this.seed << 13
     this.seed ^= this.seed >>> 17
     this.seed ^= this.seed << 5
     return ((this.seed >>> 0) % 10_000) / 10_000
   }
 
+  private metrics(): LifeMetrics {
+    return {
+      level: this.hero.level,
+      kills: this.hero.kills,
+      explored: this.hero.explored,
+      stepsAlive: this.hero.stepsAlive,
+      rests: this.rests,
+      slimeKills: this.slimeKills,
+      wolfKills: this.wolfKills,
+      crystalKills: this.crystalKills,
+    }
+  }
+
+  private pushChronicle(kind: ChronicleEntry['kind'], text: string) {
+    this.chronicle.unshift({ tick: this.tick, kind, text })
+    if (this.chronicle.length > 40) this.chronicle.length = 40
+    this.lastEvent = text
+  }
+
+  private syncStory(closing = false): number {
+    let bonus = 0
+    const m = this.metrics()
+    const chapter = resolveChapter(m, closing || this.closed)
+    if (chapter.id !== this.chapterId) {
+      this.chapterId = chapter.id
+      this.atmosphere = chapter.atmosphere
+      this.pushChronicle('chapter', `篇章・${chapter.title}｜${chapter.unlockLine}`)
+      bonus += 1.5 + chapter.index * 0.35
+    }
+
+    const unlocked = collectNewMemories(m, this.memoryIds)
+    for (const mem of unlocked) {
+      this.memories.unshift(mem.text)
+      if (this.memories.length > 12) this.memories.length = 12
+      this.pushChronicle('memory', mem.text)
+      bonus += 1.2
+    }
+    return bonus
+  }
+
+  private storySnapshot(): StorySnapshot {
+    const chapter = getChapterById(this.chapterId)
+    return {
+      lifeName: this.lifeName,
+      chapterId: chapter.id,
+      chapterTitle: chapter.title,
+      chapterSubtitle: chapter.subtitle,
+      chapterIndex: chapter.index,
+      chronicle: this.chronicle.map((c) => ({ ...c })),
+      memories: [...this.memories],
+      fateTitle: this.fateTitle,
+      fateEpitaph: this.fateEpitaph,
+      atmosphere: { ...this.atmosphere },
+      loreTitle: WORLD_LORE.title,
+    }
+  }
+
   reset(): Observation {
     this.episode += 1
     this.tick = 0
     this.totalReward = 0
-    this.lastEvent = `第 ${this.episode} 段人生開始。`
     this.visited = new Set(['0,0'])
     this.obstacles = buildObstacles(() => this.rng())
-    this.hero = createHero(this.allocId())
+    this.lifeName = pickLifeName(this.episode)
+    this.hero = createHero(this.allocId(), this.lifeName)
     this.monsters = spawnRing(10, () => this.allocId(), () => this.rng())
+    this.chapterId = 'firstfall'
+    this.atmosphere = getChapterById('firstfall').atmosphere
+    this.chronicle = []
+    this.memoryIds = new Set()
+    this.memories = []
+    this.rests = 0
+    this.slimeKills = 0
+    this.wolfKills = 0
+    this.crystalKills = 0
+    this.fateTitle = null
+    this.fateEpitaph = null
+    this.closed = false
+    this.lastOmenAt = 0
+    const birth = birthLine(this.episode, () => this.rng())
+    this.pushChronicle('birth', `${this.lifeName}｜${birth}`)
+    const ch = getChapterById('firstfall')
+    this.pushChronicle('chapter', `篇章・${ch.title}｜${ch.unlockLine}`)
     return this.observe()
   }
 
@@ -243,6 +348,7 @@ export class FieldlifeSim {
       lastEvent: this.lastEvent,
       episode: this.episode,
       totalReward: this.totalReward,
+      story: this.storySnapshot(),
     }
   }
 
@@ -278,6 +384,7 @@ export class FieldlifeSim {
       nearestHp,
       nearbyCount: clamp(nearbyCount / 8, 0, 1),
       exploreNorm: clamp(h.explored / 80, 0, 1),
+      chapterNorm: clamp(getChapterById(this.chapterId).index / 9, 0, 1),
     }
   }
 
@@ -331,7 +438,6 @@ export class FieldlifeSim {
       h.attack += 1
       h.defense += levels % 2 === 0 ? 1 : 0
       h.xpToNext = xpNeeded(h.level)
-      this.lastEvent = `升到 Lv.${h.level}！人生又厚了一頁。`
     }
     return levels
   }
@@ -345,6 +451,18 @@ export class FieldlifeSim {
     m.alive = true
     m.attackCooldown = 20
     m.yaw = this.rng() * Math.PI * 2
+  }
+
+  private closeBook(): void {
+    if (this.closed) return
+    this.closed = true
+    const fate = judgeFate(this.metrics())
+    this.fateTitle = fate.title
+    this.fateEpitaph = fate.epitaph
+    this.syncStory(true)
+    for (const line of closingLines(this.lifeName, fate, this.metrics())) {
+      this.pushChronicle('epitaph', line)
+    }
   }
 
   private updateMonsters(): number {
@@ -365,17 +483,16 @@ export class FieldlifeSim {
           h.hp -= dmg
           m.attackCooldown = 18
           reward -= 0.35 * dmg
-          this.lastEvent = `${m.name}咬了你，-${dmg} HP`
+          this.lastEvent = `${m.name}咬住了這一世，-${dmg}`
           if (h.hp <= 0) {
             h.hp = 0
             h.alive = false
             h.deaths += 1
             reward -= 8
-            this.lastEvent = `你倒下了。這段人生結束於 Lv.${h.level}。`
+            this.closeBook()
           }
         }
       } else {
-        // idle wander
         if (this.rng() < 0.02) m.yaw += (this.rng() - 0.5) * 1.2
         this.tryMove(m, m.speed * 0.45)
       }
@@ -387,7 +504,7 @@ export class FieldlifeSim {
     let reward = -0.01
     const h = this.hero
 
-    if (!h.alive) {
+    if (!h.alive || this.closed) {
       return {
         observation: this.observe(),
         reward: 0,
@@ -419,7 +536,7 @@ export class FieldlifeSim {
         const target = this.nearestAliveMonster()
         if (!target || dist(h.x, h.z, target.x, target.z) > h.attackRange) {
           reward -= 0.08
-          this.lastEvent = '揮空了。'
+          this.lastEvent = '刀鋒劃過空風，冊頁留白。'
         } else if (h.attackCooldown > 0) {
           reward -= 0.03
         } else {
@@ -427,48 +544,73 @@ export class FieldlifeSim {
           target.hp -= dmg
           h.attackCooldown = 12
           reward += 0.4 + dmg * 0.12
-          this.lastEvent = `命中 ${target.name}，-${dmg}`
           if (target.hp <= 0) {
             target.alive = false
             target.hp = 0
             h.kills += 1
+            if (target.kind === 'slime') this.slimeKills += 1
+            if (target.kind === 'wolf') this.wolfKills += 1
+            if (target.kind === 'crystal') this.crystalKills += 1
             const levels = this.applyHeroXp(target.xp)
             reward += 3 + target.xp * 0.05 + levels * 6
-            this.lastEvent =
-              levels > 0
-                ? `打倒 ${target.name}！升級到 Lv.${h.level}`
-                : `打倒 ${target.name}，+${target.xp} XP`
+            this.pushChronicle(
+              'battle',
+              battleFlavor(target.name, true, levels > 0, h.level),
+            )
             this.respawnMonster(target)
+          } else {
+            this.lastEvent = battleFlavor(target.name, false, false, h.level)
           }
         }
         break
       }
       case 5: {
+        this.rests += 1
         if (h.hp >= h.maxHp) {
           reward -= 0.05
+          this.lastEvent = restFlavor(0, true)
         } else {
           const heal = 2 + Math.floor(h.level / 3)
           h.hp = Math.min(h.maxHp, h.hp + heal)
           reward += 0.08
-          this.lastEvent = `休息恢復 +${heal} HP`
+          if (this.rests === 1 || this.rests % 4 === 0) {
+            this.pushChronicle('rest', restFlavor(heal, false))
+          } else {
+            this.lastEvent = restFlavor(heal, false)
+          }
         }
         break
       }
     }
 
     reward += this.updateMonsters()
+    reward += this.syncStory(false)
 
-    // keep population if everything somehow wiped
+    if (
+      h.alive &&
+      this.tick - this.lastOmenAt > 220 &&
+      this.rng() < 0.012
+    ) {
+      this.lastOmenAt = this.tick
+      this.pushChronicle('omen', omenLine(() => this.rng()))
+      reward += 0.25
+    }
+
     const aliveCount = this.monsters.filter((m) => m.alive).length
     if (aliveCount < 6) {
       const t = TEMPLATES[Math.floor(this.rng() * TEMPLATES.length)]!
       const angle = this.rng() * Math.PI * 2
       const radius = 12 + this.rng() * 10
-      this.monsters.push(createMonster(this.allocId(), t, Math.cos(angle) * radius, Math.sin(angle) * radius))
+      this.monsters.push(
+        createMonster(this.allocId(), t, Math.cos(angle) * radius, Math.sin(angle) * radius),
+      )
     }
 
     this.totalReward += reward
-    const done = !h.alive || h.stepsAlive >= 4000
+    if (h.alive && h.stepsAlive >= 4000) {
+      this.closeBook()
+    }
+    const done = !h.alive || this.closed
 
     return {
       observation: this.observe(),
@@ -487,10 +629,12 @@ export class FieldlifeSim {
       stepsAlive: this.hero.stepsAlive,
       explored: this.hero.explored,
       lastEvent: this.lastEvent,
+      lifeName: this.lifeName,
+      chapterTitle: getChapterById(this.chapterId).title,
+      fateTitle: this.fateTitle,
     }
   }
 
-  /** Fast forward without rendering — for training bursts. */
   runEpisode(policy: (obs: Observation) => ActionId, maxSteps = 1500): {
     reward: number
     steps: number
@@ -502,8 +646,7 @@ export class FieldlifeSim {
     let total = 0
     let steps = 0
     for (let i = 0; i < maxSteps; i++) {
-      const obs = this.observe()
-      const result = this.step(policy(obs))
+      const result = this.step(policy(this.observe()))
       total += result.reward
       steps += 1
       if (result.done) break

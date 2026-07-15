@@ -122,15 +122,12 @@ export function createFieldlifeView(canvas: HTMLCanvasElement): FieldlifeView {
   sun.shadow.camera.bottom = -30
   scene.add(sun)
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(64, 64),
-    new THREE.MeshStandardMaterial({ color: 0x3d5a45, roughness: 0.95 }),
-  )
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x3d5a45, roughness: 0.95 })
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(64, 64), groundMat)
   ground.rotation.x = -Math.PI / 2
   ground.receiveShadow = true
   scene.add(ground)
 
-  // soft vignette plane grid
   const grid = new THREE.GridHelper(64, 32, 0x2f4538, 0x2a3c32)
   grid.position.y = 0.02
   scene.add(grid)
@@ -140,6 +137,7 @@ export function createFieldlifeView(canvas: HTMLCanvasElement): FieldlifeView {
 
   const monsterMeshes = new Map<number, THREE.Group>()
   const obstacleMeshes: THREE.Mesh[] = []
+  let lastChapterId = ''
 
   const resize = (width: number, height: number) => {
     const w = Math.max(1, width)
@@ -149,18 +147,30 @@ export function createFieldlifeView(canvas: HTMLCanvasElement): FieldlifeView {
     camera.updateProjectionMatrix()
   }
 
+  const applyAtmosphere = (snap: SimSnapshot) => {
+    const a = snap.story.atmosphere
+    if (snap.story.chapterId === lastChapterId) {
+      sun.intensity = THREE.MathUtils.lerp(sun.intensity, a.sunIntensity, 0.08)
+      return
+    }
+    lastChapterId = snap.story.chapterId
+    renderer.setClearColor(a.sky, 1)
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.color.setHex(a.fog)
+    }
+    groundMat.color.setHex(a.ground)
+    sun.intensity = a.sunIntensity
+    hemi.color.setHex(a.accent)
+  }
+
   const sync = (snap: SimSnapshot) => {
+    applyAtmosphere(snap)
     const h = snap.hero
     heroMesh.position.set(h.x, 0, h.z)
     heroMesh.rotation.y = h.yaw
     heroMesh.visible = h.alive
-    if (!h.alive) {
-      heroMesh.rotation.x = Math.PI / 2
-    } else {
-      heroMesh.rotation.x = 0
-    }
+    heroMesh.rotation.x = h.alive ? 0 : Math.PI / 2
 
-    // obstacles (rebuild once per snapshot size change)
     if (obstacleMeshes.length !== snap.obstacles.length) {
       for (const m of obstacleMeshes) {
         scene.remove(m)
@@ -200,7 +210,6 @@ export function createFieldlifeView(canvas: HTMLCanvasElement): FieldlifeView {
       }
     }
 
-    // chase cam
     const camTarget = new THREE.Vector3(h.x, 0, h.z)
     const camPos = new THREE.Vector3(
       h.x - Math.sin(h.yaw) * 10,
@@ -221,6 +230,8 @@ export function createFieldlifeView(canvas: HTMLCanvasElement): FieldlifeView {
     }
     for (const mesh of monsterMeshes.values()) scene.remove(mesh)
     scene.remove(heroMesh)
+    groundMat.dispose()
+    ground.geometry.dispose()
     renderer.dispose()
   }
 
