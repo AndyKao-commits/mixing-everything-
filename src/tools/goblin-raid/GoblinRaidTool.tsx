@@ -1,7 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
-import { applyXp, createPlayer, healPlayer, monsterStrike, playerStrike, roll } from './combat'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react'
+import {
+  applyXp,
+  createPlayer,
+  fleeChance,
+  healPlayer,
+  monsterStrike,
+  playerStrike,
+  roll,
+  rollLoot,
+} from './combat'
 import { loadMonsterRoster, pickMonster } from './monsters'
-import type { Dir, GamePhase, MonsterData, PlayerStats, Vec } from './types'
+import type { Dir, DropItem, GamePhase, MonsterData, PlayerStats, Vec } from './types'
 import './goblin-raid.css'
 
 const TILE = 32
@@ -10,7 +28,6 @@ const ROWS = 11
 const WIDTH = COLS * TILE
 const HEIGHT = ROWS * TILE
 
-// 0 grass, 1 tree, 2 path, 3 mist (encounter), 4 camp
 const MAP: number[][] = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   [1, 0, 0, 2, 2, 2, 0, 0, 3, 3, 0, 0, 0, 4, 1],
@@ -37,7 +54,13 @@ type CombatState = {
   monsterHp: number
   log: string[]
   busy: boolean
-  canHeal: boolean
+}
+
+type LootState = {
+  xp: number
+  leveled: boolean
+  drops: DropItem[]
+  summary: string[]
 }
 
 function canWalk(x: number, y: number): boolean {
@@ -89,6 +112,7 @@ export function GoblinRaidTool() {
   const [source, setSource] = useState<'api' | 'fallback'>('fallback')
   const [message, setMessage] = useState('正在從森林召喚哥布林……')
   const [combat, setCombat] = useState<CombatState | null>(null)
+  const [loot, setLoot] = useState<LootState | null>(null)
 
   useEffect(() => {
     phaseRef.current = phase
@@ -108,6 +132,7 @@ export function GoblinRaidTool() {
     facingRef.current = 'down'
     stepCountRef.current = 0
     setCombat(null)
+    setLoot(null)
     if (freshPlayer) {
       setPlayer(freshPlayer)
       playerRef.current = freshPlayer
@@ -134,7 +159,7 @@ export function GoblinRaidTool() {
   const appendLog = useCallback((line: string) => {
     setCombat((current) => {
       if (!current) return current
-      return { ...current, log: [line, ...current.log].slice(0, 5) }
+      return { ...current, log: [line, ...current.log].slice(0, 4) }
     })
   }, [])
 
@@ -145,14 +170,13 @@ export function GoblinRaidTool() {
     const next: CombatState = {
       monster,
       monsterHp: monster.hp,
-      log: [`${monster.nameZh}擋路！`, monster.description],
+      log: [`${monster.nameZh}擋路！`],
       busy: false,
-      canHeal: true,
     }
     setCombat(next)
     combatRef.current = next
     setPhase('combat')
-    setMessage('戰鬥開始 — 點招式，或按空白鍵攻擊')
+    setMessage('點下方「攻擊」按鈕，或按空白鍵')
   }, [])
 
   const tryMove = useCallback(
@@ -168,24 +192,40 @@ export function GoblinRaidTool() {
       const tile = MAP[next.y]![next.x]
       if (tile === 4) {
         setPlayer((current) => {
-          const healed = { ...current, hp: Math.min(current.maxHp, current.hp + 4) }
+          const healed = {
+            ...current,
+            hp: Math.min(current.maxHp, current.hp + 4 + Math.floor(current.vitality / 3)),
+          }
           playerRef.current = healed
           return healed
         })
-        setMessage('營地篝火暖和了一些。（+4 HP）')
+        setMessage('營地篝火暖和了一些。')
         return
       }
       if (tile === 3) {
-        const chance = 0.28 + Math.min(0.25, stepCountRef.current * 0.01)
-        if (Math.random() < chance) {
-          triggerEncounter()
-        } else {
-          setMessage('霧裡有腳步聲……暫時沒撞上。')
-        }
+        // Waiting-game friendly: mist almost always finds a fight after a few steps.
+        const chance = 0.55 + Math.min(0.35, stepCountRef.current * 0.02)
+        if (Math.random() < chance) triggerEncounter()
+        else setMessage('霧裡有腳步聲……暫時沒撞上。')
       }
     },
     [triggerEncounter],
   )
+
+  const finishVictory = useCallback((monster: MonsterData, xpGain: number) => {
+    const { player: afterXp, leveled } = applyXp(playerRef.current, xpGain)
+    const lootResult = rollLoot(afterXp, monster)
+    setPlayer(lootResult.player)
+    playerRef.current = lootResult.player
+    setLoot({
+      xp: xpGain,
+      leveled,
+      drops: lootResult.drops,
+      summary: lootResult.summary,
+    })
+    setPhase('loot')
+    setMessage(leveled ? `升級到 Lv.${lootResult.player.level}！還撿到戰利品。` : '戰鬥結束，撿起戰利品。')
+  }, [])
 
   const doAttack = useCallback(async () => {
     const currentCombat = combatRef.current
@@ -199,25 +239,21 @@ export function GoblinRaidTool() {
       appendLog('你揮空了。')
     } else {
       const monsterHp = Math.max(0, currentCombat.monsterHp - strike.damage)
-      appendLog(`你砍中 ${currentCombat.monster.nameZh}，造成 ${strike.damage} 傷。`)
+      appendLog(
+        strike.crit
+          ? `暴擊！對 ${currentCombat.monster.nameZh} 造成 ${strike.damage} 傷。`
+          : `砍中 ${currentCombat.monster.nameZh}，造成 ${strike.damage} 傷。`,
+      )
       setCombat((c) => (c ? { ...c, monsterHp, busy: true } : c))
       if (monsterHp <= 0) {
-        const { player: next, leveled } = applyXp(currentPlayer, currentCombat.monster.xp)
-        await wait(320)
-        setPlayer(next)
-        playerRef.current = next
-        setPhase('loot')
-        setMessage(
-          leveled
-            ? `勝利！+${currentCombat.monster.xp} XP，升級到 Lv.${next.level}！`
-            : `勝利！+${currentCombat.monster.xp} XP。繼續巡邏吧`,
-        )
+        await wait(280)
+        finishVictory(currentCombat.monster, currentCombat.monster.xp)
         return
       }
     }
 
-    await wait(360)
-    const counter = monsterStrike(currentCombat.monster)
+    await wait(340)
+    const counter = monsterStrike(currentCombat.monster, playerRef.current)
     if (!counter.hit) {
       appendLog(`${currentCombat.monster.nameZh}沒打中你。`)
       setCombat((c) => (c ? { ...c, busy: false } : c))
@@ -236,26 +272,28 @@ export function GoblinRaidTool() {
       return next
     })
     setCombat((c) => (c ? { ...c, busy: false } : c))
-  }, [appendLog])
+  }, [appendLog, finishVictory])
 
   const doHeal = useCallback(() => {
     const currentCombat = combatRef.current
-    if (!currentCombat || currentCombat.busy || !currentCombat.canHeal || phaseRef.current !== 'combat') {
+    if (!currentCombat || currentCombat.busy || phaseRef.current !== 'combat') return
+    if (playerRef.current.herbs <= 0) {
+      appendLog('沒有草藥了。')
       return
     }
 
     const before = playerRef.current
-    const healed = healPlayer(before)
+    const healed = healPlayer(before, true)
     const gained = healed.hp - before.hp
     setPlayer(healed)
     playerRef.current = healed
-    setCombat({ ...currentCombat, canHeal: false, busy: true })
-    appendLog(`你喝下草藥，回復 ${gained} HP。`)
+    setCombat({ ...currentCombat, busy: true })
+    appendLog(`喝下草藥，回復 ${gained} HP。`)
 
     window.setTimeout(() => {
       const active = combatRef.current
       if (!active) return
-      const counter = monsterStrike(active.monster)
+      const counter = monsterStrike(active.monster, playerRef.current)
       if (counter.hit) {
         appendLog(`${active.monster.nameZh}趁機砸了你 ${counter.damage}。`)
         setPlayer((current) => {
@@ -272,17 +310,17 @@ export function GoblinRaidTool() {
         appendLog('敵人撲空了。')
       }
       setCombat((c) => (c ? { ...c, busy: false } : c))
-    }, 360)
+    }, 340)
   }, [appendLog])
 
   const doFlee = useCallback(() => {
     const currentCombat = combatRef.current
     if (!currentCombat || currentCombat.busy || phaseRef.current !== 'combat') return
 
-    if (roll(1, 100) <= 55) {
+    if (roll(1, 100) <= fleeChance(playerRef.current)) {
       setCombat(null)
       setPhase('explore')
-      setMessage('你鑽進樹叢跑掉了。')
+      setMessage('靠著運氣鑽進樹叢跑掉了。')
       return
     }
 
@@ -291,7 +329,7 @@ export function GoblinRaidTool() {
     window.setTimeout(() => {
       const active = combatRef.current
       if (!active) return
-      const counter = monsterStrike(active.monster)
+      const counter = monsterStrike(active.monster, playerRef.current)
       if (counter.hit) {
         appendLog(`被追上，挨了 ${counter.damage}。`)
         setPlayer((current) => {
@@ -306,7 +344,7 @@ export function GoblinRaidTool() {
         })
       }
       setCombat((c) => (c ? { ...c, busy: false } : c))
-    }, 320)
+    }, 300)
   }, [appendLog])
 
   const continueAfterBanner = useCallback(() => {
@@ -314,9 +352,7 @@ export function GoblinRaidTool() {
       startExplore(createPlayer())
       return
     }
-    if (phaseRef.current === 'loot') {
-      startExplore()
-    }
+    if (phaseRef.current === 'loot') startExplore()
   }, [startExplore])
 
   useEffect(() => {
@@ -335,8 +371,14 @@ export function GoblinRaidTool() {
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ' '].includes(key)) {
         event.preventDefault()
       }
+      if (keysRef.current.has(key) && event.repeat) return
       keysRef.current.add(key)
-      if (key === ' ' || key === 'enter') {
+
+      if (key === 'arrowup' || key === 'w') tryMove('up')
+      else if (key === 'arrowdown' || key === 's') tryMove('down')
+      else if (key === 'arrowleft' || key === 'a') tryMove('left')
+      else if (key === 'arrowright' || key === 'd') tryMove('right')
+      else if (key === ' ' || key === 'enter') {
         if (phaseRef.current === 'combat') attackHandlerRef.current()
         else if (phaseRef.current === 'loot' || phaseRef.current === 'defeat') {
           continueHandlerRef.current()
@@ -352,7 +394,7 @@ export function GoblinRaidTool() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [])
+  }, [tryMove])
 
   useEffect(() => {
     let raf = 0
@@ -447,9 +489,15 @@ export function GoblinRaidTool() {
   }, [tryMove])
 
   const bindPad = (dir: Dir) => ({
+    onClick: (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      tryMove(dir)
+    },
     onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
       event.preventDefault()
       holdDirRef.current = dir
+      tryMove(dir)
+      lastMoveRef.current = performance.now()
     },
     onPointerUp: () => {
       holdDirRef.current = null
@@ -465,14 +513,53 @@ export function GoblinRaidTool() {
   const hpPct = useMemo(() => Math.round((player.hp / player.maxHp) * 100), [player])
   const xpPct = useMemo(() => Math.round((player.xp / player.xpToNext) * 100), [player])
   const monPct = combat ? Math.round((combat.monsterHp / combat.monster.hp) * 100) : 0
+  const inCombat = phase === 'combat' && combat
 
   return (
     <div className="goblin-raid">
+      <div className="goblin-raid__hero">
+        <div className="portrait portrait--hero" aria-hidden="true">
+          <span className="portrait__face" />
+          <span className="portrait__cape" />
+          <span className="portrait__band" />
+        </div>
+        <div className="goblin-raid__hero-copy">
+          <p className="eyebrow">Fog Ranger</p>
+          <h2>霧林巡衛</h2>
+          <div className="stat-grid">
+            <div>
+              <span>力量</span>
+              <strong>{player.strength}</strong>
+            </div>
+            <div>
+              <span>體質</span>
+              <strong>{player.vitality}</strong>
+            </div>
+            <div>
+              <span>幸運</span>
+              <strong>{player.luck}</strong>
+            </div>
+            <div>
+              <span>防禦</span>
+              <strong>{player.defense}</strong>
+            </div>
+            <div>
+              <span>金幣</span>
+              <strong>{player.gold}</strong>
+            </div>
+            <div>
+              <span>草藥</span>
+              <strong>{player.herbs}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="goblin-raid__hud">
         <div className="goblin-raid__stat">
           <span>Lv.{player.level}</span>
           <strong>
-            HP {player.hp}/{player.maxHp}
+            血量 {player.hp}/{player.maxHp}
           </strong>
           <div className="bar">
             <i style={{ width: `${hpPct}%` }} />
@@ -487,13 +574,9 @@ export function GoblinRaidTool() {
             <i style={{ width: `${xpPct}%` }} />
           </div>
         </div>
-        <div className="goblin-raid__stat goblin-raid__stat--atk">
-          <span>攻擊</span>
-          <strong>{player.attack}</strong>
-        </div>
       </div>
 
-      <div className="goblin-raid__stage">
+      <div className={`goblin-raid__stage ${inCombat ? 'is-combat' : ''}`}>
         <canvas
           ref={canvasRef}
           className="goblin-raid__canvas"
@@ -503,11 +586,37 @@ export function GoblinRaidTool() {
           aria-label="哥布林霧林地圖"
         />
 
-        {phase === 'combat' && combat && (
+        {inCombat && combat && (
           <div
             className="goblin-raid__combat"
             style={{ '--mon': combat.monster.color } as CSSProperties}
           >
+            <div className="duel">
+              <div className="duel__side">
+                <div className="portrait portrait--hero portrait--sm" aria-hidden="true">
+                  <span className="portrait__face" />
+                  <span className="portrait__cape" />
+                  <span className="portrait__band" />
+                </div>
+                <p>霧林巡衛</p>
+              </div>
+              <p className="duel__vs">VS</p>
+              <div className="duel__side">
+                <div
+                  className={`portrait portrait--monster portrait--${combat.monster.id}`}
+                  style={{ '--mon': combat.monster.color } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  <span className="portrait__body" />
+                  <span className="portrait__eye portrait__eye--l" />
+                  <span className="portrait__eye portrait__eye--r" />
+                  <span className="portrait__ear portrait__ear--l" />
+                  <span className="portrait__ear portrait__ear--r" />
+                </div>
+                <p>{combat.monster.nameZh}</p>
+              </div>
+            </div>
+
             <div className="combat-head">
               <div>
                 <p className="eyebrow">{combat.monster.name}</p>
@@ -522,41 +631,34 @@ export function GoblinRaidTool() {
                 </div>
               </div>
             </div>
-            <div className="combat-sprite" aria-hidden="true">
-              <span />
-            </div>
+
             <ul className="combat-log">
               {combat.log.map((line, index) => (
                 <li key={`${index}-${line}`}>{line}</li>
               ))}
             </ul>
-            <div className="combat-actions">
-              <button
-                type="button"
-                className="btn btn--primary"
-                disabled={combat.busy}
-                onClick={() => void doAttack()}
-              >
-                攻擊
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                disabled={combat.busy || !combat.canHeal}
-                onClick={doHeal}
-              >
-                療傷
-              </button>
-              <button type="button" className="btn btn--ghost" disabled={combat.busy} onClick={doFlee}>
-                逃跑
-              </button>
-            </div>
           </div>
         )}
 
         {(phase === 'loot' || phase === 'defeat' || phase === 'boot') && (
           <div className="goblin-raid__banner">
-            <p>{message}</p>
+            {phase === 'loot' && loot ? (
+              <>
+                <p>
+                  {loot.leveled ? `升級！` : `勝利！`} +{loot.xp} XP
+                </p>
+                <ul className="loot-list">
+                  {loot.drops.map((drop, index) => (
+                    <li key={`${drop.id}-${index}`}>
+                      <strong>{drop.name}</strong>
+                      <span>{loot.summary[index] ?? drop.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p>{message}</p>
+            )}
             {phase !== 'boot' && (
               <button type="button" className="btn btn--primary" onClick={continueAfterBanner}>
                 {phase === 'defeat' ? '重新出發' : '繼續巡邏'}
@@ -568,25 +670,49 @@ export function GoblinRaidTool() {
 
       <p className="goblin-raid__hint">{message}</p>
 
-      <div className="goblin-raid__pad" aria-label="行動鍵">
-        <button type="button" {...bindPad('up')}>
-          ↑
-        </button>
-        <div className="goblin-raid__pad-mid">
-          <button type="button" {...bindPad('left')}>
-            ←
+      {inCombat && combat ? (
+        <div className="goblin-raid__actions" aria-label="戰鬥操作">
+          <button
+            type="button"
+            className="btn btn--primary btn--attack"
+            disabled={combat.busy}
+            onClick={() => void doAttack()}
+          >
+            攻擊
           </button>
-          <button type="button" {...bindPad('down')}>
-            ↓
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={combat.busy || player.herbs <= 0}
+            onClick={doHeal}
+          >
+            療傷（{player.herbs}）
           </button>
-          <button type="button" {...bindPad('right')}>
-            →
+          <button type="button" className="btn btn--ghost" disabled={combat.busy} onClick={doFlee}>
+            逃跑
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="goblin-raid__pad" aria-label="行動鍵">
+          <button type="button" {...bindPad('up')}>
+            ↑
+          </button>
+          <div className="goblin-raid__pad-mid">
+            <button type="button" {...bindPad('left')}>
+              ←
+            </button>
+            <button type="button" {...bindPad('down')}>
+              ↓
+            </button>
+            <button type="button" {...bindPad('right')}>
+              →
+            </button>
+          </div>
+        </div>
+      )}
 
       <p className="goblin-raid__meta">
-        WASD / 方向鍵移動 · 空白鍵攻擊 · 不存檔 · 怪物來源：
+        探索用方向鍵 · 戰鬥用下方按鈕 / 空白鍵 · 不存檔 · 怪物來源：
         {source === 'api' ? 'D&D 5e API' : '本地備用'}
       </p>
     </div>
