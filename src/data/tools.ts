@@ -1,8 +1,10 @@
 import type { ComponentType } from 'react'
 import { CounterTool } from '../tools/counter/CounterTool'
+import { GoblinRaidTool } from '../tools/goblin-raid/GoblinRaidTool'
 import { NotesTool } from '../tools/notes/NotesTool'
 
 export type ToolStatus = 'ready' | 'draft'
+export type ToolPresentation = 'embedded' | 'fullscreen'
 
 export type ToolDefinition = {
   id: string
@@ -11,6 +13,7 @@ export type ToolDefinition = {
   description: string
   status: ToolStatus
   tags: string[]
+  presentation?: ToolPresentation
   Component: ComponentType
 }
 
@@ -32,6 +35,16 @@ export const tools: ToolDefinition[] = [
     status: 'ready',
     tags: ['demo', '文字'],
     Component: NotesTool,
+  },
+  {
+    id: 'goblin-raid',
+    name: '哥布林討伐',
+    nameEn: 'Goblin Raid',
+    description: '點進去就是全螢幕霧林：遇敵、練等、掉落。等結果時的小逃脫。',
+    status: 'ready',
+    tags: ['遊戲', '奇幻'],
+    presentation: 'fullscreen',
+    Component: GoblinRaidTool,
   },
 ]
 

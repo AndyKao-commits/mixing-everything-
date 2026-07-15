@@ -22,7 +22,8 @@ npm run preview
 2. 到 `src/data/tools.ts` 註冊（id、名稱、說明、Component）
 3. 前往 `/tools/<tool-id>` 即可使用
 
-目前內建兩個示範：
+目前內建：
 
 - **計數器** `/tools/counter`
 - **隨手記** `/tools/notes`
+- **哥布林討伐** `/tools/goblin-raid`（奇幻遇敵小遊戲，等結果時用；不存檔）
