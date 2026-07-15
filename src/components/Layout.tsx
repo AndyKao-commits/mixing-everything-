@@ -1,9 +1,22 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useMatch } from 'react-router-dom'
+import { getToolById } from '../data/tools'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   isActive ? 'site-nav__link is-active' : 'site-nav__link'
 
 export function Layout() {
+  const match = useMatch('/tools/:toolId')
+  const tool = match?.params.toolId ? getToolById(match.params.toolId) : undefined
+  const fullscreen = tool?.presentation === 'fullscreen'
+
+  if (fullscreen) {
+    return (
+      <div className="site-shell site-shell--play">
+        <Outlet />
+      </div>
+    )
+  }
+
   return (
     <div className="site-shell">
       <div className="site-atmosphere" aria-hidden="true" />

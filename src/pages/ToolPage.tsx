@@ -21,6 +21,10 @@ export function ToolPage() {
 
   const Tool = tool.Component
 
+  if (tool.presentation === 'fullscreen') {
+    return <Tool />
+  }
+
   return (
     <section className="section section--page tool-page">
       <div className="tool-page__header">

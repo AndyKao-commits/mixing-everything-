@@ -1,82 +1,455 @@
-.goblin-raid {
-  display: grid;
-  gap: 0.85rem;
+.raid-play {
+  --raid-ink: #e7f0e8;
+  --raid-muted: #9bb0a1;
+  --raid-line: rgba(198, 224, 204, 0.16);
+  position: relative;
+  isolation: isolate;
+  height: 100dvh;
   width: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+  color: var(--raid-ink);
+  background:
+    radial-gradient(1000px 520px at 12% -8%, rgba(74, 140, 96, 0.34), transparent 58%),
+    radial-gradient(760px 460px at 92% 0%, rgba(196, 92, 40, 0.2), transparent 55%),
+    linear-gradient(180deg, #0d1a13 0%, #08110d 100%);
+  font-family: var(--font-body);
 }
 
-.goblin-raid__hero {
+.raid-play__glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at center, black 25%, transparent 80%);
+  opacity: 0.45;
+}
+
+.raid-stage-wrap {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  display: grid;
+}
+
+.raid-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #102018;
+}
+
+.raid-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.raid-stage.is-combat .raid-canvas {
+  filter: blur(2px) saturate(0.7) brightness(0.42);
+}
+
+.raid-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  padding: calc(max(0.55rem, env(safe-area-inset-top)) + 3.1rem) 0.7rem 0.7rem;
+}
+
+.raid-hud > * {
+  pointer-events: auto;
+}
+
+.raid-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: max(0.55rem, env(safe-area-inset-top)) 0.7rem 0;
+  pointer-events: none;
+}
+
+.raid-topbar > * {
+  pointer-events: auto;
+}
+
+.raid-exit {
+  color: var(--raid-ink);
+  font-weight: 600;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(8, 16, 12, 0.72);
+  border: 1px solid var(--raid-line);
+  backdrop-filter: blur(10px);
+}
+
+.raid-top__title {
+  text-align: center;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(8, 16, 12, 0.55);
+  border: 1px solid var(--raid-line);
+  backdrop-filter: blur(10px);
+}
+
+.raid-top__title p {
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+  color: #8fd0a8;
+}
+
+.raid-top__title h1 {
+  font-size: clamp(0.98rem, 3.6vw, 1.25rem);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.raid-top__level {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: #ffc27a;
+  padding: 0.45rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(8, 16, 12, 0.72);
+  border: 1px solid var(--raid-line);
+}
+
+.raid-sheet {
+  justify-self: start;
+  align-self: start;
+  margin-top: 0.65rem;
+  width: min(340px, calc(100% - 0.2rem));
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.9rem;
-  align-items: center;
+  gap: 0.55rem 0.7rem;
+  padding: 0.65rem;
+  border-radius: 18px;
+  background: rgba(8, 16, 12, 0.72);
+  border: 1px solid var(--raid-line);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
 }
 
-.goblin-raid__hero-copy {
-  display: grid;
-  gap: 0.45rem;
-  min-width: 0;
+.raid-sheet h2 {
+  font-size: 1.05rem;
+  line-height: 1.1;
 }
 
-.goblin-raid__hero-copy h2 {
-  font-size: 1.35rem;
+.raid-sheet .eyebrow {
+  color: #8fd0a8;
+  font-size: 0.68rem;
 }
 
 .stat-grid {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem 0.6rem;
+  gap: 0.35rem;
 }
 
 .stat-grid div {
-  display: grid;
-  gap: 0.1rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .stat-grid span {
-  color: var(--ink-soft);
-  font-size: 0.78rem;
+  display: block;
+  color: var(--raid-muted);
+  font-size: 0.68rem;
 }
 
 .stat-grid strong {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 0.98rem;
+}
+
+.raid-meters {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.raid-meters span {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--raid-muted);
+  font-size: 0.72rem;
+}
+
+.raid-play .bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.raid-play .bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #1f6b52, #7ad09a);
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.raid-play .bar--xp i {
+  background: linear-gradient(90deg, #b86a20, #f0c272);
+}
+
+.raid-play .bar--enemy i {
+  background: linear-gradient(90deg, #a33b24, #e4572e);
+}
+
+.raid-hint {
+  justify-self: center;
+  align-self: end;
+  margin-bottom: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(8, 16, 12, 0.7);
+  border: 1px solid var(--raid-line);
+  color: var(--raid-muted);
+  font-size: 0.86rem;
+  backdrop-filter: blur(8px);
+}
+
+.raid-combat {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 0.65rem;
+  padding: max(4.8rem, env(safe-area-inset-top)) 0.9rem 0.9rem;
+  background:
+    radial-gradient(circle at 78% 22%, color-mix(in srgb, var(--mon, #6f9b4c) 40%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(8, 16, 12, 0.66), rgba(8, 16, 12, 0.9));
+  animation: raid-in 220ms ease both;
+}
+
+.duel {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
+.duel__side {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.duel__vs {
+  font-family: var(--font-display);
+  font-weight: 800;
+  opacity: 0.75;
+}
+
+.combat-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+}
+
+.combat-head h2 {
+  font-size: clamp(1.3rem, 5vw, 1.9rem);
+}
+
+.combat-head .eyebrow {
+  color: color-mix(in srgb, var(--mon, #9fd0b8) 80%, white);
+}
+
+.combat-hp {
+  min-width: 7rem;
+  display: grid;
+  gap: 0.3rem;
+  text-align: right;
+}
+
+.combat-log {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  display: grid;
+  gap: 0.25rem;
+  align-content: start;
+  overflow: auto;
+}
+
+.raid-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 1.1rem;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: min(560px, calc(100% - 1.4rem));
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 246, 230, 0.97), rgba(244, 232, 208, 0.97));
+  color: #1d2a22;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  animation: raid-in 220ms ease both;
+}
+
+.raid-banner__lead {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.loot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.loot-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 12px;
+  background: rgba(31, 107, 82, 0.1);
+}
+
+.loot-list span {
+  color: #516257;
+}
+
+.raid-dock {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem max(0.75rem, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(8, 16, 12, 0.2), rgba(8, 16, 12, 0.92));
+  border-top: 1px solid var(--raid-line);
+}
+
+.raid-dock__meta {
+  text-align: center;
+  color: rgba(155, 176, 161, 0.72);
+  font-size: 0.75rem;
+}
+
+.raid-actions {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr 0.9fr;
+  gap: 0.5rem;
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.raid-actions .btn,
+.raid-banner .btn {
+  min-height: 3.15rem;
+}
+
+.btn--attack {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.raid-play .btn--ghost {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--raid-ink);
+}
+
+.raid-play .btn:disabled {
+  opacity: 0.45;
+  transform: none;
+  cursor: not-allowed;
+}
+
+.raid-pad {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.raid-pad__mid {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.raid-pad button {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--raid-ink);
+  font-size: 1.15rem;
+  touch-action: none;
+}
+
+.raid-pad button:active {
+  background: rgba(127, 200, 150, 0.22);
 }
 
 .portrait {
   position: relative;
-  width: 84px;
-  height: 96px;
-  border-radius: 18px;
+  width: 64px;
+  height: 72px;
+  border-radius: 16px;
   overflow: hidden;
   background:
-    linear-gradient(160deg, #2f5a43, #163a33 70%),
-    #163a33;
-  box-shadow: 0 10px 24px rgba(19, 36, 31, 0.18);
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.18), transparent 42%),
+    linear-gradient(160deg, #2f5a43, #163a33 72%);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
   flex-shrink: 0;
 }
 
 .portrait--sm {
-  width: 64px;
-  height: 72px;
-  border-radius: 14px;
+  width: 72px;
+  height: 80px;
+  border-radius: 18px;
 }
 
 .portrait__face {
   position: absolute;
   left: 50%;
   top: 28%;
-  width: 34px;
-  height: 34px;
-  margin-left: -17px;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
   border-radius: 50%;
   background: #f0d7a8;
-  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08);
 }
 
 .portrait--sm .portrait__face {
-  width: 26px;
-  height: 26px;
-  margin-left: -13px;
+  width: 30px;
+  height: 30px;
+  margin-left: -15px;
 }
 
 .portrait__cape {
@@ -93,9 +466,9 @@
   position: absolute;
   left: 50%;
   top: 22%;
-  width: 28px;
-  height: 8px;
-  margin-left: -14px;
+  width: 24px;
+  height: 7px;
+  margin-left: -12px;
   border-radius: 4px;
   background: #e4572e;
 }
@@ -120,13 +493,8 @@
   background: #13241f;
 }
 
-.portrait__eye--l {
-  left: 32%;
-}
-
-.portrait__eye--r {
-  right: 32%;
-}
+.portrait__eye--l { left: 32%; }
+.portrait__eye--r { right: 32%; }
 
 .portrait__ear {
   position: absolute;
@@ -138,290 +506,75 @@
   border-bottom: 16px solid color-mix(in srgb, var(--mon, #6f9b4c) 90%, #000);
 }
 
-.portrait__ear--l {
-  left: 4%;
-  transform: rotate(-25deg);
-}
-
-.portrait__ear--r {
-  right: 4%;
-  transform: rotate(25deg);
-}
-
-.portrait--hobgoblin .portrait__body {
-  border-radius: 12px;
-}
-
-.portrait--bugbear .portrait__body {
-  inset: 12% 12% 8%;
-}
-
-.goblin-raid__hud {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.7rem;
-}
-
-.goblin-raid__stat {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.goblin-raid__stat span {
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-}
-
-.goblin-raid__stat strong {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-}
-
-.goblin-raid .bar {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(19, 36, 31, 0.12);
-  overflow: hidden;
-}
-
-.goblin-raid .bar i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, #1f6b52, #6fbf8e);
-  border-radius: inherit;
-  transition: width 180ms ease;
-}
-
-.goblin-raid .bar--xp i {
-  background: linear-gradient(90deg, #c47b2c, #e8b45a);
-}
-
-.goblin-raid .bar--enemy i {
-  background: linear-gradient(90deg, #a33b24, #e4572e);
-}
-
-.goblin-raid__stage {
-  position: relative;
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid rgba(19, 36, 31, 0.12);
-  background: #1b2d24;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-.goblin-raid__canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  image-rendering: pixelated;
-  vertical-align: top;
-}
-
-.goblin-raid__stage.is-combat .goblin-raid__canvas {
-  opacity: 0.18;
-}
-
-.goblin-raid__combat {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 0.55rem;
-  padding: 0.85rem;
-  background:
-    radial-gradient(circle at 80% 18%, color-mix(in srgb, var(--mon, #6f9b4c) 40%, transparent), transparent 42%),
-    linear-gradient(180deg, rgba(14, 24, 20, 0.9), rgba(14, 24, 20, 0.96));
-  color: #eef4ef;
-  animation: raid-in 220ms ease both;
-}
-
-.duel {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.duel__side {
-  display: grid;
-  justify-items: center;
-  gap: 0.35rem;
-  font-size: 0.86rem;
-}
-
-.duel__vs {
-  font-family: var(--font-display);
-  font-weight: 800;
-  opacity: 0.7;
-}
-
-.combat-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: end;
-}
-
-.combat-head h2 {
-  color: #fff;
-  font-size: 1.25rem;
-}
-
-.combat-head .eyebrow {
-  color: color-mix(in srgb, var(--mon, #9fd0b8) 80%, white);
-}
-
-.combat-hp {
-  min-width: 7rem;
-  display: grid;
-  gap: 0.3rem;
-  text-align: right;
-  font-size: 0.9rem;
-}
-
-.combat-log {
-  list-style: none;
-  margin: 0;
-  padding: 0.6rem 0.7rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  display: grid;
-  gap: 0.2rem;
-  align-content: start;
-  font-size: 0.9rem;
-  color: rgba(238, 244, 239, 0.9);
-  overflow: auto;
-}
-
-.goblin-raid__banner {
-  position: absolute;
-  inset: auto 0.8rem 0.8rem;
-  display: grid;
-  gap: 0.7rem;
-  justify-items: stretch;
-  padding: 0.95rem 1rem;
-  border-radius: 16px;
-  background: rgba(255, 248, 238, 0.96);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-  animation: raid-in 220ms ease both;
-}
-
-.loot-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.4rem;
-}
-
-.loot-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 10px;
-  background: rgba(31, 107, 82, 0.08);
-  font-size: 0.92rem;
-}
-
-.loot-list span {
-  color: var(--ink-soft);
-}
-
-.goblin-raid__hint {
-  color: var(--ink-soft);
-  line-height: 1.55;
-  min-height: 1.55em;
-}
-
-.goblin-raid__actions {
-  display: grid;
-  grid-template-columns: 1.35fr 1fr 0.9fr;
-  gap: 0.55rem;
-}
-
-.goblin-raid__actions .btn {
-  min-height: 3rem;
-  font-size: 1rem;
-}
-
-.btn--attack {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.goblin-raid__pad {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-}
-
-.goblin-raid__pad-mid {
-  display: flex;
-  gap: 0.45rem;
-}
-
-.goblin-raid__pad button {
-  width: 3.2rem;
-  height: 3.2rem;
-  border-radius: 14px;
-  border: 1px solid rgba(19, 36, 31, 0.14);
-  background: rgba(255, 255, 255, 0.65);
-  color: var(--ink);
-  font-size: 1.1rem;
-  touch-action: none;
-}
-
-.goblin-raid__pad button:active {
-  background: rgba(31, 107, 82, 0.16);
-}
-
-.goblin-raid__meta {
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-  line-height: 1.5;
-}
+.portrait__ear--l { left: 4%; transform: rotate(-25deg); }
+.portrait__ear--r { right: 4%; transform: rotate(25deg); }
 
 @keyframes raid-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 800px) {
-  .goblin-raid__actions {
+@media (max-width: 860px) {
+  .raid-actions {
     grid-template-columns: 1fr;
   }
 
   .btn--attack {
     min-height: 3.4rem;
-    font-size: 1.1rem;
+    font-size: 1.08rem;
+  }
+
+  .raid-pad {
+    display: flex;
+  }
+
+  .raid-sheet {
+    width: min(100%, 420px);
+    padding: 0.5rem 0.55rem;
+    gap: 0.4rem 0.55rem;
+  }
+
+  .raid-sheet h2 {
+    font-size: 0.95rem;
   }
 
   .stat-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: none;
+  }
+
+  .raid-meters {
+    gap: 0.3rem;
+  }
+
+  .portrait {
+    width: 48px;
+    height: 54px;
+    border-radius: 12px;
+  }
+
+  .raid-dock {
+    padding-top: 0.4rem;
   }
 }
 
-@media (min-width: 801px) {
-  .goblin-raid__pad {
+@media (min-width: 861px) {
+  .raid-pad {
     display: none;
+  }
+
+  .raid-sheet {
+    width: 320px;
+  }
+
+  .portrait {
+    width: 72px;
+    height: 82px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .goblin-raid__combat,
-  .goblin-raid__banner {
+  .raid-combat,
+  .raid-banner {
     animation: none;
   }
 }
