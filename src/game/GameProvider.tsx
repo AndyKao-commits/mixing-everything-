@@ -215,7 +215,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     patchSettings: (patch) => updatePlayer((p) => ({ ...p, settings: { ...p.settings, ...patch } })),
     setHeroSkin: (skin) =>
       updatePlayer((p) => {
-        if (skin === 'ember' && !p.achievements.includes('skin-ember')) return p
+        const allowed =
+          skin === 'default' ||
+          skin === 'assassin' ||
+          skin === 'mage' ||
+          skin === 'tank' ||
+          (skin === 'ember' && p.achievements.includes('skin-ember'))
+        if (!allowed) return p
         return { ...p, heroSkin: skin }
       }),
     revive: () =>
