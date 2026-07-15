@@ -6,7 +6,7 @@ import { useGame } from '@/game/GameProvider'
 import { formatNumber } from '@/utils/math'
 import { GhostButton, PrimaryButton, StatPill } from '@/components/UI/Primitives'
 import { RARITY_COLOR, RARITY_LABEL } from '@/data/rarity'
-import { HeroArt, MonsterArt } from '@/components/Combat/CharacterArt'
+import { HeroPortrait, EnemyPortrait } from '@/components/Combat/Portrait'
 
 const FLOAT_COLOR: Record<string, string> = {
   white: '#f5f7f6',
@@ -102,7 +102,7 @@ export function BattleScene() {
         {/* Stage: characters face each other, not boxed cards */}
         <div className="relative z-10 grid grid-cols-2 items-end gap-2 px-2 pb-6 pt-4 sm:gap-6 sm:px-6">
           <div className="flex flex-col items-center">
-            <HeroArt attacking={hitFx} hurt={hurtFx} />
+            <HeroPortrait skinId={player.heroSkin} attacking={hitFx} hurt={hurtFx} />
             <p className="mt-1 font-display text-sm font-bold tracking-wide text-raid-ink">巡衛</p>
             <div className="mt-2 w-full max-w-[140px]">
               <div className="mb-1 flex justify-between text-[10px] text-white/70">
@@ -127,7 +127,7 @@ export function BattleScene() {
                 className="flex flex-col items-center"
               >
                 {enemy ? (
-                  <MonsterArt
+                  <EnemyPortrait
                     name={enemy.name}
                     color={enemy.color}
                     defId={enemy.defId}
@@ -136,7 +136,7 @@ export function BattleScene() {
                     hit={hitFx}
                   />
                 ) : (
-                  <div className="flex h-36 w-28 items-center justify-center text-raid-muted sm:h-44 sm:w-36">搜尋中…</div>
+                  <div className="flex h-40 w-28 items-center justify-center text-raid-muted sm:h-48 sm:w-36">搜尋中…</div>
                 )}
                 <p className="mt-1 text-center font-display text-sm font-bold">
                   {enemy?.name ?? '—'}

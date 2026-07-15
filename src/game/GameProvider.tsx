@@ -63,6 +63,7 @@ type GameContextValue = {
     prestige: () => void
     save: () => void
     patchSettings: (patch: Partial<Player['settings']>) => void
+    setHeroSkin: (skin: string) => void
     revive: () => void
   }
 }
@@ -212,6 +213,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     },
     patchSettings: (patch) => updatePlayer((p) => ({ ...p, settings: { ...p.settings, ...patch } })),
+    setHeroSkin: (skin) =>
+      updatePlayer((p) => {
+        if (skin === 'ember' && !p.achievements.includes('skin-ember')) return p
+        return { ...p, heroSkin: skin }
+      }),
     revive: () =>
       updatePlayer((p) => {
         const s = calcPlayerDpsStats(p)
