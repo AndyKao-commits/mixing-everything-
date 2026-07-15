@@ -613,6 +613,166 @@
   }
 }
 
+.raid-sheet__open {
+  grid-column: 1 / -1;
+  border: 1px solid var(--raid-line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--raid-ink);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.raid-sheet button.portrait {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.raid-top__level {
+  cursor: pointer;
+}
+
+.raid-banner__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.raid-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  background: rgba(4, 10, 8, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.raid-modal__card {
+  width: min(440px, 100%);
+  max-height: min(86svh, 740px);
+  overflow: auto;
+  border-radius: 18px;
+  padding: 0.9rem;
+  background: linear-gradient(180deg, rgba(18, 32, 26, 0.98), rgba(10, 18, 14, 0.98));
+  border: 1px solid var(--raid-line);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.raid-modal__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.raid-modal__stats {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.raid-modal__stat {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.45rem 0.55rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.raid-modal__stat span {
+  display: block;
+  color: var(--raid-muted);
+  font-size: 0.72rem;
+}
+
+.raid-modal__stat strong {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+}
+
+.raid-modal__stat .btn {
+  min-height: 2.2rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.raid-modal__points {
+  color: var(--raid-muted);
+  font-size: 0.88rem;
+}
+
+.raid-modal__points strong {
+  color: #ffc27a;
+  font-family: var(--font-display);
+}
+
+.raid-modal__bag h3,
+.raid-modal__zones h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.raid-modal__bag p,
+.raid-modal__zones p,
+.raid-modal__empty {
+  color: var(--raid-muted);
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.raid-modal__bag ul {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.raid-modal__bag li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.55rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.raid-modal__bag li span {
+  display: block;
+  color: var(--raid-muted);
+  font-size: 0.75rem;
+}
+
+.raid-modal__zone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.raid-modal__zone-list span {
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--raid-line);
+  font-size: 0.78rem;
+  color: var(--raid-muted);
+}
+
+.raid-modal__zone-list .is-here {
+  color: #13241f;
+  background: #9fd0b8;
+  border-color: transparent;
+  font-weight: 700;
+}
+
 @media (min-width: 861px) {
   .raid-pad {
     display: none;
