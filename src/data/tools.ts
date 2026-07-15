@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { CounterTool } from '../tools/counter/CounterTool'
+import { FieldlifeLazy } from '../tools/fieldlife/FieldlifeLazy'
 import { GoblinRaidTool } from '../tools/goblin-raid/GoblinRaidTool'
 import { NotesTool } from '../tools/notes/NotesTool'
 
@@ -45,6 +46,16 @@ export const tools: ToolDefinition[] = [
     tags: ['遊戲', '奇幻'],
     presentation: 'fullscreen',
     Component: GoblinRaidTool,
+  },
+  {
+    id: 'fieldlife',
+    name: 'Fieldlife 3D',
+    nameEn: 'Fieldlife 3D',
+    description: '《餘燼野原》：AI 自己活出篇章——練功、解鎖記憶、閉卷得稱號。私用訓練沙盒。',
+    status: 'ready',
+    tags: ['遊戲', '3D', 'AI'],
+    presentation: 'fullscreen',
+    Component: FieldlifeLazy,
   },
 ]
 

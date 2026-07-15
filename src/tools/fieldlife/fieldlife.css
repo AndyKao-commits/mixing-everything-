@@ -1,0 +1,554 @@
+.fieldlife-boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #121a24;
+  color: #e8eef6;
+  font-family: var(--font-body, 'Noto Sans TC', sans-serif);
+}
+
+.fieldlife {
+  --fl-bg: #121a24;
+  --fl-panel: rgb(14 22 32 / 82%);
+  --fl-ink: #e8eef6;
+  --fl-mute: #9aabbd;
+  --fl-accent: #d4a14a;
+  --fl-hp: #e35d5d;
+  --fl-xp: #5cb8ff;
+  --fl-line: rgb(232 238 246 / 14%);
+  position: fixed;
+  inset: 0;
+  color: var(--fl-ink);
+  font-family: var(--font-body, 'Noto Sans TC', sans-serif);
+  background: var(--fl-bg);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.fieldlife__stage {
+  position: absolute;
+  inset: 0;
+}
+
+.fieldlife__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fieldlife__vignette {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 42%, rgb(8 12 18 / 50%) 100%),
+    linear-gradient(180deg, rgb(8 12 18 / 40%) 0%, transparent 16%, transparent 70%, rgb(8 12 18 / 55%) 100%);
+}
+
+.fieldlife__top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  background: linear-gradient(180deg, rgb(8 12 18 / 75%), transparent);
+}
+
+.fieldlife__back {
+  color: var(--fl-mute);
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.fieldlife__brand h1 {
+  margin: 0;
+  font-family: var(--font-display, 'Syne', sans-serif);
+  font-size: clamp(1.1rem, 3.5vw, 1.55rem);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.fieldlife__eyebrow {
+  margin: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fl-accent);
+}
+
+.fieldlife__who {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.fieldlife__who button,
+.fieldlife__dock button,
+.fieldlife__mode select,
+.fieldlife__lore-actions button,
+.fieldlife__pad-btn {
+  appearance: none;
+  border: 1px solid var(--fl-line);
+  background: rgb(255 255 255 / 7%);
+  color: var(--fl-ink);
+  padding: 0.4rem 0.65rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.fieldlife__who button.is-active,
+.fieldlife__primary {
+  border-color: color-mix(in srgb, var(--fl-accent) 55%, transparent) !important;
+  background: color-mix(in srgb, var(--fl-accent) 22%, transparent) !important;
+  color: #fff !important;
+}
+
+.fieldlife__strip {
+  position: absolute;
+  top: 3.4rem;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  width: min(34rem, calc(100vw - 1.2rem));
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--fl-line);
+  background: var(--fl-panel);
+  backdrop-filter: blur(10px);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.fieldlife__strip-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.fieldlife__strip-main strong {
+  font-size: 0.95rem;
+  color: var(--fl-accent);
+}
+
+.fieldlife__strip-main span,
+.fieldlife__strip-event {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--fl-mute);
+}
+
+.fieldlife__strip-event {
+  color: #d2deea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fieldlife__strip-bars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.fieldlife__mini-bar {
+  height: 0.35rem;
+  background: rgb(0 0 0 / 35%);
+  border: 1px solid var(--fl-line);
+  overflow: hidden;
+}
+
+.fieldlife__mini-bar i {
+  display: block;
+  height: 100%;
+}
+
+.fieldlife__mini-bar i.is-hp {
+  background: var(--fl-hp);
+}
+
+.fieldlife__mini-bar i.is-xp {
+  background: var(--fl-xp);
+}
+
+.fieldlife__rail {
+  position: absolute;
+  z-index: 3;
+  top: 7.1rem;
+  width: min(17rem, calc(50vw - 0.9rem));
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+}
+
+.fieldlife__rail--left {
+  left: 0.65rem;
+}
+
+.fieldlife__rail--right {
+  right: 0.65rem;
+}
+
+.fieldlife__panel {
+  border: 1px solid var(--fl-line);
+  background: var(--fl-panel);
+  backdrop-filter: blur(10px);
+}
+
+.fieldlife__panel > summary {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.fieldlife__panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fieldlife__panel > summary span {
+  color: var(--fl-mute);
+  font-size: 0.72rem;
+}
+
+.fieldlife__panel-body {
+  padding: 0 0.75rem 0.75rem;
+  border-top: 1px solid var(--fl-line);
+}
+
+.fieldlife__panel-body--scroll {
+  max-height: min(42vh, 22rem);
+  overflow: auto;
+}
+
+.fieldlife__chapter {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.65rem 0 0.45rem;
+}
+
+.fieldlife__chapter span {
+  font-size: 0.68rem;
+  color: var(--fl-mute);
+}
+
+.fieldlife__chapter strong {
+  font-family: var(--font-display, 'Syne', sans-serif);
+  font-size: 1.1rem;
+}
+
+.fieldlife__chapter em {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: #b7c6d6;
+}
+
+.fieldlife__meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem 0.35rem;
+  margin: 0.55rem 0;
+}
+
+.fieldlife__meta dt {
+  margin: 0;
+  font-size: 0.65rem;
+  color: var(--fl-mute);
+}
+
+.fieldlife__meta dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fieldlife__bar {
+  position: relative;
+  height: 1.2rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--fl-line);
+  background: rgb(0 0 0 / 35%);
+  overflow: hidden;
+}
+
+.fieldlife__bar span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.68rem;
+}
+
+.fieldlife__bar-fill {
+  height: 100%;
+}
+
+.fieldlife__bar-fill--hp {
+  background: linear-gradient(90deg, #9e3030, var(--fl-hp));
+}
+
+.fieldlife__bar-fill--xp {
+  background: linear-gradient(90deg, #2c6ea0, var(--fl-xp));
+}
+
+.fieldlife__event {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #d7e4f2;
+}
+
+.fieldlife__fate {
+  margin-top: 0.55rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--fl-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--fl-accent) 12%, transparent);
+}
+
+.fieldlife__fate strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--fl-accent);
+}
+
+.fieldlife__fate p {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.fieldlife__list {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fieldlife__list li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--fl-line);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #c9d6e4;
+}
+
+.fieldlife__list li[data-kind='chapter'] {
+  color: var(--fl-accent);
+}
+
+.fieldlife__list li[data-kind='epitaph'] {
+  color: #ffb089;
+}
+
+.fieldlife__list--memory li {
+  color: #9fd0b8;
+}
+
+.fieldlife__panel-body h3 {
+  margin: 0.7rem 0 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fl-mute);
+}
+
+.fieldlife__pad {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 4.4rem;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+.fieldlife__pad > * {
+  pointer-events: auto;
+}
+
+.fieldlife__pad-move,
+.fieldlife__pad-act {
+  display: flex;
+  gap: 0.4rem;
+  align-items: end;
+}
+
+.fieldlife__pad-btn {
+  min-width: 3.4rem;
+  min-height: 3.4rem;
+  border-radius: 0.35rem;
+  background: rgb(10 16 24 / 72%);
+  backdrop-filter: blur(8px);
+  user-select: none;
+}
+
+.fieldlife__pad-btn--main {
+  min-width: 4.2rem;
+  min-height: 4.2rem;
+  border-color: color-mix(in srgb, var(--fl-accent) 40%, transparent);
+}
+
+.fieldlife__pad-btn--hit {
+  border-color: color-mix(in srgb, var(--fl-hp) 50%, transparent);
+  background: color-mix(in srgb, var(--fl-hp) 18%, rgb(10 16 24 / 72%));
+}
+
+.fieldlife__pad-btn:active {
+  transform: translateY(1px);
+  background: color-mix(in srgb, var(--fl-accent) 20%, rgb(10 16 24 / 80%));
+}
+
+.fieldlife__lore {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+  width: min(26rem, calc(100vw - 1.5rem));
+  max-height: min(78vh, 34rem);
+  overflow: auto;
+  padding: 1.15rem 1.2rem 1rem;
+  border: 1px solid var(--fl-line);
+  background: rgb(10 16 24 / 94%);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+}
+
+.fieldlife__lore h2 {
+  margin: 0.25rem 0 0.65rem;
+  font-family: var(--font-display, 'Syne', sans-serif);
+  font-size: 1.25rem;
+}
+
+.fieldlife__lore p {
+  margin: 0 0 0.6rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #d2deea;
+}
+
+.fieldlife__lore-hint {
+  color: var(--fl-mute) !important;
+  font-size: 0.8rem !important;
+}
+
+.fieldlife__lore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.fieldlife__dock {
+  position: absolute;
+  left: 50%;
+  bottom: 0.65rem;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  width: min(46rem, calc(100vw - 1rem));
+  padding: 0.5rem;
+  border: 1px solid var(--fl-line);
+  background: var(--fl-panel);
+  backdrop-filter: blur(10px);
+}
+
+.fieldlife__mode {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--fl-mute);
+}
+
+@media (max-width: 820px) {
+  .fieldlife__top {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      'back who'
+      'brand brand';
+    gap: 0.35rem 0.55rem;
+  }
+
+  .fieldlife__back {
+    grid-area: back;
+  }
+
+  .fieldlife__who {
+    grid-area: who;
+    justify-self: end;
+  }
+
+  .fieldlife__brand {
+    grid-area: brand;
+  }
+
+  .fieldlife__rail {
+    top: auto;
+    bottom: 9.6rem;
+    width: auto;
+  }
+
+  .fieldlife__rail--left {
+    left: 0.5rem;
+    right: auto;
+  }
+
+  .fieldlife__rail--right {
+    right: 0.5rem;
+    left: auto;
+  }
+
+  .fieldlife__panel-body--scroll {
+    max-height: 28vh;
+  }
+
+  .fieldlife__pad {
+    bottom: 4.1rem;
+  }
+
+  .fieldlife__status {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .fieldlife__rail--right {
+    display: none;
+  }
+
+  .fieldlife__rail--left {
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+  }
+
+  .fieldlife__pad-btn {
+    min-width: 3rem;
+    min-height: 3rem;
+    font-size: 0.72rem;
+  }
+
+  .fieldlife__pad-btn--main {
+    min-width: 3.6rem;
+    min-height: 3.6rem;
+  }
+}
