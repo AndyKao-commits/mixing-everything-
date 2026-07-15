@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { CounterTool } from '../tools/counter/CounterTool'
+import { FieldlifeLazy } from '../tools/fieldlife/FieldlifeLazy'
 import { GoblinRaidTool } from '../tools/goblin-raid/GoblinRaidTool'
 import { NotesTool } from '../tools/notes/NotesTool'
 
@@ -45,6 +46,16 @@ export const tools: ToolDefinition[] = [
     tags: ['遊戲', '奇幻'],
     presentation: 'fullscreen',
     Component: GoblinRaidTool,
+  },
+  {
+    id: 'fieldlife',
+    name: 'Fieldlife 3D',
+    nameEn: 'Fieldlife 3D',
+    description: '3D 野原沙盒：AI 練功打怪升等，寫下自己的遊戲人生。私用訓練用。',
+    status: 'ready',
+    tags: ['遊戲', '3D', 'AI'],
+    presentation: 'fullscreen',
+    Component: FieldlifeLazy,
   },
 ]
 

@@ -27,3 +27,4 @@ npm run preview
 - **計數器** `/tools/counter`
 - **隨手記** `/tools/notes`
 - **哥布林討伐** `/tools/goblin-raid`（奇幻遇敵小遊戲，等結果時用；不存檔）
+- **Fieldlife 3D** `/tools/fieldlife`（3D 野原：AI 練功打怪升等、訓練「遊戲人生」；自製沙盒，非官方私服）

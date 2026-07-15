@@ -46,7 +46,7 @@ export function HomePage() {
       <section className="section" aria-labelledby="home-tools-title">
         <div className="section__intro">
           <h2 id="home-tools-title">目前能用的</h2>
-          <p>從兩個示範開始，之後每個小功能都會列在這裡。</p>
+          <p>示範工具與小遊戲都會列在這裡，之後持續加。</p>
         </div>
         <ToolList tools={tools} />
       </section>
