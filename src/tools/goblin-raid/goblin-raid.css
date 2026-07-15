@@ -58,7 +58,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   object-position: center;
   image-rendering: pixelated;
   background: #102018;
@@ -231,9 +231,12 @@
 }
 
 .raid-hint {
-  justify-self: center;
-  align-self: end;
-  margin-bottom: 0.2rem;
+  position: absolute;
+  left: 50%;
+  bottom: 0.55rem;
+  transform: translateX(-50%);
+  z-index: 4;
+  margin: 0;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
   background: rgba(8, 16, 12, 0.72);
@@ -241,6 +244,95 @@
   color: var(--raid-muted);
   font-size: clamp(0.72rem, 2.6vw, 0.84rem);
   backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.raid-dock__info {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 0.45rem;
+  width: min(720px, 100%);
+  margin: 0 auto;
+}
+
+.raid-dock__hero {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.55rem;
+  align-items: center;
+  text-align: left;
+  border: 1px solid var(--raid-line);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--raid-ink);
+  border-radius: 14px;
+  padding: 0.45rem 0.55rem;
+  cursor: pointer;
+}
+
+.raid-dock__hero-text {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.raid-dock__hero-text strong {
+  font-size: 0.9rem;
+}
+
+.raid-dock__hero-text span {
+  color: var(--raid-muted);
+  font-size: 0.72rem;
+}
+
+.raid-dock__hero .bar {
+  height: 6px;
+}
+
+.portrait--dock {
+  width: 42px;
+  height: 48px;
+  border-radius: 11px;
+}
+
+.raid-dock__map {
+  display: grid;
+  gap: 0.25rem;
+  align-content: center;
+  border: 1px solid var(--raid-line);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 0.45rem 0.55rem;
+}
+
+.raid-dock__map strong {
+  font-size: 0.9rem;
+}
+
+.raid-dock__map > span {
+  color: var(--raid-muted);
+  font-size: 0.78rem;
+}
+
+.raid-dock__zone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.raid-dock__zone-list span {
+  padding: 0.18rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--raid-line);
+  font-size: 0.68rem;
+  color: var(--raid-muted);
+}
+
+.raid-dock__zone-list .is-here {
+  color: #13241f;
+  background: #9fd0b8;
+  border-color: transparent;
+  font-weight: 700;
 }
 
 .raid-combat {
@@ -544,12 +636,8 @@
     display: flex;
   }
 
-  .stat-grid {
-    display: none;
-  }
-
-  .raid-sheet {
-    width: min(100%, 280px);
+  .raid-dock__info {
+    grid-template-columns: 1fr;
   }
 
   .combat-log {
