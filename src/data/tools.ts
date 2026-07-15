@@ -40,7 +40,7 @@ export const tools: ToolDefinition[] = [
     id: 'goblin-raid',
     name: '哥布林討伐',
     nameEn: 'Goblin Raid',
-    description: '點進去就是全螢幕霧林：遇敵、練等、掉落。等結果時的小逃脫。',
+    description: '全螢幕霧林：配點、背包、三張地圖、遇敵練等。不存檔。',
     status: 'ready',
     tags: ['遊戲', '奇幻'],
     presentation: 'fullscreen',
