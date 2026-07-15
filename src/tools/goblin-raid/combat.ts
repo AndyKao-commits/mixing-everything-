@@ -35,8 +35,8 @@ export function playerStrike(
   player: PlayerStats,
   monsterArmor: number,
 ): { hit: boolean; damage: number; crit: boolean } {
-  const toHit = roll(1, 20) + Math.floor(player.strength / 2) + Math.floor(player.luck / 4)
-  if (toHit < monsterArmor - 4) {
+  const toHit = roll(1, 20) + Math.floor(player.strength / 2) + Math.floor(player.luck / 4) + 1
+  if (toHit < monsterArmor - 5) {
     return { hit: false, damage: 0, crit: false }
   }
   const crit = roll(1, 100) <= 8 + player.luck * 2

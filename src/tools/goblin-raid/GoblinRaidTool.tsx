@@ -42,6 +42,7 @@ type CombatState = {
   monsterHp: number
   log: string[]
   busy: boolean
+  fx: 'idle' | 'hit' | 'crit' | 'miss' | 'hurt' | 'heal'
 }
 
 type LootState = {
@@ -88,6 +89,7 @@ export function GoblinRaidTool() {
   const [player, setPlayer] = useState<PlayerStats>(() => createPlayer())
   const [roster, setRoster] = useState<MonsterData[]>([])
   const [source, setSource] = useState<'api' | 'fallback'>('fallback')
+  const [rosterCount, setRosterCount] = useState(0)
   const [message, setMessage] = useState('霧在林間流動……')
   const [combat, setCombat] = useState<CombatState | null>(null)
   const [loot, setLoot] = useState<LootState | null>(null)
@@ -169,12 +171,20 @@ export function GoblinRaidTool() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      setPhase('boot')
+      setMessage('正在讀取怪物名冊……')
       const loaded = await loadMonsterRoster()
       if (cancelled) return
       setRoster(loaded.monsters)
       rosterRef.current = loaded.monsters
       setSource(loaded.source)
+      setRosterCount(loaded.count)
       startExplore(createPlayer(), 'mistwood')
+      setMessage(
+        loaded.source === 'api'
+          ? `已載入 ${loaded.count} 種怪物（D&D 5e）。${ZONES.mistwood.hint}`
+          : `離線名冊 ${loaded.count} 種怪物已就緒。${ZONES.mistwood.hint}`,
+      )
     })()
     return () => {
       cancelled = true
@@ -184,7 +194,7 @@ export function GoblinRaidTool() {
   const appendLog = useCallback((line: string) => {
     setCombat((current) => {
       if (!current) return current
-      return { ...current, log: [line, ...current.log].slice(0, 4) }
+      return { ...current, log: [line, ...current.log].slice(0, 5) }
     })
   }, [])
 
@@ -196,12 +206,13 @@ export function GoblinRaidTool() {
     setArmed(false)
     if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current)
     const levelBias = zoneIdRef.current === 'marsh' ? 2 : zoneIdRef.current === 'ruins' ? 1 : 0
-    const monster = pickMonster(list, playerRef.current.level + levelBias)
+    const monster = pickMonster(list, playerRef.current.level + levelBias, zoneIdRef.current)
     const next: CombatState = {
       monster,
       monsterHp: monster.hp,
-      log: [`${monster.nameZh}從霧裡撲出！`, '預備——稍後才能操作'],
+      log: [`${monster.nameZh}從霧裡撲出！`, monster.description, '預備——稍後才能操作'],
       busy: true,
+      fx: 'idle',
     }
     setCombat(next)
     combatRef.current = next
@@ -212,7 +223,7 @@ export function GoblinRaidTool() {
       if (phaseRef.current !== 'combat') return
       setCombat((current) => {
         if (!current) return current
-        const ready = { ...current, busy: false, log: [`對戰開始！`, ...current.log].slice(0, 4) }
+        const ready = { ...current, busy: false, fx: 'idle' as const, log: [`對戰開始！`, ...current.log].slice(0, 5) }
         combatRef.current = ready
         return ready
       })
@@ -307,12 +318,13 @@ export function GoblinRaidTool() {
     if (!combatArmedRef.current) return
     if (performance.now() < inputLockUntilRef.current) return
 
-    setCombat((c) => (c ? { ...c, busy: true } : c))
+    setCombat((c) => (c ? { ...c, busy: true, fx: 'idle' } : c))
     const currentPlayer = playerRef.current
     const strike = playerStrike(currentPlayer, currentCombat.monster.armor)
 
     if (!strike.hit) {
       appendLog('揮空了。')
+      setCombat((c) => (c ? { ...c, busy: true, fx: 'miss' } : c))
     } else {
       const monsterHp = Math.max(0, currentCombat.monsterHp - strike.damage)
       appendLog(
@@ -320,19 +332,19 @@ export function GoblinRaidTool() {
           ? `暴擊！${strike.damage} 傷`
           : `命中 ${currentCombat.monster.nameZh} ${strike.damage}`,
       )
-      setCombat((c) => (c ? { ...c, monsterHp, busy: true } : c))
+      setCombat((c) => (c ? { ...c, monsterHp, busy: true, fx: strike.crit ? 'crit' : 'hit' } : c))
       if (monsterHp <= 0) {
-        await wait(280)
+        await wait(320)
         finishVictory(currentCombat.monster, currentCombat.monster.xp)
         return
       }
     }
 
-    await wait(340)
+    await wait(380)
     const counter = monsterStrike(currentCombat.monster, playerRef.current)
     if (!counter.hit) {
       appendLog(`${currentCombat.monster.nameZh}打空了。`)
-      setCombat((c) => (c ? { ...c, busy: false } : c))
+      setCombat((c) => (c ? { ...c, busy: false, fx: 'miss' } : c))
       return
     }
 
@@ -344,7 +356,7 @@ export function GoblinRaidTool() {
       if (hp <= 0) markDefeat()
       return next
     })
-    setCombat((c) => (c ? { ...c, busy: false } : c))
+    setCombat((c) => (c ? { ...c, busy: false, fx: 'hurt' } : c))
   }, [appendLog, finishVictory, markDefeat])
 
   const doHeal = useCallback(() => {
@@ -362,7 +374,7 @@ export function GoblinRaidTool() {
     const gained = healed.hp - before.hp
     setPlayer(healed)
     playerRef.current = healed
-    setCombat({ ...currentCombat, busy: true })
+    setCombat({ ...currentCombat, busy: true, fx: 'heal' })
     appendLog(`草藥回復 ${gained}`)
 
     window.setTimeout(() => {
@@ -378,10 +390,11 @@ export function GoblinRaidTool() {
           if (hp <= 0) markDefeat()
           return next
         })
+        setCombat((c) => (c ? { ...c, busy: false, fx: 'hurt' } : c))
       } else {
         appendLog('躲過了。')
+        setCombat((c) => (c ? { ...c, busy: false, fx: 'miss' } : c))
       }
-      setCombat((c) => (c ? { ...c, busy: false } : c))
     }, 340)
   }, [appendLog, markDefeat])
 
@@ -401,7 +414,7 @@ export function GoblinRaidTool() {
       return
     }
 
-    setCombat({ ...currentCombat, busy: true })
+    setCombat({ ...currentCombat, busy: true, fx: 'miss' })
     appendLog('逃失敗！')
     window.setTimeout(() => {
       const active = combatRef.current
@@ -416,8 +429,10 @@ export function GoblinRaidTool() {
           if (hp <= 0) markDefeat()
           return next
         })
+        setCombat((c) => (c ? { ...c, busy: false, fx: 'hurt' } : c))
+      } else {
+        setCombat((c) => (c ? { ...c, busy: false, fx: 'idle' } : c))
       }
-      setCombat((c) => (c ? { ...c, busy: false } : c))
     }, 300)
   }, [appendLog, clearMovementInput, lockInputs, markDefeat, setArmed])
 
@@ -616,9 +631,12 @@ export function GoblinRaidTool() {
           {!inCombat && phase === 'explore' && <p className="raid-hint">{message}</p>}
 
           {inCombat && combat && (
-            <div className="raid-combat" style={{ '--mon': combat.monster.color } as CSSProperties}>
+            <div
+              className={`raid-combat is-${combat.fx}`}
+              style={{ '--mon': combat.monster.color } as CSSProperties}
+            >
               <div className="duel">
-                <div className="duel__side">
+                <div className={`duel__side ${combat.fx === 'hurt' || combat.fx === 'heal' ? `is-${combat.fx}` : ''}`}>
                   <div className="portrait portrait--hero portrait--sm" aria-hidden="true">
                     <span className="portrait__cloak" />
                     <span className="portrait__torso" />
@@ -630,9 +648,13 @@ export function GoblinRaidTool() {
                   <p>巡衛</p>
                 </div>
                 <p className="duel__vs">VS</p>
-                <div className="duel__side">
+                <div
+                  className={`duel__side ${
+                    combat.fx === 'hit' || combat.fx === 'crit' || combat.fx === 'miss' ? `is-${combat.fx}` : ''
+                  }`}
+                >
                   <div
-                    className={`portrait portrait--monster portrait--${combat.monster.id}`}
+                    className={`portrait portrait--monster portrait--${combat.monster.shape}`}
                     style={{ '--mon': combat.monster.color } as CSSProperties}
                     aria-hidden="true"
                   >
@@ -641,16 +663,22 @@ export function GoblinRaidTool() {
                     <span className="portrait__eye portrait__eye--r" />
                     <span className="portrait__ear portrait__ear--l" />
                     <span className="portrait__ear portrait__ear--r" />
+                    <span className="portrait__wing portrait__wing--l" />
+                    <span className="portrait__wing portrait__wing--r" />
+                    <span className="portrait__snout" />
                   </div>
                   <p>{combat.monster.nameZh}</p>
                 </div>
               </div>
               <div className="combat-head">
                 <div>
-                  <p className="eyebrow">{combat.monster.name}</p>
+                  <p className="eyebrow">
+                    {combat.monster.name} · CR {combat.monster.cr}
+                  </p>
                   <h2>{combat.monster.nameZh}</h2>
+                  <p className="combat-desc">{combat.monster.description}</p>
                   <p>
-                    血量 {player.hp}/{player.maxHp}
+                    你 {player.hp}/{player.maxHp}
                   </p>
                 </div>
                 <div className="combat-hp">
@@ -783,7 +811,9 @@ export function GoblinRaidTool() {
           </div>
         ) : null}
         <p className="raid-dock__meta">
-          角色置中 · 戰鬥就緒鎖定 · {source === 'api' ? 'D&D 5e API' : '本地怪物表'}
+          {rosterCount > 0
+            ? `${source === 'api' ? 'D&D 5e API' : '離線名冊'} · ${rosterCount} 種怪物 · 分區遇敵`
+            : '正在讀取怪物名冊…'}
         </p>
       </footer>
 
