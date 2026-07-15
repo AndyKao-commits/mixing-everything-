@@ -72,8 +72,9 @@ p {
 }
 
 .site-shell--play {
-  min-height: 100dvh;
-  height: 100dvh;
+  min-height: 100svh;
+  height: 100svh;
+  max-height: 100dvh;
   display: block;
   overflow: hidden;
   background: #0b1511;

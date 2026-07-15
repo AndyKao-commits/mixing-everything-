@@ -558,37 +558,37 @@ export function GoblinRaidTool() {
               </ul>
             </div>
           )}
-
-          {(phase === 'loot' || phase === 'defeat' || phase === 'boot') && (
-            <div className="raid-banner">
-              {phase === 'loot' && loot ? (
-                <>
-                  <p className="raid-banner__lead">
-                    {loot.leveled ? '升級！' : '勝利！'} +{loot.xp} XP
-                  </p>
-                  <ul className="loot-list">
-                    {loot.drops.map((drop, index) => (
-                      <li key={`${drop.id}-${index}`}>
-                        <strong>{drop.name}</strong>
-                        <span>{loot.summary[index] ?? drop.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="raid-banner__lead">{message}</p>
-              )}
-              {phase !== 'boot' && (
-                <button type="button" className="btn btn--primary" onClick={continueAfterBanner}>
-                  {phase === 'defeat' ? '重新出發' : '繼續巡邏'}
-                </button>
-              )}
-            </div>
-          )}
         </section>
       </div>
 
       <footer className="raid-dock">
+        {(phase === 'loot' || phase === 'defeat' || phase === 'boot') && (
+          <div className="raid-banner">
+            {phase === 'loot' && loot ? (
+              <>
+                <p className="raid-banner__lead">
+                  {loot.leveled ? '升級！' : '勝利！'} +{loot.xp} XP
+                </p>
+                <ul className="loot-list">
+                  {loot.drops.map((drop, index) => (
+                    <li key={`${drop.id}-${index}`}>
+                      <strong>{drop.name}</strong>
+                      <span>{loot.summary[index] ?? drop.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="raid-banner__lead">{message}</p>
+            )}
+            {phase !== 'boot' && (
+              <button type="button" className="btn btn--primary" onClick={continueAfterBanner}>
+                {phase === 'defeat' ? '重新出發' : '繼續巡邏'}
+              </button>
+            )}
+          </div>
+        )}
+
         {inCombat && combat ? (
           <div className="raid-actions" aria-label="戰鬥操作">
             <button
