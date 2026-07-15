@@ -60,7 +60,7 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
-  image-rendering: pixelated;
+  image-rendering: auto;
   background: #102018;
 }
 
@@ -289,8 +289,8 @@
 }
 
 .portrait--dock {
-  width: 42px;
-  height: 48px;
+  width: 46px;
+  height: 52px;
   border-radius: 11px;
 }
 
@@ -355,6 +355,7 @@
   grid-template-columns: 1fr auto 1fr;
   gap: 0.35rem;
   align-items: center;
+  animation: raid-in 280ms ease-out;
 }
 
 .duel__side {
@@ -473,6 +474,18 @@
   margin: 0 auto;
 }
 
+.raid-actions.is-warming {
+  pointer-events: none;
+}
+
+.raid-actions.is-warming .btn {
+  opacity: 0.38;
+}
+
+.raid-actions.is-armed {
+  animation: raid-in 220ms ease-out;
+}
+
 .raid-actions .btn,
 .raid-banner .btn {
   min-height: 2.7rem;
@@ -531,54 +544,95 @@
   border-radius: 12px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.18), transparent 42%),
-    linear-gradient(160deg, #2f5a43, #163a33 72%);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.22), transparent 40%),
+    linear-gradient(165deg, #3a6d52 0%, #163a33 58%, #0d221c 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 16px rgba(0, 0, 0, 0.28);
   flex-shrink: 0;
 }
 
 .portrait--sm {
-  width: 58px;
-  height: 64px;
+  width: 62px;
+  height: 70px;
   border-radius: 14px;
+}
+
+.portrait__cloak {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 6%;
+  height: 48%;
+  border-radius: 40% 40% 18% 18%;
+  background: linear-gradient(180deg, #245a48, #0f2a24);
+}
+
+.portrait__torso {
+  position: absolute;
+  left: 28%;
+  right: 28%;
+  bottom: 18%;
+  height: 34%;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #4ea57f, #1f5a46);
+  box-shadow: inset 0 0 0 1px rgba(215, 194, 138, 0.35);
 }
 
 .portrait__face {
   position: absolute;
   left: 50%;
-  top: 28%;
-  width: 22px;
-  height: 22px;
-  margin-left: -11px;
+  top: 24%;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
   border-radius: 50%;
-  background: #f0d7a8;
+  background: radial-gradient(circle at 35% 30%, #ffe7c4, #e8c089);
 }
 
 .portrait--sm .portrait__face {
   width: 24px;
   height: 24px;
   margin-left: -12px;
+  top: 22%;
 }
 
-.portrait__cape {
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  bottom: 10%;
-  height: 34%;
-  border-radius: 10px 10px 8px 8px;
-  background: #1f6b52;
-}
-
-.portrait__band {
+.portrait__helm {
   position: absolute;
   left: 50%;
-  top: 22%;
-  width: 18px;
-  height: 6px;
-  margin-left: -9px;
-  border-radius: 3px;
-  background: #e4572e;
+  top: 18%;
+  width: 24px;
+  height: 8px;
+  margin-left: -12px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #e8eef3, #9aa7b5);
+}
+
+.portrait--sm .portrait__helm {
+  width: 28px;
+  margin-left: -14px;
+  height: 9px;
+}
+
+.portrait__plume {
+  position: absolute;
+  left: 58%;
+  top: 4%;
+  width: 10px;
+  height: 14px;
+  border-radius: 60% 40% 50% 50%;
+  background: linear-gradient(160deg, #ff7a45, #c23718);
+  transform: rotate(18deg);
+}
+
+.portrait__blade {
+  position: absolute;
+  right: 8%;
+  top: 48%;
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #8a5a2b 18%, #eef3f8 35%, #a8b4c0);
 }
 
 .portrait--monster {
@@ -589,7 +643,10 @@
   position: absolute;
   inset: 18% 16% 12%;
   border-radius: 14px 14px 10px 10px;
-  background: color-mix(in srgb, var(--mon, #6f9b4c) 85%, #111);
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.18), transparent 45%),
+    color-mix(in srgb, var(--mon, #6f9b4c) 85%, #111);
+  box-shadow: inset 0 -8px 12px rgba(0, 0, 0, 0.25);
 }
 
 .portrait__eye {
@@ -599,6 +656,7 @@
   height: 6px;
   border-radius: 50%;
   background: #13241f;
+  box-shadow: 0 0 0 1px rgba(255, 240, 180, 0.35);
 }
 
 .portrait__eye--l { left: 32%; }
