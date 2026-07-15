@@ -1,10 +1,10 @@
 import type { Dir, Vec, ZoneId } from './types'
 
-export const TILE = 64
+export const TILE = 72
 export const COLS = 15
 export const ROWS = 11
-export const VIEW_COLS = 9
-export const VIEW_ROWS = 11
+export const VIEW_COLS = 7
+export const VIEW_ROWS = 9
 export const WIDTH = VIEW_COLS * TILE
 export const HEIGHT = VIEW_ROWS * TILE
 
