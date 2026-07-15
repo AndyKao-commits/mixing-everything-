@@ -34,7 +34,11 @@ export function loadPlayer(): { player: Player; offlineMs: number } {
       return { player: ensureQuests(createPlayer()), offlineMs: 0 }
     }
     const offlineMs = Math.max(0, Date.now() - (parsed.player.lastSaveAt || parsed.savedAt || Date.now()))
-    return { player: ensureQuests(parsed.player), offlineMs }
+    const player = ensureQuests({
+      ...parsed.player,
+      heroSkin: parsed.player.heroSkin || 'default',
+    })
+    return { player, offlineMs }
   } catch {
     return { player: ensureQuests(createPlayer()), offlineMs: 0 }
   }

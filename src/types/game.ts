@@ -110,6 +110,7 @@ export interface Player {
   autoBattle: boolean
   unlockedMaps: MapId[]
   settings: GameSettings
+  heroSkin: string
   lastSaveAt: number
   createdAt: number
 }

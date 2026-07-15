@@ -39,6 +39,20 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         <GhostButton onClick={() => actions.patchSettings({ language: s.language === 'zh' ? 'en' : 'zh' })}>
           語言：{s.language}
         </GhostButton>
+        <GhostButton
+          onClick={() =>
+            actions.setHeroSkin(
+              player.heroSkin === 'ember'
+                ? 'default'
+                : player.achievements.includes('skin-ember')
+                  ? 'ember'
+                  : 'default',
+            )
+          }
+        >
+          英雄外形：{player.heroSkin === 'ember' ? '餘燼' : '預設'}
+          {!player.achievements.includes('skin-ember') ? '（商店可解鎖餘燼）' : ''}
+        </GhostButton>
         <PrimaryButton onClick={actions.save}>立即存檔</PrimaryButton>
       </div>
 

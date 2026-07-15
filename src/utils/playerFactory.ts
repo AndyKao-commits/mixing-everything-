@@ -72,6 +72,7 @@ export function createPlayer(): Player {
     autoBattle: true,
     unlockedMaps: ['grassland'],
     settings: defaultSettings(),
+    heroSkin: 'default',
     lastSaveAt: now,
     createdAt: now,
   }

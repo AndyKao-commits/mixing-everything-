@@ -42,7 +42,13 @@ export function buyShopOffer(player: Player, offerId: string): Player | null {
       }
     }
     case 'skin':
-      return { ...next, gems: next.gems, achievements: next.achievements.includes('skin-ember') ? next.achievements : [...next.achievements, 'skin-ember'] }
+      return {
+        ...next,
+        heroSkin: 'ember',
+        achievements: next.achievements.includes('skin-ember')
+          ? next.achievements
+          : [...next.achievements, 'skin-ember'],
+      }
     default:
       return next
   }

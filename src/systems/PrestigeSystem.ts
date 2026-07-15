@@ -29,6 +29,7 @@ export function doPrestige(player: Player): Player {
     settings: player.settings,
     playTime: player.playTime,
     skillClass: player.skillClass,
+    heroSkin: player.heroSkin,
     unlockedSkills: [],
     skillPoints: 2 + player.prestigeLevel,
     unlockedMaps,
