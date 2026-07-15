@@ -533,44 +533,7 @@ export function GoblinRaidTool() {
             </button>
           </div>
 
-          <div className="raid-hud">
-            {!inCombat && phase === 'explore' && (
-              <aside className="raid-sheet">
-                <button type="button" className="portrait portrait--hero" onClick={() => setSheetOpen(true)} aria-label="打開角色資訊">
-                  <span className="portrait__face" />
-                  <span className="portrait__cape" />
-                  <span className="portrait__band" />
-                </button>
-                <div>
-                  <p className="eyebrow">Fog Ranger</p>
-                  <h2>霧林巡衛</h2>
-                </div>
-                <div className="raid-meters">
-                  <div>
-                    <span>
-                      血量 {player.hp}/{player.maxHp}
-                    </span>
-                    <div className="bar">
-                      <i style={{ width: `${hpPct}%` }} />
-                    </div>
-                  </div>
-                  <div>
-                    <span>
-                      XP {player.xp}/{player.xpToNext} · 擊殺 {player.kills}
-                    </span>
-                    <div className="bar bar--xp">
-                      <i style={{ width: `${xpPct}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <button type="button" className="raid-sheet__open" onClick={() => setSheetOpen(true)}>
-                  角色資訊{player.freePoints > 0 ? `（可配 ${player.freePoints}）` : ''}
-                </button>
-              </aside>
-            )}
-
-            {!inCombat && phase === 'explore' && <p className="raid-hint">{message}</p>}
-          </div>
+          {!inCombat && phase === 'explore' && <p className="raid-hint">{message}</p>}
 
           {inCombat && combat && (
             <div className="raid-combat" style={{ '--mon': combat.monster.color } as CSSProperties}>
@@ -664,6 +627,43 @@ export function GoblinRaidTool() {
           </div>
         )}
 
+        {phase === 'explore' && (
+          <div className="raid-dock__info">
+            <button type="button" className="raid-dock__hero" onClick={() => setSheetOpen(true)}>
+              <span className="portrait portrait--hero portrait--dock" aria-hidden="true">
+                <span className="portrait__face" />
+                <span className="portrait__cape" />
+                <span className="portrait__band" />
+              </span>
+              <span className="raid-dock__hero-text">
+                <strong>角色資訊</strong>
+                <span>
+                  HP {player.hp}/{player.maxHp}
+                  {player.freePoints > 0 ? ` · 可配${player.freePoints}` : ''}
+                </span>
+                <span className="bar">
+                  <i style={{ width: `${hpPct}%` }} />
+                </span>
+                <span className="bar bar--xp">
+                  <i style={{ width: `${xpPct}%` }} />
+                </span>
+              </span>
+            </button>
+
+            <div className="raid-dock__map">
+              <strong>地圖</strong>
+              <span>{zone.nameZh}</span>
+              <div className="raid-dock__zone-list">
+                {(['mistwood', 'ruins', 'marsh'] as ZoneId[]).map((id) => (
+                  <span key={id} className={id === zoneId ? 'is-here' : ''}>
+                    {ZONES[id].nameZh}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {inCombat && combat ? (
           <div className="raid-actions" aria-label="戰鬥操作">
             <button type="button" className="btn btn--primary btn--attack" disabled={combat.busy} onClick={() => void doAttack()}>
@@ -687,7 +687,7 @@ export function GoblinRaidTool() {
           </div>
         ) : null}
         <p className="raid-dock__meta">
-          一格一步 · C 開角色 · 亮門換區 · {source === 'api' ? 'D&D 5e API' : '本地怪物表'}
+          角色置中 · 地圖跟隨 · 亮門換區 · {source === 'api' ? 'D&D 5e API' : '本地怪物表'}
         </p>
       </footer>
 
