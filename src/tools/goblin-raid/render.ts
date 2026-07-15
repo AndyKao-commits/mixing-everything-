@@ -86,13 +86,20 @@ function drawGrass(
   biome: Biome,
 ) {
   const tone = (x + y) % 2 === 0
-  ctx.fillStyle = tone ? biome.grassA : biome.grassB
+  const base = ctx.createLinearGradient(px, py, px, py + TILE)
+  base.addColorStop(0, tone ? biome.grassA : biome.grassB)
+  base.addColorStop(1, tone ? biome.grassB : biome.grassA)
+  ctx.fillStyle = base
   ctx.fillRect(px, py, TILE, TILE)
-  ctx.fillStyle = 'rgba(255,255,255,0.05)'
-  for (let i = 0; i < 6; i += 1) {
+  ctx.fillStyle = 'rgba(255,255,255,0.07)'
+  for (let i = 0; i < 8; i += 1) {
     const n = hash(x + i, y + i * 3)
-    ctx.fillRect(px + (n % (TILE - 10)) + 4, py + ((n >> 4) % (TILE - 10)) + 4, 2, 2)
+    const bladeX = px + (n % (TILE - 12)) + 4
+    const bladeY = py + ((n >> 4) % (TILE - 14)) + 6
+    ctx.fillRect(bladeX, bladeY, 2, 5)
   }
+  ctx.fillStyle = 'rgba(20,40,24,0.08)'
+  ctx.fillRect(px, py + TILE - 8, TILE, 8)
 }
 
 function drawPath(
@@ -103,15 +110,19 @@ function drawPath(
   y: number,
   biome: Biome,
 ) {
-  ctx.fillStyle = biome.path
+  const dirt = ctx.createLinearGradient(px, py, px + TILE, py + TILE)
+  dirt.addColorStop(0, biome.path)
+  dirt.addColorStop(1, biome.pathDeep)
+  ctx.fillStyle = dirt
   ctx.fillRect(px, py, TILE, TILE)
-  ctx.fillStyle = biome.pathDeep
-  ctx.fillRect(px + 3, py + 3, TILE - 6, TILE - 6)
+  ctx.fillStyle = 'rgba(255,255,255,0.06)'
+  ctx.fillRect(px + 4, py + 4, TILE - 8, 3)
   const n = hash(x, y)
-  ctx.fillStyle = '#8c7354'
+  ctx.fillStyle = 'rgba(90, 70, 45, 0.45)'
   ctx.beginPath()
-  ctx.arc(px + 16 + (n % 10), py + 20 + ((n >> 3) % 8), 4, 0, Math.PI * 2)
-  ctx.arc(px + 42, py + 38, 3, 0, Math.PI * 2)
+  ctx.arc(px + 16 + (n % 10), py + 20 + ((n >> 3) % 8), 5, 0, Math.PI * 2)
+  ctx.arc(px + 44, py + 40, 3.5, 0, Math.PI * 2)
+  ctx.arc(px + 28, py + 52, 2.5, 0, Math.PI * 2)
   ctx.fill()
 }
 
@@ -124,24 +135,35 @@ function drawBlock(
   biome: Biome,
   zoneId: ZoneId,
 ) {
-  ctx.fillStyle = biome.block
+  const shade = ctx.createLinearGradient(px, py, px + TILE, py + TILE)
+  shade.addColorStop(0, biome.block)
+  shade.addColorStop(1, '#0d1612')
+  ctx.fillStyle = shade
   ctx.fillRect(px, py, TILE, TILE)
   if (zoneId === 'ruins') {
     ctx.fillStyle = biome.blockAccent
-    ctx.fillRect(px + 10, py + 14, 44, 34)
-    ctx.fillStyle = '#2d3138'
-    ctx.fillRect(px + 18, py + 22, 10, 18)
-    ctx.fillRect(px + 36, py + 22, 10, 18)
+    drawRoundRect(ctx, px + 9, py + 12, 46, 38, 4)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(20,24,30,0.85)'
+    ctx.fillRect(px + 17, py + 22, 11, 20)
+    ctx.fillRect(px + 36, py + 22, 11, 20)
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    ctx.fillRect(px + 11, py + 14, 42, 3)
   } else {
-    ctx.fillStyle = '#6a4428'
-    ctx.fillRect(px + 27, py + 34, 10, 22)
-    const sway = ((hash(x, y) % 5) - 2) * 0.8
-    ctx.fillStyle = biome.blockAccent
+    ctx.fillStyle = '#5a3a22'
+    drawRoundRect(ctx, px + 28, py + 36, 12, 24, 3)
+    ctx.fill()
+    const sway = ((hash(x, y) % 5) - 2) * 0.9
+    const canopy = ctx.createRadialGradient(px + 32 + sway, py + 24, 4, px + 32 + sway, py + 28, 28)
+    canopy.addColorStop(0, biome.blockAccent)
+    canopy.addColorStop(1, '#152820')
+    ctx.fillStyle = canopy
     ctx.beginPath()
-    ctx.moveTo(px + 32 + sway, py + 6)
-    ctx.lineTo(px + 56, py + 40)
-    ctx.lineTo(px + 8, py + 40)
-    ctx.closePath()
+    ctx.ellipse(px + 32 + sway, py + 28, 26, 22, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(180, 230, 170, 0.12)'
+    ctx.beginPath()
+    ctx.ellipse(px + 24 + sway, py + 20, 10, 8, 0, 0, Math.PI * 2)
     ctx.fill()
   }
 }
@@ -201,35 +223,110 @@ function drawPortal(ctx: CanvasRenderingContext2D, px: number, py: number, time:
 }
 
 function drawHeroAt(ctx: CanvasRenderingContext2D, px: number, py: number, facing: Dir, time: number) {
-  const bob = Math.sin(time / 140) * 2
-  const x = px + 12
-  const y = py + 6 + bob
-  ctx.fillStyle = 'rgba(0,0,0,0.28)'
+  const bob = Math.sin(time / 150) * 2.2
+  const stride = Math.sin(time / 120) * 1.6
+  const x = px + 10
+  const y = py + 4 + bob
+  const mid = x + 26
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.32)'
   ctx.beginPath()
-  ctx.ellipse(x + 20, y + 50, 16, 5, 0, 0, Math.PI * 2)
+  ctx.ellipse(mid, y + 58, 18, 6, 0, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = '#1f6b52'
-  drawRoundRect(ctx, x + 8, y + 24, 26, 24, 8)
-  ctx.fill()
-  ctx.fillStyle = '#163a33'
-  drawRoundRect(ctx, x + 10, y + 22, 22, 22, 6)
-  ctx.fill()
-  ctx.fillStyle = '#f0d7a8'
+
+  // Cloak
+  const cloak = ctx.createLinearGradient(mid - 18, y + 18, mid + 18, y + 56)
+  cloak.addColorStop(0, '#245a48')
+  cloak.addColorStop(0.55, '#163a33')
+  cloak.addColorStop(1, '#0d241f')
+  ctx.fillStyle = cloak
   ctx.beginPath()
-  ctx.arc(x + 21, y + 16, 12, 0, Math.PI * 2)
+  ctx.moveTo(mid - 4, y + 20)
+  ctx.quadraticCurveTo(mid - 24, y + 34, mid - 20, y + 54 + stride)
+  ctx.lineTo(mid + 20, y + 54 - stride)
+  ctx.quadraticCurveTo(mid + 24, y + 34, mid + 4, y + 20)
+  ctx.closePath()
+  ctx.fill()
+
+  // Legs / boots
+  ctx.fillStyle = '#2a2218'
+  drawRoundRect(ctx, mid - 12, y + 46, 8, 12, 2)
+  ctx.fill()
+  drawRoundRect(ctx, mid + 4, y + 46, 8, 12, 2)
+  ctx.fill()
+  ctx.fillStyle = '#8a5a2b'
+  drawRoundRect(ctx, mid - 13, y + 54, 10, 5, 2)
+  ctx.fill()
+  drawRoundRect(ctx, mid + 3, y + 54, 10, 5, 2)
+  ctx.fill()
+
+  // Torso armor
+  const armor = ctx.createLinearGradient(mid - 12, y + 22, mid + 12, y + 48)
+  armor.addColorStop(0, '#3f8f6e')
+  armor.addColorStop(1, '#1f5a46')
+  ctx.fillStyle = armor
+  drawRoundRect(ctx, mid - 12, y + 24, 24, 24, 7)
+  ctx.fill()
+  ctx.fillStyle = '#d7c28a'
+  ctx.fillRect(mid - 2, y + 26, 4, 18)
+  ctx.fillStyle = '#e4572e'
+  drawRoundRect(ctx, mid - 10, y + 28, 20, 5, 2)
+  ctx.fill()
+
+  // Head
+  ctx.fillStyle = '#f2d4a8'
+  ctx.beginPath()
+  ctx.arc(mid, y + 16, 11, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Helm band + plume
+  ctx.fillStyle = '#c9d2da'
+  drawRoundRect(ctx, mid - 12, y + 7, 24, 8, 3)
   ctx.fill()
   ctx.fillStyle = '#e4572e'
-  drawRoundRect(ctx, x + 10, y + 6, 22, 8, 4)
+  ctx.beginPath()
+  ctx.moveTo(mid - 2, y + 2)
+  ctx.quadraticCurveTo(mid + 2, y - 8, mid + 10, y - 2)
+  ctx.quadraticCurveTo(mid + 2, y + 2, mid - 2, y + 8)
+  ctx.closePath()
   ctx.fill()
+
+  // Eyes by facing
   ctx.fillStyle = '#13241f'
-  const eyeX = facing === 'left' ? x + 14 : facing === 'right' ? x + 24 : x + 18
-  ctx.fillRect(eyeX, y + 15, 3, 3)
-  if (facing === 'up' || facing === 'down') ctx.fillRect(x + 24, y + 15, 3, 3)
-  if (facing === 'right' || facing === 'down') {
-    ctx.fillStyle = '#d7dde4'
-    ctx.fillRect(x + 32, y + 28, 14, 4)
+  if (facing === 'left') {
+    ctx.fillRect(mid - 8, y + 15, 3, 3)
+  } else if (facing === 'right') {
+    ctx.fillRect(mid + 5, y + 15, 3, 3)
+  } else if (facing === 'up') {
+    ctx.fillRect(mid - 5, y + 13, 3, 2)
+    ctx.fillRect(mid + 2, y + 13, 3, 2)
+  } else {
+    ctx.fillRect(mid - 5, y + 16, 3, 3)
+    ctx.fillRect(mid + 2, y + 16, 3, 3)
+  }
+
+  // Blade (side views)
+  if (facing === 'left') {
     ctx.fillStyle = '#8a5a2b'
-    ctx.fillRect(x + 30, y + 26, 4, 7)
+    drawRoundRect(ctx, mid - 26, y + 28, 5, 8, 1)
+    ctx.fill()
+    const blade = ctx.createLinearGradient(mid - 40, y + 30, mid - 22, y + 34)
+    blade.addColorStop(0, '#f4f7fb')
+    blade.addColorStop(1, '#9aa7b5')
+    ctx.fillStyle = blade
+    drawRoundRect(ctx, mid - 40, y + 30, 16, 4, 1)
+    ctx.fill()
+  } else {
+    ctx.fillStyle = '#8a5a2b'
+    drawRoundRect(ctx, mid + 10, y + 28, 5, 8, 1)
+    ctx.fill()
+    const blade = ctx.createLinearGradient(mid + 14, y + 30, mid + 34, y + 34)
+    blade.addColorStop(0, '#9aa7b5')
+    blade.addColorStop(1, '#f4f7fb')
+    ctx.fillStyle = blade
+    drawRoundRect(ctx, mid + 14, y + 30, 18, 4, 1)
+    ctx.fill()
   }
 }
 

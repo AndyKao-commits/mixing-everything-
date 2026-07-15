@@ -78,6 +78,9 @@ export function GoblinRaidTool() {
   const rosterRef = useRef<MonsterData[]>([])
   const zoneIdRef = useRef<ZoneId>('mistwood')
   const sheetOpenRef = useRef(false)
+  const inputLockUntilRef = useRef(0)
+  const combatArmedRef = useRef(false)
+  const armTimerRef = useRef<number | null>(null)
   const attackHandlerRef = useRef<() => void>(() => {})
   const continueHandlerRef = useRef<() => void>(() => {})
 
@@ -90,6 +93,7 @@ export function GoblinRaidTool() {
   const [loot, setLoot] = useState<LootState | null>(null)
   const [zoneId, setZoneId] = useState<ZoneId>('mistwood')
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [combatArmed, setCombatArmed] = useState(false)
 
   const zone = ZONES[zoneId]
 
@@ -113,6 +117,12 @@ export function GoblinRaidTool() {
   }, [sheetOpen])
 
   useEffect(() => {
+    return () => {
+      if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -120,11 +130,30 @@ export function GoblinRaidTool() {
     }
   }, [])
 
+  const clearMovementInput = useCallback(() => {
+    holdDirRef.current = null
+    holdStartedRef.current = 0
+    lastMoveRef.current = 0
+    keysRef.current.clear()
+  }, [])
+
+  const lockInputs = useCallback((ms: number) => {
+    inputLockUntilRef.current = performance.now() + ms
+  }, [])
+
+  const setArmed = useCallback((armed: boolean) => {
+    combatArmedRef.current = armed
+    setCombatArmed(armed)
+  }, [])
+
   const startExplore = useCallback((freshPlayer?: PlayerStats, nextZone: ZoneId = 'mistwood') => {
     const z = ZONES[nextZone]
     posRef.current = { ...z.spawn }
     facingRef.current = 'down'
     stepCountRef.current = 0
+    clearMovementInput()
+    lockInputs(400)
+    setArmed(false)
     setCombat(null)
     setLoot(null)
     setZoneId(nextZone)
@@ -135,7 +164,7 @@ export function GoblinRaidTool() {
     }
     setPhase('explore')
     setMessage(z.hint)
-  }, [])
+  }, [clearMovementInput, lockInputs, setArmed])
 
   useEffect(() => {
     let cancelled = false
@@ -162,23 +191,40 @@ export function GoblinRaidTool() {
   const triggerEncounter = useCallback(() => {
     const list = rosterRef.current
     if (list.length === 0) return
+    clearMovementInput()
+    lockInputs(640)
+    setArmed(false)
+    if (armTimerRef.current != null) window.clearTimeout(armTimerRef.current)
     const levelBias = zoneIdRef.current === 'marsh' ? 2 : zoneIdRef.current === 'ruins' ? 1 : 0
     const monster = pickMonster(list, playerRef.current.level + levelBias)
     const next: CombatState = {
       monster,
       monsterHp: monster.hp,
-      log: [`${monster.nameZh}從霧裡撲出！`],
-      busy: false,
+      log: [`${monster.nameZh}從霧裡撲出！`, '預備——稍後才能操作'],
+      busy: true,
     }
     setCombat(next)
     combatRef.current = next
     setPhase('combat')
-    setMessage('點「攻擊」，或按空白鍵')
-  }, [])
+    setMessage('戰鬥準備中…')
+    armTimerRef.current = window.setTimeout(() => {
+      armTimerRef.current = null
+      if (phaseRef.current !== 'combat') return
+      setCombat((current) => {
+        if (!current) return current
+        const ready = { ...current, busy: false, log: [`對戰開始！`, ...current.log].slice(0, 4) }
+        combatRef.current = ready
+        return ready
+      })
+      setArmed(true)
+      setMessage('點「攻擊」，或按空白鍵')
+    }, 560)
+  }, [clearMovementInput, lockInputs, setArmed])
 
   const tryMove = useCallback(
     (dir: Dir) => {
       if (phaseRef.current !== 'explore' || sheetOpenRef.current) return
+      if (performance.now() < inputLockUntilRef.current) return
       const currentZone = ZONES[zoneIdRef.current]
       const delta = DIRS[dir]
       const next = { x: posRef.current.x + delta.x, y: posRef.current.y + delta.y }
@@ -221,6 +267,13 @@ export function GoblinRaidTool() {
   )
 
   const finishVictory = useCallback((monster: MonsterData, xpGain: number) => {
+    clearMovementInput()
+    lockInputs(600)
+    setArmed(false)
+    if (armTimerRef.current != null) {
+      window.clearTimeout(armTimerRef.current)
+      armTimerRef.current = null
+    }
     const { player: afterXp, leveled, pointsGained } = applyXp(playerRef.current, xpGain)
     const lootResult = rollLoot(afterXp, monster)
     setPlayer(lootResult.player)
@@ -238,11 +291,21 @@ export function GoblinRaidTool() {
         ? `升級！獲得 ${pointsGained} 點可配點，打開角色資訊分配。`
         : '戰利品進背包了，打開角色資訊查看／使用。',
     )
-  }, [])
+  }, [clearMovementInput, lockInputs, setArmed])
+
+  const markDefeat = useCallback(() => {
+    clearMovementInput()
+    lockInputs(600)
+    setArmed(false)
+    setPhase('defeat')
+    setMessage('你倒在霧林裡……')
+  }, [clearMovementInput, lockInputs, setArmed])
 
   const doAttack = useCallback(async () => {
     const currentCombat = combatRef.current
     if (!currentCombat || currentCombat.busy || phaseRef.current !== 'combat') return
+    if (!combatArmedRef.current) return
+    if (performance.now() < inputLockUntilRef.current) return
 
     setCombat((c) => (c ? { ...c, busy: true } : c))
     const currentPlayer = playerRef.current
@@ -278,18 +341,17 @@ export function GoblinRaidTool() {
       const hp = Math.max(0, current.hp - counter.damage)
       const next = { ...current, hp }
       playerRef.current = next
-      if (hp <= 0) {
-        setPhase('defeat')
-        setMessage('你倒在霧林裡……')
-      }
+      if (hp <= 0) markDefeat()
       return next
     })
     setCombat((c) => (c ? { ...c, busy: false } : c))
-  }, [appendLog, finishVictory])
+  }, [appendLog, finishVictory, markDefeat])
 
   const doHeal = useCallback(() => {
     const currentCombat = combatRef.current
     if (!currentCombat || currentCombat.busy || phaseRef.current !== 'combat') return
+    if (!combatArmedRef.current) return
+    if (performance.now() < inputLockUntilRef.current) return
     if (playerRef.current.herbs <= 0) {
       appendLog('沒有草藥了。')
       return
@@ -313,10 +375,7 @@ export function GoblinRaidTool() {
           const hp = Math.max(0, current.hp - counter.damage)
           const next = { ...current, hp }
           playerRef.current = next
-          if (hp <= 0) {
-            setPhase('defeat')
-            setMessage('你倒在霧林裡……')
-          }
+          if (hp <= 0) markDefeat()
           return next
         })
       } else {
@@ -324,13 +383,18 @@ export function GoblinRaidTool() {
       }
       setCombat((c) => (c ? { ...c, busy: false } : c))
     }, 340)
-  }, [appendLog])
+  }, [appendLog, markDefeat])
 
   const doFlee = useCallback(() => {
     const currentCombat = combatRef.current
     if (!currentCombat || currentCombat.busy || phaseRef.current !== 'combat') return
+    if (!combatArmedRef.current) return
+    if (performance.now() < inputLockUntilRef.current) return
 
     if (roll(1, 100) <= fleeChance(playerRef.current)) {
+      clearMovementInput()
+      lockInputs(550)
+      setArmed(false)
       setCombat(null)
       setPhase('explore')
       setMessage('僥倖逃進樹叢。')
@@ -349,28 +413,29 @@ export function GoblinRaidTool() {
           const hp = Math.max(0, current.hp - counter.damage)
           const next = { ...current, hp }
           playerRef.current = next
-          if (hp <= 0) {
-            setPhase('defeat')
-            setMessage('你倒在霧林裡……')
-          }
+          if (hp <= 0) markDefeat()
           return next
         })
       }
       setCombat((c) => (c ? { ...c, busy: false } : c))
     }, 300)
-  }, [appendLog])
+  }, [appendLog, clearMovementInput, lockInputs, markDefeat, setArmed])
 
   const continueAfterBanner = useCallback(() => {
+    if (performance.now() < inputLockUntilRef.current) return
     if (phaseRef.current === 'defeat') {
       startExplore(createPlayer(), 'mistwood')
       return
     }
     if (phaseRef.current === 'loot') {
+      clearMovementInput()
+      lockInputs(500)
+      setArmed(false)
       setLoot(null)
       setPhase('explore')
       setMessage(ZONES[zoneIdRef.current].hint)
     }
-  }, [startExplore])
+  }, [clearMovementInput, lockInputs, setArmed, startExplore])
 
   const spendPoint = (stat: StatKey) => {
     setPlayer((current) => {
@@ -408,26 +473,37 @@ export function GoblinRaidTool() {
         setSheetOpen((open) => !open)
         return
       }
-      if (keysRef.current.has(key) && event.repeat) return
-      keysRef.current.add(key)
 
-      if (key === 'arrowup' || key === 'w') {
+      const isMoveKey =
+        key === 'arrowup' ||
+        key === 'arrowdown' ||
+        key === 'arrowleft' ||
+        key === 'arrowright' ||
+        key === 'w' ||
+        key === 'a' ||
+        key === 's' ||
+        key === 'd'
+
+      if (isMoveKey) {
+        if (phaseRef.current !== 'explore' || sheetOpenRef.current) return
+        if (performance.now() < inputLockUntilRef.current) return
+        if (keysRef.current.has(key) && event.repeat) return
+        keysRef.current.add(key)
+        const dir: Dir =
+          key === 'arrowup' || key === 'w'
+            ? 'up'
+            : key === 'arrowdown' || key === 's'
+              ? 'down'
+              : key === 'arrowleft' || key === 'a'
+                ? 'left'
+                : 'right'
         holdStartedRef.current = performance.now()
-        tryMove('up')
+        tryMove(dir)
         lastMoveRef.current = performance.now()
-      } else if (key === 'arrowdown' || key === 's') {
-        holdStartedRef.current = performance.now()
-        tryMove('down')
-        lastMoveRef.current = performance.now()
-      } else if (key === 'arrowleft' || key === 'a') {
-        holdStartedRef.current = performance.now()
-        tryMove('left')
-        lastMoveRef.current = performance.now()
-      } else if (key === 'arrowright' || key === 'd') {
-        holdStartedRef.current = performance.now()
-        tryMove('right')
-        lastMoveRef.current = performance.now()
-      } else if (key === ' ' || key === 'enter') {
+        return
+      }
+
+      if (key === ' ' || key === 'enter') {
         if (phaseRef.current === 'combat') attackHandlerRef.current()
         else if (phaseRef.current === 'loot' || phaseRef.current === 'defeat') {
           continueHandlerRef.current()
@@ -449,22 +525,24 @@ export function GoblinRaidTool() {
     let raf = 0
     const loop = (time: number) => {
       if (phaseRef.current === 'explore' && !sheetOpenRef.current) {
-        const keys = keysRef.current
-        let dir: Dir | null = holdDirRef.current
-        if (keys.has('arrowup') || keys.has('w')) dir = 'up'
-        else if (keys.has('arrowdown') || keys.has('s')) dir = 'down'
-        else if (keys.has('arrowleft') || keys.has('a')) dir = 'left'
-        else if (keys.has('arrowright') || keys.has('d')) dir = 'right'
+        if (performance.now() >= inputLockUntilRef.current) {
+          const keys = keysRef.current
+          let dir: Dir | null = holdDirRef.current
+          if (keys.has('arrowup') || keys.has('w')) dir = 'up'
+          else if (keys.has('arrowdown') || keys.has('s')) dir = 'down'
+          else if (keys.has('arrowleft') || keys.has('a')) dir = 'left'
+          else if (keys.has('arrowright') || keys.has('d')) dir = 'right'
 
-        if (dir) {
-          if (!holdStartedRef.current) holdStartedRef.current = time
-          const heldFor = time - holdStartedRef.current
-          if (heldFor >= HOLD_DELAY_MS && time - lastMoveRef.current >= STEP_MS) {
-            tryMove(dir)
-            lastMoveRef.current = time
+          if (dir) {
+            if (!holdStartedRef.current) holdStartedRef.current = time
+            const heldFor = time - holdStartedRef.current
+            if (heldFor >= HOLD_DELAY_MS && time - lastMoveRef.current >= STEP_MS) {
+              tryMove(dir)
+              lastMoveRef.current = time
+            }
+          } else if (!holdDirRef.current) {
+            holdStartedRef.current = 0
           }
-        } else if (!holdDirRef.current) {
-          holdStartedRef.current = 0
         }
       }
 
@@ -483,6 +561,8 @@ export function GoblinRaidTool() {
   const bindPad = (dir: Dir) => ({
     onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
       event.preventDefault()
+      if (phaseRef.current !== 'explore' || sheetOpenRef.current) return
+      if (performance.now() < inputLockUntilRef.current) return
       event.currentTarget.setPointerCapture?.(event.pointerId)
       holdDirRef.current = dir
       holdStartedRef.current = performance.now()
@@ -540,9 +620,12 @@ export function GoblinRaidTool() {
               <div className="duel">
                 <div className="duel__side">
                   <div className="portrait portrait--hero portrait--sm" aria-hidden="true">
+                    <span className="portrait__cloak" />
+                    <span className="portrait__torso" />
                     <span className="portrait__face" />
-                    <span className="portrait__cape" />
-                    <span className="portrait__band" />
+                    <span className="portrait__helm" />
+                    <span className="portrait__plume" />
+                    <span className="portrait__blade" />
                   </div>
                   <p>巡衛</p>
                 </div>
@@ -631,9 +714,12 @@ export function GoblinRaidTool() {
           <div className="raid-dock__info">
             <button type="button" className="raid-dock__hero" onClick={() => setSheetOpen(true)}>
               <span className="portrait portrait--hero portrait--dock" aria-hidden="true">
+                <span className="portrait__cloak" />
+                <span className="portrait__torso" />
                 <span className="portrait__face" />
-                <span className="portrait__cape" />
-                <span className="portrait__band" />
+                <span className="portrait__helm" />
+                <span className="portrait__plume" />
+                <span className="portrait__blade" />
               </span>
               <span className="raid-dock__hero-text">
                 <strong>角色資訊</strong>
@@ -665,14 +751,24 @@ export function GoblinRaidTool() {
         )}
 
         {inCombat && combat ? (
-          <div className="raid-actions" aria-label="戰鬥操作">
-            <button type="button" className="btn btn--primary btn--attack" disabled={combat.busy} onClick={() => void doAttack()}>
-              攻擊
+          <div className={`raid-actions ${combatArmed ? 'is-armed' : 'is-warming'}`} aria-label="戰鬥操作">
+            <button
+              type="button"
+              className="btn btn--primary btn--attack"
+              disabled={!combatArmed || combat.busy}
+              onClick={() => void doAttack()}
+            >
+              {combatArmed ? '攻擊' : '預備…'}
             </button>
-            <button type="button" className="btn btn--ghost" disabled={combat.busy || player.herbs <= 0} onClick={doHeal}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={!combatArmed || combat.busy || player.herbs <= 0}
+              onClick={doHeal}
+            >
               療傷（{player.herbs}）
             </button>
-            <button type="button" className="btn btn--ghost" disabled={combat.busy} onClick={doFlee}>
+            <button type="button" className="btn btn--ghost" disabled={!combatArmed || combat.busy} onClick={doFlee}>
               逃跑
             </button>
           </div>
@@ -687,7 +783,7 @@ export function GoblinRaidTool() {
           </div>
         ) : null}
         <p className="raid-dock__meta">
-          角色置中 · 地圖跟隨 · 亮門換區 · {source === 'api' ? 'D&D 5e API' : '本地怪物表'}
+          角色置中 · 戰鬥就緒鎖定 · {source === 'api' ? 'D&D 5e API' : '本地怪物表'}
         </p>
       </footer>
 
