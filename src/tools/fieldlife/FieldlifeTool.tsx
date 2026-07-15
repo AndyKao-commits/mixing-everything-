@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   burstTrain,
@@ -39,6 +39,8 @@ type HudState = {
   accent: string
 }
 
+type PanelId = 'status' | 'chronicle' | 'train'
+
 const initialHud: HudState = {
   episode: 1,
   level: 1,
@@ -68,25 +70,47 @@ function hexAccent(n: number): string {
   return `#${n.toString(16).padStart(6, '0')}`
 }
 
+function isAiMode(mode: AgentMode): boolean {
+  return mode !== 'human'
+}
+
 export function FieldlifeTool() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const simRef = useRef<FieldlifeSim | null>(null)
   const viewRef = useRef<FieldlifeView | null>(null)
   const linearRef = useRef(new LinearAgent(0.1))
-  const modeRef = useRef<AgentMode>('grind')
+  const modeRef = useRef<AgentMode>('human')
+  const humanHeldRef = useRef<ActionId | null>(null)
   const humanQueueRef = useRef<ActionId[]>([])
-  const runningRef = useRef(true)
   const trainBusyRef = useRef(false)
   const pausedRef = useRef(false)
   const closingRef = useRef(false)
 
-  const [mode, setMode] = useState<AgentMode>('grind')
+  const [mode, setMode] = useState<AgentMode>('human')
+  const [aiPolicy, setAiPolicy] = useState<'grind' | 'linear' | 'random'>('grind')
   const [paused, setPaused] = useState(false)
   const [hud, setHud] = useState<HudState>(initialHud)
   const [trainLog, setTrainLog] = useState<TrainStats[]>([])
-  const [status, setStatus] = useState(WORLD_LORE.premise)
+  const [status, setStatus] = useState('點「合上序言」後，用下方按鈕操控旅人。')
   const [showLore, setShowLore] = useState(true)
+  const [openPanels, setOpenPanels] = useState<Record<PanelId, boolean>>({
+    status: false,
+    chronicle: false,
+    train: false,
+  })
+
+  const setPlayMode = (next: AgentMode) => {
+    setMode(next)
+    modeRef.current = next
+    humanHeldRef.current = null
+    humanQueueRef.current = []
+    if (next === 'human') {
+      setStatus('你接手這一世：前進／轉向／攻擊／休息。')
+    } else {
+      setStatus(`AI 接管（${next === 'grind' ? '練功' : next === 'linear' ? '學習' : '隨機'}）。`)
+    }
+  }
 
   useEffect(() => {
     modeRef.current = mode
@@ -157,7 +181,6 @@ export function FieldlifeTool() {
         view.sync(sim.getSnapshot())
         return
       }
-      if (!runningRef.current) return
 
       acc += dt
       while (acc >= TICK_MS) {
@@ -165,7 +188,7 @@ export function FieldlifeTool() {
         const obs = sim.observe()
         let action: ActionId = 0
         if (modeRef.current === 'human') {
-          action = humanQueueRef.current.shift() ?? 0
+          action = humanQueueRef.current.shift() ?? humanHeldRef.current ?? 0
         } else {
           action = pickAction(modeRef.current, obs, linearRef.current)
         }
@@ -180,22 +203,20 @@ export function FieldlifeTool() {
           pullHud(action)
         }
 
-        if (result.done) {
-          if (!closingRef.current) {
-            closingRef.current = true
-            const snap = sim.getSnapshot()
-            const fate = snap.story.fateTitle ?? '普通餘燼'
-            pullHud(action)
-            setStatus(`閉卷：${snap.story.lifeName} →「${fate}」。灰燼翻頁中…`)
-            trainBusyRef.current = true
-            window.setTimeout(() => {
-              sim.reset()
-              pullHud(0)
-              closingRef.current = false
-              trainBusyRef.current = false
-              setStatus('下一段人生從紙縫站起。')
-            }, 2200)
-          }
+        if (result.done && !closingRef.current) {
+          closingRef.current = true
+          const snap = sim.getSnapshot()
+          const fate = snap.story.fateTitle ?? '普通餘燼'
+          pullHud(action)
+          setStatus(`閉卷：${snap.story.lifeName} →「${fate}」`)
+          trainBusyRef.current = true
+          window.setTimeout(() => {
+            sim.reset()
+            pullHud(0)
+            closingRef.current = false
+            trainBusyRef.current = false
+            setStatus(modeRef.current === 'human' ? '新的一頁。繼續動手寫。' : '下一段人生，AI 續寫。')
+          }, 1800)
         }
       }
       view.sync(sim.getSnapshot())
@@ -212,7 +233,7 @@ export function FieldlifeTool() {
   }, [])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (modeRef.current !== 'human') return
       const map: Record<string, ActionId> = {
         w: 1,
@@ -229,29 +250,65 @@ export function FieldlifeTool() {
       const action = map[e.key]
       if (action === undefined) return
       e.preventDefault()
-      humanQueueRef.current.push(action)
+      if (action === 1 || action === 2 || action === 3) {
+        humanHeldRef.current = action
+      } else {
+        humanQueueRef.current.push(action)
+      }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (modeRef.current !== 'human') return
+      if (['w', 'ArrowUp', 'a', 'ArrowLeft', 'd', 'ArrowRight'].includes(e.key)) {
+        humanHeldRef.current = null
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
   }, [])
+
+  const togglePanel = (id: PanelId) => {
+    setOpenPanels((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const pushHuman = (action: ActionId) => {
+    if (mode !== 'human') setPlayMode('human')
+    humanQueueRef.current.push(action)
+  }
+
+  const holdStart = (action: ActionId) => (e: ReactPointerEvent) => {
+    e.preventDefault()
+    if (mode !== 'human') setPlayMode('human')
+    humanHeldRef.current = action
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  const holdEnd = (e: ReactPointerEvent) => {
+    e.preventDefault()
+    humanHeldRef.current = null
+  }
 
   const onBurstTrain = () => {
     const sim = simRef.current
     if (!sim || trainBusyRef.current) return
     trainBusyRef.current = true
     closingRef.current = false
-    setStatus('女神快速翻過十二段人生（無渲染訓練）…')
+    setStatus('高速訓練十二世…')
     window.setTimeout(() => {
       const logs = burstTrain(sim, linearRef.current, 12)
       setTrainLog((prev) => [...logs, ...prev].slice(0, 24))
-      setMode('linear')
-      modeRef.current = 'linear'
+      setAiPolicy('linear')
+      setPlayMode('linear')
       sim.reset()
       trainBusyRef.current = false
+      setOpenPanels((p) => ({ ...p, train: true }))
       const last = logs[logs.length - 1]
       setStatus(
         last
-          ? `訓練收束。末世 ${last.lifeName ?? ''}「${last.fateTitle ?? last.chapterTitle}」Lv.${last.level}`
+          ? `訓練完。末世「${last.fateTitle ?? last.chapterTitle}」Lv.${last.level}`
           : '訓練完成',
       )
     }, 30)
@@ -262,15 +319,21 @@ export function FieldlifeTool() {
     if (!sim) return
     closingRef.current = false
     trainBusyRef.current = false
+    humanHeldRef.current = null
     sim.reset()
-    setStatus('你親手合上這一頁，再掀開下一頁。')
+    setStatus('這一頁合上，下一頁張開。')
   }
 
+  const startPlaying = () => {
+    setShowLore(false)
+    setPlayMode('human')
+  }
+
+  const hpPct = (hud.hp / Math.max(1, hud.maxHp)) * 100
+  const xpPct = (hud.xp / Math.max(1, hud.xpToNext)) * 100
+
   return (
-    <div
-      className="fieldlife"
-      style={{ ['--fl-accent' as string]: hud.accent }}
-    >
+    <div className="fieldlife" style={{ ['--fl-accent' as string]: hud.accent }}>
       <div className="fieldlife__stage" ref={shellRef}>
         <canvas ref={canvasRef} className="fieldlife__canvas" />
         <div className="fieldlife__vignette" />
@@ -283,149 +346,268 @@ export function FieldlifeTool() {
         <div className="fieldlife__brand">
           <p className="fieldlife__eyebrow">{WORLD_LORE.titleEn}</p>
           <h1>{WORLD_LORE.title}</h1>
-          <p className="fieldlife__life">{hud.lifeName}</p>
         </div>
-        <p className="fieldlife__status">{status}</p>
+        <div className="fieldlife__who">
+          <button
+            type="button"
+            className={mode === 'human' ? 'is-active' : undefined}
+            onClick={() => setPlayMode('human')}
+          >
+            我來玩
+          </button>
+          <button
+            type="button"
+            className={isAiMode(mode) ? 'is-active' : undefined}
+            onClick={() => setPlayMode(aiPolicy)}
+          >
+            AI 練功
+          </button>
+        </div>
       </header>
 
-      <aside className="fieldlife__hud">
-        <div className="fieldlife__chapter">
+      <div className="fieldlife__strip" aria-live="polite">
+        <div className="fieldlife__strip-main">
+          <strong>{hud.lifeName}</strong>
           <span>
-            篇章 {hud.chapterIndex + 1}/10 · 人生 #{hud.episode}
-          </span>
-          <strong>{hud.chapterTitle}</strong>
-          <em>{hud.chapterSubtitle}</em>
-        </div>
-        <div className="fieldlife__stat">
-          <span>等級</span>
-          <strong>Lv.{hud.level}</strong>
-        </div>
-        <div className="fieldlife__bar">
-          <div
-            className="fieldlife__bar-fill fieldlife__bar-fill--hp"
-            style={{ width: `${(hud.hp / hud.maxHp) * 100}%` }}
-          />
-          <span>
-            HP {hud.hp}/{hud.maxHp}
+            {hud.chapterTitle} · Lv.{hud.level} · #{hud.episode}
           </span>
         </div>
-        <div className="fieldlife__bar">
-          <div
-            className="fieldlife__bar-fill fieldlife__bar-fill--xp"
-            style={{ width: `${(hud.xp / Math.max(1, hud.xpToNext)) * 100}%` }}
-          />
-          <span>
-            XP {hud.xp}/{hud.xpToNext}
-          </span>
+        <div className="fieldlife__strip-bars">
+          <div className="fieldlife__mini-bar" title="HP">
+            <i style={{ width: `${hpPct}%` }} className="is-hp" />
+          </div>
+          <div className="fieldlife__mini-bar" title="XP">
+            <i style={{ width: `${xpPct}%` }} className="is-xp" />
+          </div>
         </div>
-        <dl className="fieldlife__meta">
-          <div>
-            <dt>擊殺</dt>
-            <dd>{hud.kills}</dd>
-          </div>
-          <div>
-            <dt>探索</dt>
-            <dd>{hud.explored}</dd>
-          </div>
-          <div>
-            <dt>步數</dt>
-            <dd>{hud.stepsAlive}</dd>
-          </div>
-          <div>
-            <dt>獎勵</dt>
-            <dd>{hud.reward}</dd>
-          </div>
-          <div>
-            <dt>動作</dt>
-            <dd>{hud.action}</dd>
-          </div>
-          <div>
-            <dt>倒下</dt>
-            <dd>{hud.deaths}</dd>
-          </div>
-        </dl>
-        <p className="fieldlife__event">{hud.event}</p>
-        {hud.fateTitle && (
-          <div className="fieldlife__fate">
-            <strong>{hud.fateTitle}</strong>
-            <p>{hud.fateEpitaph}</p>
-          </div>
-        )}
-      </aside>
+        <p className="fieldlife__strip-event">{hud.event}</p>
+      </div>
 
-      <section className="fieldlife__chronicle" aria-label="編年史">
-        <h2>編年</h2>
-        <ul>
-          {hud.chronicle.map((row, i) => (
-            <li key={`${row.tick}-${i}-${row.text.slice(0, 12)}`} data-kind={row.kind}>
-              {row.text}
-            </li>
-          ))}
-        </ul>
-        {hud.memories.length > 0 && (
-          <>
-            <h2>記憶碎片</h2>
-            <ul className="fieldlife__memories">
-              {hud.memories.map((m) => (
-                <li key={m}>{m}</li>
-              ))}
-            </ul>
-          </>
+      <div className="fieldlife__rail fieldlife__rail--left">
+        <details className="fieldlife__panel" open={openPanels.status}>
+          <summary
+            onClick={(e) => {
+              e.preventDefault()
+              togglePanel('status')
+            }}
+          >
+            狀態 <span>{openPanels.status ? '收合' : '展開'}</span>
+          </summary>
+          {openPanels.status && (
+            <div className="fieldlife__panel-body">
+              <div className="fieldlife__chapter">
+                <span>篇章 {hud.chapterIndex + 1}/10</span>
+                <strong>{hud.chapterTitle}</strong>
+                <em>{hud.chapterSubtitle}</em>
+              </div>
+              <p className="fieldlife__event">{status}</p>
+              <dl className="fieldlife__meta">
+                <div>
+                  <dt>擊殺</dt>
+                  <dd>{hud.kills}</dd>
+                </div>
+                <div>
+                  <dt>探索</dt>
+                  <dd>{hud.explored}</dd>
+                </div>
+                <div>
+                  <dt>步數</dt>
+                  <dd>{hud.stepsAlive}</dd>
+                </div>
+                <div>
+                  <dt>獎勵</dt>
+                  <dd>{hud.reward}</dd>
+                </div>
+                <div>
+                  <dt>動作</dt>
+                  <dd>{hud.action}</dd>
+                </div>
+                <div>
+                  <dt>倒下</dt>
+                  <dd>{hud.deaths}</dd>
+                </div>
+              </dl>
+              <div className="fieldlife__bar">
+                <div className="fieldlife__bar-fill fieldlife__bar-fill--hp" style={{ width: `${hpPct}%` }} />
+                <span>
+                  HP {hud.hp}/{hud.maxHp}
+                </span>
+              </div>
+              <div className="fieldlife__bar">
+                <div className="fieldlife__bar-fill fieldlife__bar-fill--xp" style={{ width: `${xpPct}%` }} />
+                <span>
+                  XP {hud.xp}/{hud.xpToNext}
+                </span>
+              </div>
+              {hud.fateTitle && (
+                <div className="fieldlife__fate">
+                  <strong>{hud.fateTitle}</strong>
+                  <p>{hud.fateEpitaph}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </details>
+      </div>
+
+      <div className="fieldlife__rail fieldlife__rail--right">
+        <details className="fieldlife__panel" open={openPanels.chronicle}>
+          <summary
+            onClick={(e) => {
+              e.preventDefault()
+              togglePanel('chronicle')
+            }}
+          >
+            編年 ({hud.chronicle.length}) <span>{openPanels.chronicle ? '收合' : '展開'}</span>
+          </summary>
+          {openPanels.chronicle && (
+            <div className="fieldlife__panel-body fieldlife__panel-body--scroll">
+              <ul className="fieldlife__list">
+                {hud.chronicle.map((row, i) => (
+                  <li key={`${row.tick}-${i}-${row.text.slice(0, 10)}`} data-kind={row.kind}>
+                    {row.text}
+                  </li>
+                ))}
+              </ul>
+              {hud.memories.length > 0 && (
+                <>
+                  <h3>記憶碎片</h3>
+                  <ul className="fieldlife__list fieldlife__list--memory">
+                    {hud.memories.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+        </details>
+
+        {trainLog.length > 0 && (
+          <details className="fieldlife__panel" open={openPanels.train}>
+            <summary
+              onClick={(e) => {
+                e.preventDefault()
+                togglePanel('train')
+              }}
+            >
+              十二世速寫 <span>{openPanels.train ? '收合' : '展開'}</span>
+            </summary>
+            {openPanels.train && (
+              <div className="fieldlife__panel-body fieldlife__panel-body--scroll">
+                <ul className="fieldlife__list">
+                  {trainLog.map((row) => (
+                    <li key={`${row.episode}-${row.steps}-${row.reward}`}>
+                      {row.lifeName ?? `#${row.episode}`} · {row.fateTitle ?? row.chapterTitle} · Lv.
+                      {row.level}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </details>
         )}
-      </section>
+      </div>
+
+      {mode === 'human' && !showLore && (
+        <div className="fieldlife__pad" aria-label="觸控操作">
+          <div className="fieldlife__pad-move">
+            <button
+              type="button"
+              className="fieldlife__pad-btn"
+              onPointerDown={holdStart(2)}
+              onPointerUp={holdEnd}
+              onPointerCancel={holdEnd}
+            >
+              左轉
+            </button>
+            <button
+              type="button"
+              className="fieldlife__pad-btn fieldlife__pad-btn--main"
+              onPointerDown={holdStart(1)}
+              onPointerUp={holdEnd}
+              onPointerCancel={holdEnd}
+            >
+              前進
+            </button>
+            <button
+              type="button"
+              className="fieldlife__pad-btn"
+              onPointerDown={holdStart(3)}
+              onPointerUp={holdEnd}
+              onPointerCancel={holdEnd}
+            >
+              右轉
+            </button>
+          </div>
+          <div className="fieldlife__pad-act">
+            <button type="button" className="fieldlife__pad-btn fieldlife__pad-btn--hit" onClick={() => pushHuman(4)}>
+              攻擊
+            </button>
+            <button type="button" className="fieldlife__pad-btn" onClick={() => pushHuman(5)}>
+              休息
+            </button>
+          </div>
+        </div>
+      )}
 
       {showLore && (
-        <div className="fieldlife__lore">
-          <button type="button" className="fieldlife__lore-close" onClick={() => setShowLore(false)}>
-            合上序言
-          </button>
+        <div className="fieldlife__lore" role="dialog" aria-modal="true">
           <p className="fieldlife__eyebrow">{WORLD_LORE.title}</p>
           <h2>這片野原由誰書寫？</h2>
           <p>{WORLD_LORE.premise}</p>
           <p>{WORLD_LORE.rule}</p>
           <p className="fieldlife__lore-hint">
-            AI 會自己練功、升等、解鎖篇章；倒下時野原判定稱號，再開啟下一段人生。
+            你可以自己玩，也可以讓 AI NPC 練功升等、解鎖篇章；資料欄位都能收合，不要擋畫面。
           </p>
+          <div className="fieldlife__lore-actions">
+            <button type="button" className="fieldlife__primary" onClick={startPlaying}>
+              開始遊玩
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowLore(false)
+                setPlayMode(aiPolicy)
+              }}
+            >
+              看 AI 練功
+            </button>
+          </div>
         </div>
       )}
 
       <footer className="fieldlife__dock">
-        <label className="fieldlife__mode">
-          控制
-          <select value={mode} onChange={(e) => setMode(e.target.value as AgentMode)}>
-            <option value="grind">AI 練功策略</option>
-            <option value="linear">線性強化學習</option>
-            <option value="random">隨機基準</option>
-            <option value="human">手動（WASD / J 攻 / K 休）</option>
-          </select>
-        </label>
+        {isAiMode(mode) && (
+          <label className="fieldlife__mode">
+            AI 策略
+            <select
+              value={aiPolicy}
+              onChange={(e) => {
+                const v = e.target.value as 'grind' | 'linear' | 'random'
+                setAiPolicy(v)
+                setPlayMode(v)
+              }}
+            >
+              <option value="grind">練功策略</option>
+              <option value="linear">線性學習</option>
+              <option value="random">隨機</option>
+            </select>
+          </label>
+        )}
         <button type="button" onClick={() => setPaused((p) => !p)}>
           {paused ? '繼續' : '暫停'}
         </button>
         <button type="button" onClick={onResetLife}>
-          強制閉卷
+          下一世
         </button>
         <button type="button" className="fieldlife__primary" onClick={onBurstTrain}>
-          高速翻頁 ×12
+          訓練 ×12
         </button>
         <button type="button" onClick={() => setShowLore(true)}>
           序言
         </button>
       </footer>
-
-      {trainLog.length > 0 && (
-        <section className="fieldlife__log" aria-label="訓練紀錄">
-          <h2>十二世速寫</h2>
-          <ul>
-            {trainLog.map((row) => (
-              <li key={`${row.episode}-${row.steps}-${row.reward}`}>
-                {row.lifeName ?? `#${row.episode}`} · {row.fateTitle ?? row.chapterTitle} · Lv.
-                {row.level} · 殺{row.kills} · 探{row.explored}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   )
 }
