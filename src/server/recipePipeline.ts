@@ -3,15 +3,10 @@ import {
   structureRecipeLocally,
   structureRecipeWithAi,
   transcribeAudioWithWhisper,
-  transcribeRemoteMedia,
 } from '@/server/ai/recipeAi'
 import { serverConfig } from '@/server/config'
 import { fetchPublicPageMaterial, fetchYoutubeMaterial, type VideoSourceMaterial } from '@/server/platforms/fetchSource'
-import {
-  fetchInstagramViaMediaApi,
-  fetchInstagramWithSession,
-} from '@/server/platforms/instagram'
-import type { InstagramSession } from '@/server/instagramSession'
+import { cleanupLocalMedia, fetchWithYtDlp, readLocalFileAsBlob } from '@/server/platforms/ytdlp'
 
 export type ExtractRecipeResult = {
   title: string
@@ -54,7 +49,6 @@ function mergeMaterials(parts: VideoSourceMaterial[]): VideoSourceMaterial {
 export async function extractRecipeFromRequest(input: {
   url?: string
   caption?: string
-  session?: InstagramSession | null
   upload?: File | null
 }): Promise<ExtractRecipeResult> {
   const cfg = serverConfig()
@@ -63,6 +57,7 @@ export async function extractRecipeFromRequest(input: {
   const materials: VideoSourceMaterial[] = []
   const url = input.url?.trim()
   const platform = url ? detectPlatform(url) : input.upload ? '上傳影片' : '文字'
+  let localAudioPath: string | undefined
 
   if (input.caption?.trim()) {
     materials.push({
@@ -75,26 +70,19 @@ export async function extractRecipeFromRequest(input: {
   }
 
   if (url) {
+    // Primary path for OTHER people's public videos (IG / TikTok / YT / etc.)
+    const viaYtDlp = await fetchWithYtDlp(url)
+    localAudioPath = viaYtDlp.localAudioPath
+    materials.push(viaYtDlp)
+    if (viaYtDlp.caption || viaYtDlp.title) used.push('ytdlp-public')
+    if (viaYtDlp.localAudioPath) used.push('ytdlp-audio')
+
+    // Extra YouTube captions when available
     if (platform === 'YouTube') {
       const yt = await fetchYoutubeMaterial(url)
       materials.push(yt)
       if (yt.transcript) used.push('youtube-transcript')
-      if (yt.title) used.push('youtube-oembed')
-    } else if (platform === 'Instagram') {
-      if (input.session) {
-        const ig = await fetchInstagramWithSession(url, input.session)
-        materials.push(ig)
-        if (ig.caption || ig.mediaUrl) used.push('instagram-oauth')
-      }
-      if (cfg.instagramMediaApiUrl) {
-        const viaApi = await fetchInstagramViaMediaApi(url)
-        materials.push(viaApi)
-        if (viaApi.caption || viaApi.mediaUrl) used.push('instagram-media-api')
-      }
-      const pub = await fetchPublicPageMaterial(url)
-      materials.push(pub)
-      if (pub.caption) used.push('public-meta')
-    } else {
+    } else if (!viaYtDlp.caption) {
       const pub = await fetchPublicPageMaterial(url)
       materials.push(pub)
       if (pub.caption) used.push('public-meta')
@@ -104,27 +92,23 @@ export async function extractRecipeFromRequest(input: {
   const merged = mergeMaterials(materials)
   warnings.push(...merged.warnings)
 
-  // Scan audio/video content when possible
-  if (input.upload && cfg.openaiApiKey) {
-    try {
+  try {
+    if (input.upload && cfg.openaiApiKey) {
       const transcript = await transcribeAudioWithWhisper(input.upload, input.upload.name || 'upload.bin')
       merged.transcript = [merged.transcript, transcript].filter(Boolean).join('\n\n')
       used.push('whisper-upload')
       merged.rawNotes.push('已用 Whisper 掃描上傳影片／音訊')
-    } catch (error) {
-      warnings.push(error instanceof Error ? error.message : '上傳影片掃描失敗')
-    }
-  } else if (merged.mediaUrl && cfg.openaiApiKey) {
-    try {
-      const transcript = await transcribeRemoteMedia(merged.mediaUrl)
+    } else if (localAudioPath && cfg.openaiApiKey) {
+      const blob = await readLocalFileAsBlob(localAudioPath)
+      const transcript = await transcribeAudioWithWhisper(blob, localAudioPath.split('/').pop() || 'audio.bin')
       merged.transcript = [merged.transcript, transcript].filter(Boolean).join('\n\n')
-      used.push('whisper-remote')
-      merged.rawNotes.push('已用 Whisper 掃描遠端影片音訊')
-    } catch (error) {
-      warnings.push(error instanceof Error ? error.message : '遠端影片掃描失敗')
+      used.push('whisper-ytdlp')
+      merged.rawNotes.push('已用 Whisper 掃描公開影片音訊／旁白')
+    } else if ((input.upload || localAudioPath) && !cfg.openaiApiKey) {
+      warnings.push('已抓到公開影片，但未設定 OPENAI_API_KEY，無法語音掃描；會先用說明文字整理')
     }
-  } else if ((input.upload || merged.mediaUrl) && !cfg.openaiApiKey) {
-    warnings.push('已取得影片，但未設定 OPENAI_API_KEY，無法做音訊掃描')
+  } finally {
+    await cleanupLocalMedia(localAudioPath)
   }
 
   const sourceText = [merged.title, merged.caption, merged.transcript, input.caption]
@@ -133,9 +117,7 @@ export async function extractRecipeFromRequest(input: {
     .trim()
 
   if (!sourceText) {
-    if (platform === 'Instagram') {
-      warnings.push('Instagram 常擋未登入抓取。請先「登入 Instagram」，或改上傳影片／貼上說明文字。')
-    }
+    warnings.push('還沒抓到可用內容。請確認連結是公開的，或改上傳影片檔。')
     return {
       title: merged.title || `${platform} 食譜`,
       ingredients: [],

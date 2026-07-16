@@ -1,74 +1,47 @@
 # Mixing Everything
 
-多功能小工具站基礎模板。主頁可掃描做菜影片，整理材料／步驟並寫入日誌。
-
-## Stack
-
-- Next.js 15（含 API Routes）
-- TypeScript / React 19
-- OpenAI（Whisper + 食譜結構化，選用）
-- Instagram OAuth 登入（選用）
+多功能小工具站。主打：貼上**別人的**食譜影片連結，自動整理材料／步驟並寫入日誌。
 
 ## 開發
 
 ```bash
 cp .env.example .env.local
+# 填入 OPENAI_API_KEY（建議，才能掃旁白）
 npm install
 npm run dev
 ```
 
-## 建置
+## 收入別人的食譜
 
-```bash
-npm run build
-npm start
-```
+1. 主頁貼上對方公開的 IG／YouTube／TikTok 連結
+2. 按「收入並整理食譜」
+3. 系統用 yt-dlp 抓公開說明／音訊，再用 AI 整理材料與步驟
+4. 確認後寫入日誌
 
-## 影片掃描 API
+不需要 Instagram 登入，也不限自己的影片。
+
+### API
 
 `POST /api/recipe/extract`
 
-可傳送：
+- `url`：別人的公開影片連結
+- `caption`：可選補充文字
+- `file`：可選上傳影片
 
-- `url`：影片連結
-- `caption`：補充說明／字幕
-- `file`：上傳影片／音訊（multipart）
+`GET /api/recipe/status`
 
-流程：
+### 環境變數
 
-1. YouTube：抓字幕／oEmbed
-2. Instagram：若已登入，用官方 Graph 讀自己的媒體；可選第三方 Media API；再嘗試公開頁 meta
-3. 若拿到影片檔／遠端 media URL，且有 `OPENAI_API_KEY`，用 Whisper 掃描音訊
-4. 用 OpenAI（或本機解析後援）整理標題、材料、步驟
+- `OPENAI_API_KEY`：Whisper 掃旁白 + 結構化食譜（強烈建議）
+- `OPENAI_MODEL`：預設 `gpt-4o-mini`
 
-狀態查詢：`GET /api/recipe/status`
+## 注意
 
-### Instagram 登入
-
-官方 API **不能**任意讀取別人的 Reel；登入後可讀你自己帳號媒體。
-
-1. 在 Meta 建立 App，啟用 Instagram API with Instagram Login
-2. 設定 `.env.local`：
-   - `INSTAGRAM_APP_ID`
-   - `INSTAGRAM_APP_SECRET`
-   - `INSTAGRAM_REDIRECT_URI`
-3. 到 `/settings` 按「登入 Instagram」
-
-### OpenAI
-
-設定 `OPENAI_API_KEY` 後才能：
-
-- Whisper 掃描影片內容
-- 更穩定地把字幕整理成材料／步驟
-
-## 主頁使用
-
-1. 貼影片連結（或上傳影片）
-2. 按「掃描影片並整理」
-3. 微調後「寫入日誌」
+- 僅支援**公開**影片；私人帳號內容抓不到
+- 伺服器需能跑 `yt-dlp`（透過 `youtube-dl-exec`）。極短 serverless 可能逾時，建議一般 Node／較長 timeout 環境
+- 沒有 OpenAI key 時，仍會嘗試用貼文說明做文字整理
 
 ## 如何新增工具
 
-1. 在 `src/tools/<tool-id>/` 建立元件
-2. 到 `src/data/tools.ts` 註冊
-3. 左側「工具」列表會自動出現
+1. `src/tools/<tool-id>/` 建立元件
+2. `src/data/tools.ts` 註冊

@@ -4,6 +4,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Keep binary path intact for yt-dlp wrapper
+  serverExternalPackages: ['youtube-dl-exec'],
 }
 
 export default nextConfig

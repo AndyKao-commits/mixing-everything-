@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { extractRecipeFromRequest } from '@/server/recipePipeline'
-import { readInstagramSession } from '@/server/instagramSession'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function POST(request: Request) {
   try {
@@ -26,25 +26,16 @@ export async function POST(request: Request) {
 
     if (!url.trim() && !caption.trim() && !upload) {
       return NextResponse.json(
-        { error: '請提供影片連結、說明文字，或上傳影片檔。' },
+        { error: '請提供別人的食譜影片連結、說明文字，或上傳影片檔。' },
         { status: 400 },
       )
     }
 
-    const session = await readInstagramSession()
-    const result = await extractRecipeFromRequest({
-      url,
-      caption,
-      upload,
-      session,
-    })
-
+    const result = await extractRecipeFromRequest({ url, caption, upload })
     return NextResponse.json({ ok: true, result })
   } catch (error) {
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : '掃描失敗',
-      },
+      { error: error instanceof Error ? error.message : '掃描失敗' },
       { status: 500 },
     )
   }

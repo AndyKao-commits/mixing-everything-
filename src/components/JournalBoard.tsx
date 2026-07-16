@@ -62,8 +62,8 @@ export function JournalBoard() {
   const [parseHint, setParseHint] = useState('')
   const [scanning, setScanning] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [igConnected, setIgConnected] = useState(false)
   const [openaiReady, setOpenaiReady] = useState(false)
+  const [publicFetchReady, setPublicFetchReady] = useState(true)
 
   useEffect(() => {
     setEntries(loadJournalEntries())
@@ -71,8 +71,8 @@ export function JournalBoard() {
     fetch('/api/recipe/status', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
-        setIgConnected(Boolean(data?.instagram?.connected))
         setOpenaiReady(Boolean(data?.capabilities?.openai))
+        setPublicFetchReady(Boolean(data?.capabilities?.publicVideoFetch ?? true))
       })
       .catch(() => {
         // API may be unavailable in pure static previews
@@ -218,24 +218,24 @@ export function JournalBoard() {
         >
           <form className="recipe-form" onSubmit={submitRecipe}>
             <div className="scan-status">
-              <span className={openaiReady ? 'pill pill--ok' : 'pill'}>
-                AI 掃描：{openaiReady ? '已啟用' : '未設定'}
+              <span className={publicFetchReady ? 'pill pill--ok' : 'pill'}>
+                公開影片：{publicFetchReady ? '可收入他人內容' : '不可用'}
               </span>
-              <span className={igConnected ? 'pill pill--ok' : 'pill'}>
-                IG：{igConnected ? '已登入' : '未登入'}
+              <span className={openaiReady ? 'pill pill--ok' : 'pill'}>
+                語音掃描：{openaiReady ? '已啟用' : '未設定'}
               </span>
               <Link href="/settings" className="scan-status__link">
-                設定 API／登入 →
+                設定 API →
               </Link>
             </div>
 
             <label className="field">
-              <span className="field__label">影片連結</span>
+              <span className="field__label">別人的食譜影片連結</span>
               <input
                 className="field__input"
                 type="url"
                 value={sourceUrl}
-                placeholder="貼上 Instagram / YouTube / TikTok 連結"
+                placeholder="貼上 Instagram / YouTube / TikTok 公開影片連結"
                 onChange={(e) => setSourceUrl(e.target.value)}
               />
             </label>
@@ -265,10 +265,10 @@ export function JournalBoard() {
             <div className="journal__actions">
               <p className="journal__hint">
                 {parseHint ||
-                  '會讀取字幕／說明，並在可取得影片時用 Whisper 掃描內容，再整理材料與步驟。'}
+                  '直接貼別人的公開食譜影片。系統會抓說明與音訊，整理材料／步驟，不用自己一項項核對。'}
               </p>
               <button type="button" className="btn btn--primary" onClick={scanRecipe} disabled={scanning}>
-                {scanning ? '掃描中…' : '掃描影片並整理'}
+                {scanning ? '收入中…' : '收入並整理食譜'}
               </button>
             </div>
 
