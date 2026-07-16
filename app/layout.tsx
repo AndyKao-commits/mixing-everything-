@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Space_Grotesk, IBM_Plex_Mono, Noto_Sans_TC } from 'next/font/google'
-import { SiteHeader } from '@/components/SiteHeader'
+import { SideNav } from '@/components/SideNav'
 import './globals.css'
 
 const display = Space_Grotesk({
@@ -32,11 +32,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="site-shell">
           <div className="site-atmosphere" aria-hidden="true" />
-          <SiteHeader />
-          <main className="site-main">{children}</main>
-          <footer className="site-footer">
-            <p>Mixing Everything — 小東西慢慢累積的地方</p>
-          </footer>
+          <div className="app-frame">
+            <SideNav />
+            <div className="app-content">
+              <main className="site-main">{children}</main>
+            </div>
+          </div>
         </div>
       </body>
     </html>
