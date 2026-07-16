@@ -257,6 +257,34 @@ code {
   gap: 1rem;
 }
 
+.journal__tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border: var(--border);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.75);
+  box-shadow: 3px 3px 0 var(--line);
+  width: fit-content;
+}
+
+.journal__tab {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0.45rem 0.85rem;
+  font-family: var(--font-display-stack);
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.journal__tab.is-active {
+  color: var(--ink);
+  background: var(--sky);
+  border-color: var(--line);
+}
+
 .journal__composer {
   display: grid;
   gap: 0.85rem;
@@ -285,6 +313,44 @@ code {
   font-family: var(--font-mono-stack);
   font-size: 0.78rem;
   color: var(--ink-soft);
+  max-width: 36rem;
+  line-height: 1.45;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.field__label {
+  font-family: var(--font-mono-stack);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.field__input,
+.field__textarea {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: var(--border);
+  border-radius: 6px;
+  background: #fff;
+  line-height: 1.5;
+}
+
+.field__textarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+.recipe-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.recipe-grid {
+  display: grid;
+  gap: 0.85rem;
 }
 
 .journal__feed {
@@ -317,6 +383,10 @@ code {
   animation: rise 0.28s ease both;
 }
 
+.journal__item--recipe {
+  background: linear-gradient(180deg, #fffdf8 0%, #eef6fb 100%);
+}
+
 .journal__meta {
   display: flex;
   align-items: center;
@@ -326,6 +396,21 @@ code {
   font-family: var(--font-mono-stack);
   font-size: 0.78rem;
   color: var(--ink-soft);
+}
+
+.journal__meta-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.journal__badge {
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  background: #dff3e8;
+  color: var(--ink);
+  font-size: 0.7rem;
 }
 
 .journal__delete {
@@ -346,6 +431,39 @@ code {
   white-space: pre-wrap;
   line-height: 1.6;
   word-break: break-word;
+}
+
+.recipe-card {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.recipe-card__title {
+  font-size: 1.15rem;
+}
+
+.recipe-card__source {
+  width: fit-content;
+  font-family: var(--font-mono-stack);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.recipe-card__block h4 {
+  margin-bottom: 0.3rem;
+  font-size: 0.95rem;
+}
+
+.recipe-card__block ul,
+.recipe-card__block ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
 }
 
 @keyframes rise {
@@ -651,5 +769,9 @@ code {
 
   .tool-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .recipe-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
