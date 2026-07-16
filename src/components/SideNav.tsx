@@ -27,12 +27,6 @@ const pageItems: NavItem[] = [
     match: 'exact',
   },
   {
-    href: '/settings',
-    label: '設定',
-    icon: <IconGear className="side-nav__svg" />,
-    match: 'prefix',
-  },
-  {
     href: '/about',
     label: '關於',
     icon: <IconGear className="side-nav__svg" />,
