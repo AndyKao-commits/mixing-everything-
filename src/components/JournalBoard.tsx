@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { WindowFrame } from '@/components/WindowFrame'
 import {
   createId,
@@ -11,7 +12,6 @@ import {
 import {
   detectPlatform,
   formatRecipeJournalText,
-  parseRecipeFromText,
 } from '@/lib/recipeParse'
 
 function formatTime(ts: number) {
@@ -24,6 +24,18 @@ function formatTime(ts: number) {
 }
 
 type Mode = 'note' | 'recipe'
+
+type ExtractResult = {
+  title: string
+  ingredients: string[]
+  steps: string[]
+  notes: string[]
+  sourceUrl?: string
+  platform: string
+  sourceText: string
+  warnings: string[]
+  used: string[]
+}
 
 function linesToText(lines: string[]) {
   return lines.join('\n')
@@ -48,10 +60,23 @@ export function JournalBoard() {
   const [ingredientsText, setIngredientsText] = useState('')
   const [stepsText, setStepsText] = useState('')
   const [parseHint, setParseHint] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [igConnected, setIgConnected] = useState(false)
+  const [openaiReady, setOpenaiReady] = useState(false)
 
   useEffect(() => {
     setEntries(loadJournalEntries())
     setReady(true)
+    fetch('/api/recipe/status', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        setIgConnected(Boolean(data?.instagram?.connected))
+        setOpenaiReady(Boolean(data?.capabilities?.openai))
+      })
+      .catch(() => {
+        // API may be unavailable in pure static previews
+      })
   }, [])
 
   useEffect(() => {
@@ -60,8 +85,10 @@ export function JournalBoard() {
   }, [entries, ready])
 
   const canSaveRecipe = useMemo(() => {
-    return Boolean(sourceUrl.trim() && (ingredientsText.trim() || stepsText.trim() || title.trim()))
-  }, [sourceUrl, ingredientsText, stepsText, title])
+    return Boolean(
+      (sourceUrl.trim() || uploadFile) && (ingredientsText.trim() || stepsText.trim() || title.trim()),
+    )
+  }, [sourceUrl, uploadFile, ingredientsText, stepsText, title])
 
   function submitNote(event?: FormEvent) {
     event?.preventDefault()
@@ -77,36 +104,53 @@ export function JournalBoard() {
     setText('')
   }
 
-  function organizeRecipe() {
+  async function scanRecipe() {
     const url = sourceUrl.trim()
-    const body = caption.trim()
-    if (!url && !body) {
-      setParseHint('先貼上影片連結，或貼上影片說明／字幕文字。')
-      return
-    }
-    if (!body) {
-      setParseHint('目前無法直接讀取私密平台影片內容。請複製影片說明／字幕貼上，再按整理。')
-      const platform = url ? detectPlatform(url) : '影片'
-      setTitle((prev) => prev || `${platform} 食譜`)
+    if (!url && !caption.trim() && !uploadFile) {
+      setParseHint('請貼上影片連結、說明文字，或上傳影片檔。')
       return
     }
 
-    const parsed = parseRecipeFromText(body, url ? `${detectPlatform(url)} 食譜` : '未命名食譜')
-    setTitle(parsed.title)
-    setIngredientsText(linesToText(parsed.ingredients))
-    setStepsText(linesToText(parsed.steps))
-    setParseHint(
-      parsed.ingredients.length || parsed.steps.length
-        ? '已整理材料與步驟，可再微調後寫入日誌。'
-        : '沒辨識到清楚段落，請直接在下方手動填材料／步驟。',
-    )
+    setScanning(true)
+    setParseHint('正在掃描影片內容…')
+    try {
+      const form = new FormData()
+      if (url) form.set('url', url)
+      if (caption.trim()) form.set('caption', caption.trim())
+      if (uploadFile) form.set('file', uploadFile)
+
+      const res = await fetch('/api/recipe/extract', {
+        method: 'POST',
+        body: form,
+      })
+      const data = (await res.json()) as { ok?: boolean; result?: ExtractResult; error?: string }
+      if (!res.ok || !data.result) {
+        throw new Error(data.error || '掃描失敗')
+      }
+
+      const result = data.result
+      setTitle(result.title || '')
+      setIngredientsText(linesToText(result.ingredients))
+      setStepsText(linesToText(result.steps))
+      if (!caption.trim() && result.sourceText) {
+        setCaption(result.sourceText.slice(0, 4000))
+      }
+
+      const used = result.used.length ? `使用：${result.used.join(', ')}` : ''
+      const warns = result.warnings.slice(0, 3).join('；')
+      setParseHint([used, warns].filter(Boolean).join('。 ') || '掃描完成，可微調後寫入日誌。')
+    } catch (error) {
+      setParseHint(error instanceof Error ? error.message : '掃描失敗')
+    } finally {
+      setScanning(false)
+    }
   }
 
   function submitRecipe(event?: FormEvent) {
     event?.preventDefault()
-    const url = sourceUrl.trim()
+    const url = sourceUrl.trim() || (uploadFile ? `upload://${uploadFile.name}` : '')
     if (!url) {
-      setParseHint('請先貼上影片連結。')
+      setParseHint('請先貼上影片連結或上傳影片。')
       return
     }
 
@@ -118,12 +162,12 @@ export function JournalBoard() {
       id: createId(),
       kind: 'recipe',
       title: recipeTitle,
-      sourceUrl: url,
+      sourceUrl: url.startsWith('upload://') ? undefined : url,
       ingredients,
       steps,
       text: formatRecipeJournalText({
         title: recipeTitle,
-        sourceUrl: url,
+        sourceUrl: url.startsWith('upload://') ? '本機上傳影片' : url,
         ingredients,
         steps,
       }),
@@ -135,6 +179,7 @@ export function JournalBoard() {
     setIngredientsText('')
     setStepsText('')
     setTitle('')
+    setUploadFile(null)
     setParseHint('已寫入日誌。')
   }
 
@@ -167,11 +212,23 @@ export function JournalBoard() {
 
       {mode === 'recipe' ? (
         <WindowFrame
-          title="食譜整理.exe"
-          footer="貼連結 → 整理材料／步驟 → 寫入日誌"
-          toolbar={<span className="win__menu">Share · Parse · Save</span>}
+          title="影片掃描.exe"
+          footer="掃描影片 → 材料／步驟 → 寫入日誌"
+          toolbar={<span className="win__menu">Scan · Parse · Save</span>}
         >
           <form className="recipe-form" onSubmit={submitRecipe}>
+            <div className="scan-status">
+              <span className={openaiReady ? 'pill pill--ok' : 'pill'}>
+                AI 掃描：{openaiReady ? '已啟用' : '未設定'}
+              </span>
+              <span className={igConnected ? 'pill pill--ok' : 'pill'}>
+                IG：{igConnected ? '已登入' : '未登入'}
+              </span>
+              <Link href="/settings" className="scan-status__link">
+                設定 API／登入 →
+              </Link>
+            </div>
+
             <label className="field">
               <span className="field__label">影片連結</span>
               <input
@@ -184,20 +241,34 @@ export function JournalBoard() {
             </label>
 
             <label className="field">
-              <span className="field__label">影片說明／字幕（可從原貼文複製）</span>
+              <span className="field__label">上傳影片／音訊（可選，Whisper 掃描內容）</span>
+              <input
+                className="field__input"
+                type="file"
+                accept="video/*,audio/*"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+              />
+              {uploadFile ? <span className="field__help">已選：{uploadFile.name}</span> : null}
+            </label>
+
+            <label className="field">
+              <span className="field__label">補充說明／字幕（可選）</span>
               <textarea
                 className="field__textarea"
-                rows={5}
+                rows={4}
                 value={caption}
-                placeholder={'例如：\n材料\n雞胸肉 200g\n蒜頭 2 瓣\n\n步驟\n1. 肉切塊下鍋\n2. 大火快炒盛起'}
+                placeholder="若平台擋抓取，可貼上說明或字幕輔助整理"
                 onChange={(e) => setCaption(e.target.value)}
               />
             </label>
 
             <div className="journal__actions">
-              <p className="journal__hint">{parseHint || '類似 Albo：先整理，再存成日誌食譜'}</p>
-              <button type="button" className="btn btn--ghost" onClick={organizeRecipe}>
-                整理材料／步驟
+              <p className="journal__hint">
+                {parseHint ||
+                  '會讀取字幕／說明，並在可取得影片時用 Whisper 掃描內容，再整理材料與步驟。'}
+              </p>
+              <button type="button" className="btn btn--primary" onClick={scanRecipe} disabled={scanning}>
+                {scanning ? '掃描中…' : '掃描影片並整理'}
               </button>
             </div>
 
@@ -235,8 +306,8 @@ export function JournalBoard() {
             </div>
 
             <div className="journal__actions">
-              <p className="journal__hint">寫入後會出現在下方日誌列表</p>
-              <button type="submit" className="btn btn--primary" disabled={!canSaveRecipe}>
+              <p className="journal__hint">確認無誤後寫入日誌</p>
+              <button type="submit" className="btn btn--ghost" disabled={!canSaveRecipe}>
                 寫入日誌
               </button>
             </div>
@@ -269,7 +340,7 @@ export function JournalBoard() {
         {!ready ? (
           <p className="journal__empty">讀取中…</p>
         ) : entries.length === 0 ? (
-          <p className="journal__empty">還沒有日誌。貼影片連結整理食譜，或寫一則一般日誌。</p>
+          <p className="journal__empty">還沒有日誌。掃描影片整理食譜，或寫一則一般日誌。</p>
         ) : (
           <ul className="journal__list">
             {entries.map((entry) => (

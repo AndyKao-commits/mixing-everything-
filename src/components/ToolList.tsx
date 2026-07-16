@@ -7,7 +7,7 @@ export function ToolList({ tools }: { tools: ToolDefinition[] }) {
     <ul className="tool-grid">
       {tools.map((tool) => (
         <li key={tool.id}>
-          <Link href={`/tools/${tool.id}/`} className="tool-card">
+            <Link href={`/tools/${tool.id}`} className="tool-card">
             <span className="tool-card__icon">{toolIcon(tool.icon, 'tool-card__svg')}</span>
             <div className="tool-card__copy">
               <div className="tool-card__title-row">

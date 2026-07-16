@@ -21,13 +21,19 @@ const pageItems: NavItem[] = [
     match: 'exact',
   },
   {
-    href: '/tools/',
+    href: '/tools',
     label: '工具總覽',
     icon: <IconFolder className="side-nav__svg" />,
     match: 'exact',
   },
   {
-    href: '/about/',
+    href: '/settings',
+    label: '設定',
+    icon: <IconGear className="side-nav__svg" />,
+    match: 'prefix',
+  },
+  {
+    href: '/about',
     label: '關於',
     icon: <IconGear className="side-nav__svg" />,
     match: 'prefix',
@@ -70,7 +76,7 @@ export function SideNav() {
       <p className="side-nav__section">工具</p>
       <nav className="side-nav__list" aria-label="工具列表">
         {tools.map((tool) => {
-          const href = `/tools/${tool.id}/`
+          const href = `/tools/${tool.id}`
           const active = pathname === href || pathname.startsWith(`/tools/${tool.id}`)
           return (
             <Link key={tool.id} href={href} className={active ? 'side-nav__link is-active' : 'side-nav__link'}>
