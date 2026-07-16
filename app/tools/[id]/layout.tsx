@@ -1,5 +1,7 @@
+import { tools } from '@/data/tools'
+
 export function generateStaticParams() {
-  return [{ id: 'goblin-raid' }, { id: 'counter' }, { id: 'notes' }]
+  return tools.map((tool) => ({ id: tool.id }))
 }
 
 export default function ToolIdLayout({ children }: { children: React.ReactNode }) {

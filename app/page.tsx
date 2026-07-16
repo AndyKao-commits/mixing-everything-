@@ -1,22 +1,100 @@
 import Link from 'next/link'
+import { ToolList } from '@/components/ToolList'
+import { Landscape } from '@/components/Landscape'
+import { WindowFrame } from '@/components/WindowFrame'
+import { tools } from '@/data/tools'
+import { IconFolder, IconHome, IconNotes, IconSearch } from '@/components/icons'
+
+const features = [
+  {
+    title: '掛載即用',
+    desc: '新工具註冊後自動出現在目錄與路由。',
+    Icon: IconFolder,
+  },
+  {
+    title: '本機優先',
+    desc: '示範工具用 LocalStorage，不依賴後端。',
+    Icon: IconNotes,
+  },
+  {
+    title: '可換皮',
+    desc: '統一的視窗與按鈕樣式，之後換主題也方便。',
+    Icon: IconSearch,
+  },
+]
 
 export default function HomePage() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-3xl flex-col justify-center gap-6 bg-raid-bg px-6 py-16 text-raid-ink">
-      <p className="text-xs uppercase tracking-[0.25em] text-raid-accent">Mixing Everything</p>
-      <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">多功能小工具站</h1>
-      <p className="max-w-xl text-raid-muted">小工具與小遊戲集中地。旗艦遊戲：Goblin Raid Remastered 2.0。</p>
-      <div className="flex flex-wrap gap-3">
-        <Link href="/tools" className="rounded-xl bg-raid-accent px-4 py-2 font-semibold text-raid-bg">
-          前往工具
-        </Link>
-        <Link href="/tools/goblin-raid" className="rounded-xl border border-white/15 px-4 py-2">
-          直接開打哥布林討伐
-        </Link>
-        <Link href="/about" className="rounded-xl border border-white/15 px-4 py-2">
-          關於
-        </Link>
-      </div>
-    </main>
+    <>
+      <section className="hero">
+        <p className="hero__brand">Mixing Everything</p>
+        <h1 className="hero__headline">小工具慢慢累積的工坊。</h1>
+        <p className="hero__lead">
+          多功能網站基礎模板：首頁、工具目錄、關於頁與可擴充註冊表，之後做的東西都放這裡。
+        </p>
+
+        <ul className="feature-row">
+          {features.map(({ title, desc, Icon }) => (
+            <li key={title} className="feature-row__item">
+              <span className="feature-row__icon">
+                <Icon className="feature-row__svg" />
+              </span>
+              <strong>{title}</strong>
+              <p>{desc}</p>
+            </li>
+          ))}
+        </ul>
+
+        <div className="hero__actions">
+          <Link href="/tools/" className="btn btn--primary">
+            開始探索
+          </Link>
+          <Link href="/about/" className="btn btn--ghost">
+            怎麼擴充
+          </Link>
+        </div>
+      </section>
+
+      <section className="desktop-preview" aria-label="桌面預覽">
+        <WindowFrame
+          title="Now playing"
+          toolbar={
+            <label className="search-bar">
+              <IconSearch className="search-bar__icon" />
+              <span>搜尋工具…</span>
+            </label>
+          }
+          footer={
+            <span className="desktop-preview__status">
+              <IconHome className="desktop-preview__status-icon" /> Ready
+            </span>
+          }
+        >
+          <div className="player-panel">
+            <p className="player-panel__label">目前可用</p>
+            <p className="player-panel__title">{tools.length} 個示範工具</p>
+            <div className="player-panel__controls" aria-hidden="true">
+              <span /><span className="is-play" /><span /><span />
+            </div>
+          </div>
+        </WindowFrame>
+
+        <aside className="desktop-icons" aria-hidden="true">
+          <div className="desktop-icon"><IconFolder className="desktop-icon__svg" /><span>Tools</span></div>
+          <div className="desktop-icon"><IconNotes className="desktop-icon__svg" /><span>Notes</span></div>
+          <div className="desktop-icon"><IconHome className="desktop-icon__svg" /><span>Home</span></div>
+        </aside>
+      </section>
+
+      <section className="section" aria-labelledby="home-tools-title">
+        <div className="section__intro">
+          <h2 id="home-tools-title">目前能用的</h2>
+          <p>從兩個示範開始，之後每個小功能都會列在這裡。</p>
+        </div>
+        <ToolList tools={tools} />
+      </section>
+
+      <Landscape />
+    </>
   )
 }
