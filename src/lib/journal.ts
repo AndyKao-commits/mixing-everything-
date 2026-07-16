@@ -1,36 +1,38 @@
-export type JournalKind = 'note' | 'recipe'
-
 export type JournalEntry = {
   id: string
-  kind: JournalKind
   text: string
   createdAt: number
-  title?: string
-  sourceUrl?: string
-  ingredients?: string[]
-  steps?: string[]
-  notes?: string[]
 }
 
 export const JOURNAL_KEY = 'mixing-journal-v1'
 
 export function normalizeEntry(raw: unknown): JournalEntry | null {
   if (!raw || typeof raw !== 'object') return null
-  const item = raw as Partial<JournalEntry> & { text?: string; createdAt?: number; id?: string }
-  if (!item.id || typeof item.text !== 'string' || typeof item.createdAt !== 'number') return null
-
-  const kind: JournalKind = item.kind === 'recipe' ? 'recipe' : 'note'
-  return {
-    id: item.id,
-    kind,
-    text: item.text,
-    createdAt: item.createdAt,
-    title: typeof item.title === 'string' ? item.title : undefined,
-    sourceUrl: typeof item.sourceUrl === 'string' ? item.sourceUrl : undefined,
-    ingredients: Array.isArray(item.ingredients) ? item.ingredients.filter((x) => typeof x === 'string') : undefined,
-    steps: Array.isArray(item.steps) ? item.steps.filter((x) => typeof x === 'string') : undefined,
-    notes: Array.isArray(item.notes) ? item.notes.filter((x) => typeof x === 'string') : undefined,
+  const item = raw as Partial<JournalEntry> & {
+    kind?: string
+    title?: string
+    ingredients?: string[]
+    steps?: string[]
   }
+  if (!item.id || typeof item.createdAt !== 'number') return null
+
+  if (typeof item.text === 'string' && item.text.trim()) {
+    return { id: item.id, text: item.text, createdAt: item.createdAt }
+  }
+
+  // 舊版食譜日誌：盡量轉成純文字顯示
+  if (item.kind === 'recipe') {
+    const lines = [
+      item.title ? `【食譜】${item.title}` : '【食譜】',
+      ...(item.ingredients || []).map((line) => `· ${line}`),
+      ...(item.steps || []).map((line, index) => `${index + 1}. ${line}`),
+    ].filter(Boolean)
+    if (lines.length) {
+      return { id: item.id, text: lines.join('\n'), createdAt: item.createdAt }
+    }
+  }
+
+  return null
 }
 
 export function loadJournalEntries(): JournalEntry[] {

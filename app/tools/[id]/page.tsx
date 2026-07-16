@@ -11,7 +11,7 @@ export default function ToolPage({ params }: { params: Promise<{ id: string }> }
   if (!tool) {
     return (
       <div className="page">
-        <Link href="/tools/" className="back-link">
+        <Link href="/tools" className="back-link">
           ← 工具列表
         </Link>
         <h1>找不到工具</h1>
