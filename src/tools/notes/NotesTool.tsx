@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { WindowFrame } from '@/components/WindowFrame'
 
 const KEY = 'mixing-notes-v1'
@@ -16,9 +15,6 @@ export function NotesTool() {
 
   return (
     <div className="tool-page">
-      <Link href="/tools/" className="back-link">
-        ← 工具列表
-      </Link>
       <WindowFrame
         title="隨手記.txt"
         footer={saved ? '已儲存到本機' : '尚未儲存'}

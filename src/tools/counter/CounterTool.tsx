@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { WindowFrame } from '@/components/WindowFrame'
 
 export function CounterTool() {
@@ -9,9 +8,6 @@ export function CounterTool() {
 
   return (
     <div className="tool-page">
-      <Link href="/tools/" className="back-link">
-        ← 工具列表
-      </Link>
       <WindowFrame title="計數器.exe" footer={`count = ${n}`}>
         <div className="counter-tool">
           <p className="counter-tool__label">現在數到</p>
