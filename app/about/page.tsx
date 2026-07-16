@@ -1,15 +1,30 @@
 import Link from 'next/link'
+import { WindowFrame } from '@/components/WindowFrame'
 
 export default function AboutPage() {
   return (
-    <main className="mx-auto min-h-svh max-w-3xl bg-raid-bg px-6 py-10 text-raid-ink">
-      <Link href="/" className="text-sm text-raid-muted">
+    <div className="page">
+      <Link href="/" className="back-link">
         ← 回首頁
       </Link>
-      <h1 className="mt-4 font-display text-3xl font-bold">關於</h1>
-      <p className="mt-4 text-raid-muted">
-        Mixing Everything 是個人多功能站。Goblin Raid Remastered 以模組化系統架構重建，支援 LocalStorage 存檔與完整成長循環。
-      </p>
-    </main>
+      <header className="page__header">
+        <h1>關於</h1>
+        <p>Mixing Everything 是可持續擴充的多功能小工具站基礎模板。</p>
+      </header>
+
+      <WindowFrame title="如何新增工具" footer="src/data/tools.ts">
+        <ol className="steps">
+          <li>
+            在 <code>src/tools/&lt;tool-id&gt;/</code> 建立元件
+          </li>
+          <li>
+            到 <code>src/data/tools.ts</code> 註冊（id、名稱、說明、Component）
+          </li>
+          <li>
+            前往 <code>/tools/&lt;tool-id&gt;/</code> 即可使用
+          </li>
+        </ol>
+      </WindowFrame>
+    </div>
   )
 }
