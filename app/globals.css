@@ -872,6 +872,108 @@ code {
   color: var(--ink);
 }
 
+.egypt-tour-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.egypt-tour-list__item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  width: 100%;
+  text-align: left;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.7rem 0.75rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.egypt-tour-list__item:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--line);
+}
+
+.egypt-tour-list__item.is-active {
+  background: #dff3e8;
+  box-shadow: 3px 3px 0 var(--line);
+  transform: translate(-1px, -1px);
+}
+
+.egypt-tour-list__index {
+  font-family: var(--font-mono-stack);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  padding-top: 0.15rem;
+}
+
+.egypt-tour-list__copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.egypt-tour-list__copy strong {
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.egypt-tour-list__copy span {
+  font-family: var(--font-mono-stack);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.egypt-summary h3,
+.egypt-itin h3 {
+  margin-bottom: 0.55rem;
+}
+
+.egypt-itin__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+  border-left: 3px solid #c5d8c8;
+  padding-left: 0.85rem;
+}
+
+.egypt-itin__item {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.55rem;
+  align-items: start;
+  padding: 0.55rem 0.65rem;
+  background: #fff;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+}
+
+.egypt-itin__day {
+  font-family: var(--font-mono-stack);
+  font-size: 0.75rem;
+  color: var(--coral);
+  font-weight: 600;
+  padding-top: 0.1rem;
+}
+
+.egypt-itin__title {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.egypt-itin__note {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
 .egypt-tool__picks {
   display: flex;
   flex-wrap: wrap;
@@ -1215,5 +1317,13 @@ code {
   .egypt-detail__grid,
   .egypt-quick {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .egypt-tour-list {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .egypt-itin__item {
+    grid-template-columns: 5rem 1fr;
   }
 }
