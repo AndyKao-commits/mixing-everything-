@@ -818,6 +818,16 @@ code {
   font-size: clamp(1.8rem, 4.5vw, 2.4rem);
 }
 
+.egypt-tool__compare-intro {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 2px dashed #c5d0c8;
+}
+
+.egypt-tool__compare-intro h2 {
+  font-size: clamp(1.35rem, 3.2vw, 1.75rem);
+}
+
 .egypt-tool__kicker {
   font-family: var(--font-mono-stack);
   font-size: 0.78rem;
