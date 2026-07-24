@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { CounterTool } from '@/tools/counter/CounterTool'
 import { NotesTool } from '@/tools/notes/NotesTool'
+import { EgyptToursTool } from '@/tools/egypt-tours/EgyptToursTool'
 
 export type ToolStatus = 'ready' | 'draft'
 
@@ -11,11 +12,21 @@ export type ToolDefinition = {
   description: string
   status: ToolStatus
   tags: string[]
-  icon: 'counter' | 'notes' | 'folder'
+  icon: 'counter' | 'notes' | 'folder' | 'globe'
   Component: ComponentType
 }
 
 export const tools: ToolDefinition[] = [
+  {
+    id: 'egypt-tours',
+    name: '埃及團比較',
+    nameEn: 'Egypt Tours',
+    description: '比較九條埃及行程的價格、出發、轉機與重點差異。',
+    status: 'ready',
+    tags: ['旅遊', '比較'],
+    icon: 'globe',
+    Component: EgyptToursTool,
+  },
   {
     id: 'counter',
     name: '計數器',
