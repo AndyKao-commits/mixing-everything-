@@ -63,12 +63,27 @@ export function IconGear({ className }: IconProps) {
   )
 }
 
-export function toolIcon(icon: 'counter' | 'notes' | 'folder', className?: string) {
+export function IconGlobe({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <circle cx="16" cy="16" r="11" stroke="currentColor" strokeWidth="2.5" />
+      <path
+        d="M5 16h22M16 5c3.5 3.2 5.5 7 5.5 11S19.5 23.8 16 27c-3.5-3.2-5.5-7-5.5-11S12.5 8.2 16 5z"
+        stroke="currentColor"
+        strokeWidth="2.5"
+      />
+    </svg>
+  )
+}
+
+export function toolIcon(icon: 'counter' | 'notes' | 'folder' | 'globe', className?: string) {
   switch (icon) {
     case 'counter':
       return <IconCounter className={className} />
     case 'notes':
       return <IconNotes className={className} />
+    case 'globe':
+      return <IconGlobe className={className} />
     default:
       return <IconFolder className={className} />
   }
