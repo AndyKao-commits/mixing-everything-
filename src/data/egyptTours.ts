@@ -1,3 +1,9 @@
+export type TourDay = {
+  day: number
+  title: string
+  note?: string
+}
+
 export type EgyptTour = {
   id: string
   shortUrl: string
@@ -25,6 +31,7 @@ export type EgyptTour = {
   highlights: string[]
   differences: string[]
   lodging: string[]
+  itinerary: TourDay[]
   image: string
 }
 
@@ -64,6 +71,18 @@ export const egyptTours: EgyptTour[] = [
       '回程落地松山機場',
     ],
     lodging: ['紅海洞穴飯店（行程特色）', '含鐵路／巴士／航空移動'],
+    itinerary: [
+      { day: 1, title: '台北 → 上海' },
+      { day: 2, title: '上海 → 開羅【吉薩金字塔、騎乘駱駝、人面獅身像、大埃及博物館】 → 亞斯文' },
+      { day: 3, title: '亞斯文【亞斯文大水壩、蓮花塔、風帆船】', note: '第3~6天搭乘尼羅河遊輪（岸上觀光順序依船班調整）' },
+      { day: 4, title: '亞斯文 → 阿布辛貝【阿布辛貝雙神殿】 → 亞斯文 → 康孟波【康孟波雙神殿】 → 艾德芙' },
+      { day: 5, title: '艾德芙【艾德芙神殿】 → 伊斯納【伊斯納神廟】 → 路克索【卡納克神殿、路克索神殿】' },
+      { day: 6, title: '路克索【曼儂巨像、帝王谷】 → 虎加達' },
+      { day: 7, title: '虎加達（紅海；可自費衝沙或玻璃船）' },
+      { day: 8, title: '虎加達 → 開羅【哈利利大市集、莎草紙工坊、香精油工廠】' },
+      { day: 9, title: '開羅 → 上海' },
+      { day: 10, title: '上海 → 台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1910-000156/M_PIC1910-000156.jpg',
   },
   {
@@ -101,6 +120,18 @@ export const egyptTours: EgyptTour[] = [
       '回程落地桃園（非松山）',
     ],
     lodging: ['紅海渡假勝地住宿', '含鐵路／巴士／航空移動'],
+    itinerary: [
+      { day: 1, title: '台北 → 上海' },
+      { day: 2, title: '上海 → 開羅【洞穴教堂、懸掛教堂、哈利利大市集】' },
+      { day: 3, title: '開羅【吉薩金字塔、騎乘駱駝、人面獅身像、大埃及博物館】 → 亞斯文' },
+      { day: 4, title: '亞斯文【亞斯文大水壩、蓮花塔、風帆船】', note: '第4~7天搭乘尼羅河遊輪（岸上觀光順序依船班調整）' },
+      { day: 5, title: '亞斯文 → 阿布辛貝【建議自費：阿布辛貝雙神殿】 → 康孟波【康孟波雙神殿】 → 艾德芙', note: '阿布辛貝為建議自費項目' },
+      { day: 6, title: '艾德芙【乘坐馬車、艾德芙神殿、伊斯納水閘】 → 路克索【卡納克神殿】' },
+      { day: 7, title: '路克索【曼儂巨像、路克索神殿】 → 虎加達' },
+      { day: 8, title: '虎加達（可自費衝沙或玻璃船） → 開羅【莎草紙工坊、香精油工廠】' },
+      { day: 9, title: '開羅 → 上海' },
+      { day: 10, title: '上海 → 台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1910-000156/M_PIC1910-000156.jpg',
   },
   {
@@ -137,6 +168,18 @@ export const egyptTours: EgyptTour[] = [
       '出發日較晚（11/07）',
     ],
     lodging: ['金字塔區景觀飯店 1 晚', '紅海渡假連泊'],
+    itinerary: [
+      { day: 1, title: '桃園 → 北京首都' },
+      { day: 2, title: '北京 → 開羅【吉薩金字塔、騎乘駱駝、人面獅身像、大埃及博物館、哈利利大市集】' },
+      { day: 3, title: '開羅【薩拉丁城堡、穆罕默德阿里清真寺】 → 亞斯文【亞斯文大水壩、蓮花塔、風帆船】', note: '亞斯文－路克索間搭乘尼羅河遊輪' },
+      { day: 4, title: '亞斯文 → 阿布辛貝【建議自費：阿布辛貝雙神殿】 → 亞斯文 → 康孟波【康孟波雙神殿】 → 艾德芙' },
+      { day: 5, title: '艾德芙【乘坐馬車、艾德芙神殿、伊斯納水閘】 → 路克索【卡納克神殿】' },
+      { day: 6, title: '路克索【曼儂巨像、路克索神殿、丹德拉神殿】 → 虎加達' },
+      { day: 7, title: '虎加達（紅海連泊；可自費衝沙或玻璃船）' },
+      { day: 8, title: '虎加達 → 開羅【莎草紙工坊、香精油工廠】' },
+      { day: 9, title: '開羅 → 北京首都' },
+      { day: 10, title: '北京首都 → 台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC2307-001791/M_PIC2307-001791.jpg',
   },
   {
@@ -179,6 +222,18 @@ export const egyptTours: EgyptTour[] = [
       '虎加達：AMC Royal Hotel & Spa 或同級',
       '尼羅河遊輪 4 天 3 夜（面河外艙）',
       '開羅→亞斯文夜臥火車',
+    ],
+    itinerary: [
+      { day: 1, title: '台北 → 杜拜' },
+      { day: 2, title: '杜拜 → 開羅【穆罕默德阿里清真寺】 → 旅館盥洗 → 亞斯文（夜臥火車）' },
+      { day: 3, title: '亞斯文【亞斯文大水壩、三角風帆船】', note: '第3~5天尼羅河遊輪' },
+      { day: 4, title: '亞斯文 → 阿布辛貝【阿布辛貝雙神殿】 → 亞斯文 → 康孟波【康孟波雙神殿】 → 艾得夫', note: '含阿布辛貝（非自費）' },
+      { day: 5, title: '艾得夫 → 伊斯納水匣門 → 路克索【路克索神殿、卡納克神殿】' },
+      { day: 6, title: '路克索【帝王谷、曼儂巨像】 → 虎加達' },
+      { day: 7, title: '虎加達（紅海渡假）' },
+      { day: 8, title: '虎加達 → 開羅【香精店、紙莎草畫店、哈利利市集】' },
+      { day: 9, title: '開羅【大埃及博物館、吉薩金字塔區、人面獅身像】 → 杜拜' },
+      { day: 10, title: '杜拜 → 台北' },
     ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1602-004270/M_PIC1602-004270.jpg',
   },
@@ -223,6 +278,18 @@ export const egyptTours: EgyptTour[] = [
       '虎加達：Marriott Beach Resort 或同級',
       '尼羅河遊輪 4 天 3 夜（面河外艙）',
     ],
+    itinerary: [
+      { day: 1, title: '台北 → 杜拜' },
+      { day: 2, title: '杜拜 → 開羅【穆罕默德阿里清真寺】 → 旅館盥洗 → 亞斯文（夜臥火車）' },
+      { day: 3, title: '亞斯文【亞斯文大水壩、三角風帆船】', note: '第3~5天尼羅河遊輪' },
+      { day: 4, title: '亞斯文 → 阿布辛貝【阿布辛貝雙神殿】 → 亞斯文 → 康孟波【康孟波雙神殿】 → 艾得夫', note: '含阿布辛貝（非自費）' },
+      { day: 5, title: '艾得夫 → 伊斯納水匣門 → 路克索【路克索神殿、卡納克神殿】' },
+      { day: 6, title: '路克索【帝王谷、曼儂巨像】 → 虎加達' },
+      { day: 7, title: '虎加達（紅海渡假／Marriott 等級）' },
+      { day: 8, title: '虎加達 → 開羅【香精店、紙莎草畫店、哈利利市集】' },
+      { day: 9, title: '開羅【吉薩金字塔區、人面獅身像、大埃及博物館】 → 杜拜', note: '另含古夫餐廳等升級體驗（依團說明）' },
+      { day: 10, title: '杜拜 → 台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1705-011828/M_PIC1705-011828.jpg',
   },
   {
@@ -265,6 +332,19 @@ export const egyptTours: EgyptTour[] = [
       '紅海：Albatros Makadi / Marriott 等',
       '尼羅河遊輪（面河外艙）',
       '國內段航班（非夜臥）',
+    ],
+    itinerary: [
+      { day: 1, title: '台北 → 杜拜' },
+      { day: 2, title: '杜拜 → 開羅【大埃及博物館】' },
+      { day: 3, title: '開羅 → 亞斯文（國內段飛機） → 阿布辛貝【阿布辛貝神殿、聲光秀】', note: '以飛機取代夜臥' },
+      { day: 4, title: '阿布辛貝 → 亞斯文【亞斯文大水壩、費萊神殿】', note: '第4~7天尼羅河遊輪' },
+      { day: 5, title: '亞斯文【三角風帆船、騎駱駝訪努比亞人家】 → 康孟波【康孟波雙神殿】 → 艾得夫' },
+      { day: 6, title: '艾得夫 → 伊斯納水匣門 → 路克索【卡納克神殿、路克索神殿】' },
+      { day: 7, title: '路克索【帝王谷、哈姬蘇女王神殿、曼儂巨像】 → 虎加達' },
+      { day: 8, title: '虎加達【沙漠奔馳拜訪貝都因村落】' },
+      { day: 9, title: '虎加達 → 開羅【香精店、紙莎草畫店、哈利利市集】' },
+      { day: 10, title: '開羅【吉薩金字塔區、人面獅身像、穆罕默德阿里清真寺】 → 杜拜' },
+      { day: 11, title: '杜拜 → 台北' },
     ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1910-000160/M_PIC1910-000160.jpg',
   },
@@ -310,6 +390,21 @@ export const egyptTours: EgyptTour[] = [
       '虎加達：AMC Royal 或同級',
       '尼羅河遊輪 5 天 4 夜（面河外艙）',
     ],
+    itinerary: [
+      { day: 1, title: '台北 → 伊斯坦堡 → 開羅（當天入住）' },
+      { day: 2, title: '開羅 → 孟菲斯【紅色金字塔、階梯金字塔、孟菲斯博物館】 → 開羅' },
+      { day: 3, title: '開羅【吉薩金字塔區、人面獅身像、穆罕默德阿里清真寺】' },
+      { day: 4, title: '開羅【大埃及博物館】 → 虎加達' },
+      { day: 5, title: '虎加達（紅海渡假）' },
+      { day: 6, title: '虎加達 → 路克索【卡納克神殿、路克索神殿】', note: '第6~9天尼羅河遊輪（路克索－亞斯文）' },
+      { day: 7, title: '路克索【帝王谷、曼儂巨像】 → 伊斯納水匣門 → 艾得夫' },
+      { day: 8, title: '艾得夫 → 康孟波【康孟波雙神殿】 → 亞斯文' },
+      { day: 9, title: '亞斯文【費萊神殿、亞斯文大水壩、三角風帆船】' },
+      { day: 10, title: '亞斯文 → 阿布辛貝【阿布辛貝雙神殿】 → 亞斯文 → 旅館盥洗 → 開羅（夜臥）', note: '含阿布辛貝' },
+      { day: 11, title: '開羅【埃及文明國家博物館、香精店、紙莎草畫店、哈利利市集】' },
+      { day: 12, title: '開羅 → 伊斯坦堡 → 台北' },
+      { day: 13, title: '抵達台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1605-014617/M_PIC1605-014617.jpg',
   },
   {
@@ -348,6 +443,19 @@ export const egyptTours: EgyptTour[] = [
       '適合想試海灣航線、預算中等者',
     ],
     lodging: ['含尼羅河遊輪與紅海行程（詳見官網行程表）'],
+    itinerary: [
+      { day: 1, title: '台北 → 阿布達比' },
+      { day: 2, title: '阿布達比 → 開羅【階梯金字塔、孟菲斯博物館、穆罕默德阿里清真寺】' },
+      { day: 3, title: '開羅【吉薩金字塔區、人面獅身像、大埃及博物館】 → 旅館盥洗 → 亞斯文（夜臥）' },
+      { day: 4, title: '亞斯文【亞斯文大水壩、三角風帆船】', note: '第4~6天尼羅河遊輪' },
+      { day: 5, title: '亞斯文 → 阿布辛貝【阿布辛貝雙神殿】 → 亞斯文 → 康孟波【康孟波雙神殿】 → 艾得夫', note: '含阿布辛貝' },
+      { day: 6, title: '艾得夫 → 伊斯納水匣門 → 路克索【路克索神殿、卡納克神殿】' },
+      { day: 7, title: '路克索【帝王谷、曼儂巨像】 → 虎加達' },
+      { day: 8, title: '虎加達（紅海渡假）' },
+      { day: 9, title: '虎加達 → 開羅【香精店、紙莎草畫店、哈利利市集】' },
+      { day: 10, title: '開羅 → 阿布達比' },
+      { day: 11, title: '阿布達比 → 台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC1705-011828/M_PIC1705-011828.jpg',
   },
   {
@@ -386,6 +494,21 @@ export const egyptTours: EgyptTour[] = [
       '與同日出發阿提哈德 11 日差價極大，體驗層級不同',
     ],
     lodging: ['頂級／景觀導向住宿（璽品規格，詳見官網）'],
+    itinerary: [
+      { day: 1, title: '台北 → 杜拜' },
+      { day: 2, title: '杜拜 → 開羅 · 大埃及博物館' },
+      { day: 3, title: '開羅 → 亞斯文（國內段） · 風帆船 · 阿布辛貝神殿聲光秀', note: '參考航班：開羅－亞斯文' },
+      { day: 4, title: '阿布辛貝 · 菲萊神殿 · 未完成方尖碑 · 亞斯文' },
+      { day: 5, title: '亞斯文 · 康孟波神殿 · 艾德夫', note: '午後登船，展開 4 天 3 夜尼羅河遊輪' },
+      { day: 6, title: '艾德夫神廟 · 伊斯納水閘門 · 路克索神殿' },
+      { day: 7, title: '路克索 · 哈姬蘇女王神殿 · 帝王谷 · 曼儂巨像' },
+      { day: 8, title: '路克索 · 奎那 · 丹德拉神殿 · 胡爾加達' },
+      { day: 9, title: '胡爾加達 · 紅海玻璃船 · 吉普車衝沙' },
+      { day: 10, title: '胡爾加達 → 開羅 · 洞穴教堂 · 哈利利市集', note: '參考航班：胡爾加達－開羅' },
+      { day: 11, title: '開羅 · 孟菲斯戶外博物館 · 薩拉丁大城堡區 · 阿里清真寺' },
+      { day: 12, title: '開羅 · 吉薩金字塔 · 駱駝騎行 · 人面獅身像 · 紙莎草畫體驗 → 杜拜' },
+      { day: 13, title: '杜拜 → 台北' },
+    ],
     image: 'https://static.liontech.com.tw/cmspic/PIC2210-003018/M_PIC2210-003018.jpg',
   },
 ]
