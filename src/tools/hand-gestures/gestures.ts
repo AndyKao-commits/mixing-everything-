@@ -70,7 +70,7 @@ export const GESTURE_META: Record<GestureId, Omit<GestureInfo, 'id'>> = {
   fist: { label: '拳頭', effect: '震動波紋' },
   point: { label: '指向', effect: '雷射點' },
   l_shape: { label: 'L 手勢', effect: '開合後可成四邊形' },
-  magic: { label: '魔法手勢', effect: '蓄力後揮出發射（冷卻 1.5 秒）' },
+  magic: { label: '指劍', effect: '指尖蓄力，朝正前方刺出／揮出（冷卻 1.5 秒）' },
 }
 
 export const ELEMENT_META: Record<
@@ -80,7 +80,7 @@ export const ELEMENT_META: Record<
   metal: { label: '金', combo: '雙手指向 或 雙手 L', effect: '金屬碎光', color: '#c0c7d1' },
   wood: { label: '木', combo: '雙手耶', effect: '葉脈生長', color: '#4caf50' },
   water: { label: '水', combo: '雙手張開', effect: '水流波紋', color: '#4fc3f7' },
-  fire: { label: '火', combo: '雙手比讚 或 雙手魔法', effect: '火焰爆發', color: '#ff5722' },
+  fire: { label: '火', combo: '雙手比讚 或 雙手指劍', effect: '火焰爆發', color: '#ff5722' },
   earth: { label: '土', combo: '雙手拳頭', effect: '地裂塵土', color: '#8d6e63' },
 }
 
@@ -171,15 +171,22 @@ export function isLShape(landmarks: Landmark[]) {
   return cos > -0.35 && cos < 0.72
 }
 
+/**
+ * 指劍：食指＋中指併攏伸出，其餘手指收起（與「耶」分開看指尖距離）。
+ */
 export function isMagic(landmarks: Landmark[]) {
   if (!landmarks || landmarks.length < 21) return false
   const index = fingerExtended(landmarks, HAND.INDEX_TIP, HAND.INDEX_PIP, HAND.INDEX_MCP)
   const middle = fingerExtended(landmarks, HAND.MIDDLE_TIP, HAND.MIDDLE_PIP, HAND.MIDDLE_MCP)
   const ring = fingerExtended(landmarks, HAND.RING_TIP, HAND.RING_PIP, HAND.RING_MCP)
   const pinky = fingerExtended(landmarks, HAND.PINKY_TIP, HAND.PINKY_PIP, HAND.PINKY_MCP)
-  if (!thumbExtended(landmarks) || !pinky) return false
-  if (index || middle || ring) return false
-  return dist(landmarks[HAND.THUMB_TIP], landmarks[HAND.PINKY_TIP]) > 0.14
+  if (!index || !middle) return false
+  if (ring || pinky) return false
+  // Blade: tips close together (peace spreads them).
+  if (dist(landmarks[HAND.INDEX_TIP], landmarks[HAND.MIDDLE_TIP]) > 0.078) return false
+  // Avoid classifying thumbs-up / L as sword.
+  if (thumbUp(landmarks)) return false
+  return true
 }
 
 export function classifyGesture(landmarks: Landmark[]): GestureId {
@@ -227,16 +234,30 @@ export function getLCorners(landmarks: Landmark[]): [Landmark, Landmark] | null 
   return [landmarks[HAND.THUMB_TIP], landmarks[HAND.INDEX_TIP]]
 }
 
-export function magicAim(landmarks: Landmark[]): { origin: Landmark; dir: Point2 } {
-  const origin = palmCenter(landmarks)
-  const target = {
-    x: (landmarks[HAND.INDEX_MCP].x + landmarks[HAND.PINKY_MCP].x) / 2,
-    y: (landmarks[HAND.INDEX_MCP].y + landmarks[HAND.PINKY_MCP].y) / 2 - 0.08,
+/** 指劍瞄準：劍尖在食／中指尖，方向沿指骨朝正前方（第一視角）。 */
+export function magicAim(landmarks: Landmark[]): {
+  origin: Landmark
+  base: Landmark
+  dir: Point2
+} {
+  const iTip = fingertipDisplayPoint(landmarks, HAND.INDEX_TIP)
+  const mTip = fingertipDisplayPoint(landmarks, HAND.MIDDLE_TIP)
+  const origin: Landmark = {
+    x: (iTip.x + mTip.x) / 2,
+    y: (iTip.y + mTip.y) / 2,
+    z: (iTip.z + mTip.z) / 2,
   }
-  let dx = target.x - origin.x
-  let dy = target.y - origin.y
+  const base: Landmark = {
+    x: (landmarks[HAND.INDEX_MCP].x + landmarks[HAND.MIDDLE_MCP].x) / 2,
+    y: (landmarks[HAND.INDEX_MCP].y + landmarks[HAND.MIDDLE_MCP].y) / 2,
+    z: (landmarks[HAND.INDEX_MCP].z + landmarks[HAND.MIDDLE_MCP].z) / 2,
+  }
+  let dx = origin.x - base.x
+  let dy = origin.y - base.y
   const len = Math.hypot(dx, dy) || 1
-  return { origin, dir: { x: dx / len, y: dy / len } }
+  dx /= len
+  dy /= len
+  return { origin, base, dir: { x: dx, y: dy } }
 }
 
 export function orderPolygon(points: Point2[]): Point2[] {

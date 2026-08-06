@@ -20,7 +20,6 @@ import {
   magicAim,
   mapLandmark,
   orderPolygon,
-  palmCenter,
   type DualShape,
   type ElementId,
   type GestureId,
@@ -39,7 +38,8 @@ type Particle = {
   life: number
   color: string
   size: number
-  kind: 'firework' | 'spark' | 'ripple' | 'bullet' | 'trail' | 'ember' | 'leaf' | 'drop' | 'shard' | 'dust'
+  baseSize?: number
+  kind: 'firework' | 'spark' | 'ripple' | 'bullet' | 'trail' | 'ember' | 'leaf' | 'drop' | 'shard' | 'dust' | 'muzzle'
 }
 
 type FlashState = { until: number; color: string }
@@ -131,25 +131,39 @@ function burstRipple(particles: Particle[], w: number, h: number) {
 }
 
 function fireMagicBullets(particles: Particle[], origin: Point2, dir: Point2, count = 3) {
-  const colors = ['#b388ff', '#7c4dff', '#ea80fc', '#82b1ff', '#ffffff']
+  const colors = ['#e1bee7', '#b388ff', '#7c4dff', '#ea80fc', '#ffffff']
+  // Tight forward cluster — first-person beam feel.
   for (let i = 0; i < count; i++) {
-    const spread = (i - (count - 1) / 2) * 0.12
+    const spread = (i - (count - 1) / 2) * 0.045
     const cos = Math.cos(spread)
     const sin = Math.sin(spread)
     const dx = dir.x * cos - dir.y * sin
     const dy = dir.x * sin + dir.y * cos
-    const speed = 9.5 + i * 0.85
+    const speed = 14 + i * 0.35
+    const baseSize = 14 - i * 1.2
     particles.push({
       x: origin.x,
       y: origin.y,
       vx: dx * speed,
       vy: dy * speed,
-      life: 1.15,
+      life: 1,
       color: colors[i % colors.length],
-      size: 11 - i,
+      size: baseSize,
+      baseSize,
       kind: 'bullet',
     })
   }
+  // Muzzle flash at sword tip.
+  particles.push({
+    x: origin.x,
+    y: origin.y,
+    vx: 0,
+    vy: 0,
+    life: 1,
+    color: 'rgba(255,255,255,0.9)',
+    size: 26,
+    kind: 'muzzle',
+  })
 }
 
 function impactBurst(particles: Particle[], x: number, y: number) {
@@ -453,6 +467,8 @@ export function HandGesturesTool() {
   const magicReadyRef = useRef(false)
   const lastMagicCastRef = useRef(0)
   const chargePalmRef = useRef<Point2 | null>(null)
+  const chargeBladeRef = useRef<{ from: Point2; to: Point2 } | null>(null)
+  const aimDirRef = useRef<Point2 | null>(null)
   const targetsRef = useRef<HitTarget[]>([])
   const hitMarkersRef = useRef<HitMarker[]>([])
 
@@ -544,25 +560,31 @@ export function HandGesturesTool() {
       if (lm) {
         const aim = magicAim(lm)
         const origin = mapLandmark(aim.origin, view)
-        const dirTip = mapLandmark(
+        const ahead = mapLandmark(
           {
-            x: aim.origin.x + aim.dir.x * 0.1,
-            y: aim.origin.y + aim.dir.y * 0.1,
+            x: aim.origin.x + aim.dir.x * 0.18,
+            y: aim.origin.y + aim.dir.y * 0.18,
             z: aim.origin.z,
           },
           view,
         )
-        const dx = dirTip.x - origin.x
-        const dy = dirTip.y - origin.y
+        const dx = ahead.x - origin.x
+        const dy = ahead.y - origin.y
         const len = Math.hypot(dx, dy) || 1
-        fireMagicBullets(particlesRef.current, origin, { x: dx / len, y: dy / len }, 4)
+        fireMagicBullets(particlesRef.current, origin, { x: dx / len, y: dy / len }, 5)
       } else {
-        fireMagicBullets(particlesRef.current, { x: w * 0.5, y: h * 0.55 }, { x: 0, y: -1 }, 4)
+        // Preview: shoot straight up-screen center like FP forward.
+        fireMagicBullets(
+          particlesRef.current,
+          { x: w * 0.5, y: h * 0.72 },
+          { x: 0, y: -1 },
+          5,
+        )
       }
       lastMagicCastRef.current = now
       magicReadyRef.current = false
       setMagicArmed(false)
-      flashRef.current = { until: now + 180, color: 'rgba(124, 77, 255, 0.35)' }
+      flashRef.current = { until: now + 160, color: 'rgba(124, 77, 255, 0.28)' }
     } else if (id === 'l_shape') {
       flashRef.current = { until: now + 220, color: 'rgba(228, 87, 46, 0.22)' }
     }
@@ -600,12 +622,17 @@ export function HandGesturesTool() {
     triggerEffect(next, hand)
   }
 
-  const castMagicFromSwing = (hand: Landmark[], dirNorm: Point2, view: ViewMapping) => {
+  const castMagicFromSwing = (hand: Landmark[], _dirNorm: Point2, view: ViewMapping) => {
     const now = performance.now()
-    const originLm = palmCenter(hand)
-    const origin = mapLandmark(originLm, view)
+    const aim = magicAim(hand)
+    const origin = mapLandmark(aim.origin, view)
+    // Always fire along the finger-sword axis (first-person forward), not swing residual.
     const ahead = mapLandmark(
-      { x: originLm.x + dirNorm.x * 0.08, y: originLm.y + dirNorm.y * 0.08, z: originLm.z },
+      {
+        x: aim.origin.x + aim.dir.x * 0.2,
+        y: aim.origin.y + aim.dir.y * 0.2,
+        z: aim.origin.z,
+      },
       view,
     )
     let dx = ahead.x - origin.x
@@ -613,15 +640,17 @@ export function HandGesturesTool() {
     const len = Math.hypot(dx, dy) || 1
     dx /= len
     dy /= len
-    fireMagicBullets(particlesRef.current, origin, { x: dx, y: dy }, 5)
-    flashRef.current = { until: now + 200, color: 'rgba(124, 77, 255, 0.4)' }
+    fireMagicBullets(particlesRef.current, origin, { x: dx, y: dy }, 6)
+    flashRef.current = { until: now + 160, color: 'rgba(179, 136, 255, 0.35)' }
     lastMagicCastRef.current = now
     lastFiredRef.current = { id: 'magic', at: now }
     magicReadyRef.current = false
     setMagicArmed(false)
     palmTrailRef.current = []
     chargePalmRef.current = null
-    setStatus('揮出！魔法發射')
+    chargeBladeRef.current = null
+    aimDirRef.current = null
+    setStatus('指劍 — 正前方發射！')
   }
 
   const updateMagicSwing = (hand: Landmark[], view: ViewMapping) => {
@@ -631,18 +660,25 @@ export function HandGesturesTool() {
       magicReadyRef.current = false
       setMagicArmed(false)
       chargePalmRef.current = null
+      chargeBladeRef.current = null
+      aimDirRef.current = null
       palmTrailRef.current = []
       setCooldownLeft(coolLeft)
       setGesture('magic')
-      setStatus(`魔法冷卻 ${(coolLeft / 1000).toFixed(1)}s`)
+      setStatus(`指劍冷卻 ${(coolLeft / 1000).toFixed(1)}s`)
       return
     }
     setCooldownLeft(0)
 
-    const palm = palmCenter(hand)
-    chargePalmRef.current = mapLandmark(palm, view)
-    palmTrailRef.current.push({ t: now, x: palm.x, y: palm.y })
-    palmTrailRef.current = palmTrailRef.current.filter((s) => now - s.t <= 220)
+    const aim = magicAim(hand)
+    const tip = mapLandmark(aim.origin, view)
+    const base = mapLandmark(aim.base, view)
+    chargePalmRef.current = tip
+    chargeBladeRef.current = { from: base, to: tip }
+    aimDirRef.current = aim.dir
+
+    palmTrailRef.current.push({ t: now, x: aim.origin.x, y: aim.origin.y })
+    palmTrailRef.current = palmTrailRef.current.filter((s) => now - s.t <= 200)
 
     magicReadyRef.current = true
     setMagicArmed(true)
@@ -654,16 +690,19 @@ export function HandGesturesTool() {
       const b = trail[trail.length - 1]
       const dt = b.t - a.t
       const travel = Math.hypot(b.x - a.x, b.y - a.y)
-      if (dt > 35 && travel > SWING_DISTANCE) {
+      if (dt > 30 && travel > SWING_DISTANCE * 0.85) {
         const speed = travel / dt
-        if (speed >= SWING_SPEED) {
-          const dir = { x: (b.x - a.x) / travel, y: (b.y - a.y) / travel }
-          castMagicFromSwing(hand, dir, view)
+        const vx = (b.x - a.x) / travel
+        const vy = (b.y - a.y) / travel
+        // Prefer thrust along the sword aim (dot with finger direction).
+        const alongAim = vx * aim.dir.x + vy * aim.dir.y
+        if (speed >= SWING_SPEED * 0.9 && alongAim > 0.35) {
+          castMagicFromSwing(hand, { x: vx, y: vy }, view)
           return
         }
       }
     }
-    setStatus('魔法蓄力中 — 保持手勢，向前用力揮出')
+    setStatus('指劍蓄力 — 朝正前方刺出／甩出')
   }
 
   const considerElement = (next: ElementId | null) => {
@@ -849,23 +888,51 @@ export function HandGesturesTool() {
       ctx.stroke()
     }
 
-    // Charged magic orb at palm.
+    // Charged finger-sword: blade + tip orb + forward aim guide.
     const charge = chargePalmRef.current
+    const blade = chargeBladeRef.current
     if (magicReadyRef.current && charge) {
-      const pulse = 1 + 0.15 * Math.sin(now / 90)
-      const g = ctx.createRadialGradient(charge.x, charge.y, 2, charge.x, charge.y, 34 * pulse)
+      if (blade) {
+        ctx.strokeStyle = 'rgba(224, 170, 255, 0.85)'
+        ctx.lineWidth = 5
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(blade.from.x, blade.from.y)
+        ctx.lineTo(blade.to.x, blade.to.y)
+        ctx.stroke()
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(blade.from.x, blade.from.y)
+        ctx.lineTo(blade.to.x, blade.to.y)
+        ctx.stroke()
+      }
+      const pulse = 1 + 0.12 * Math.sin(now / 80)
+      const g = ctx.createRadialGradient(charge.x, charge.y, 1, charge.x, charge.y, 28 * pulse)
       g.addColorStop(0, '#ffffff')
-      g.addColorStop(0.4, 'rgba(179, 136, 255, 0.9)')
+      g.addColorStop(0.35, 'rgba(179, 136, 255, 0.95)')
       g.addColorStop(1, 'rgba(124, 77, 255, 0)')
       ctx.fillStyle = g
       ctx.beginPath()
-      ctx.arc(charge.x, charge.y, 34 * pulse, 0, Math.PI * 2)
+      ctx.arc(charge.x, charge.y, 28 * pulse, 0, Math.PI * 2)
       ctx.fill()
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.arc(charge.x, charge.y, 18 * pulse, 0, Math.PI * 2)
-      ctx.stroke()
+
+      // First-person forward guide (dashed aim beam).
+      if (blade) {
+        const dx = blade.to.x - blade.from.x
+        const dy = blade.to.y - blade.from.y
+        const len = Math.hypot(dx, dy) || 1
+        const ux = dx / len
+        const uy = dy / len
+        ctx.setLineDash([10, 8])
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(charge.x, charge.y)
+        ctx.lineTo(charge.x + ux * Math.min(w, h) * 0.55, charge.y + uy * Math.min(w, h) * 0.55)
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
     }
 
     const next: Particle[] = []
@@ -894,7 +961,10 @@ export function HandGesturesTool() {
         })
         p.x += p.vx
         p.y += p.vy
-        p.life -= 0.01
+        p.life -= 0.012
+        // Perspective: shrink as projectile flies "into" the scene.
+        const depth = Math.max(0.22, p.life)
+        p.size = (p.baseSize ?? p.size) * (0.35 + 0.65 * depth)
 
         // Collision with targets → hit feedback.
         for (const t of targetsRef.current) {
@@ -912,19 +982,30 @@ export function HandGesturesTool() {
         }
 
         if (p.life > 0) {
-          const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 1.8)
+          const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 1.6)
           g.addColorStop(0, '#ffffff')
           g.addColorStop(0.35, p.color)
           g.addColorStop(1, 'rgba(124, 77, 255, 0)')
           ctx.fillStyle = g
           ctx.beginPath()
-          ctx.arc(p.x, p.y, p.size * 1.8, 0, Math.PI * 2)
+          ctx.arc(p.x, p.y, p.size * 1.6, 0, Math.PI * 2)
           ctx.fill()
           ctx.fillStyle = '#fff'
           ctx.beginPath()
-          ctx.arc(p.x, p.y, p.size * 0.45, 0, Math.PI * 2)
+          ctx.arc(p.x, p.y, Math.max(1.5, p.size * 0.35), 0, Math.PI * 2)
           ctx.fill()
         }
+      } else if (p.kind === 'muzzle') {
+        p.life -= 0.08
+        const alpha = Math.max(p.life, 0)
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * (1.2 - alpha * 0.3))
+        g.addColorStop(0, `rgba(255,255,255,${alpha})`)
+        g.addColorStop(0.4, `rgba(179,136,255,${0.7 * alpha})`)
+        g.addColorStop(1, 'rgba(124,77,255,0)')
+        ctx.fillStyle = g
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.size * (1.3 - alpha * 0.4), 0, Math.PI * 2)
+        ctx.fill()
       } else if (p.kind === 'trail') {
         p.life -= 0.04
         ctx.globalAlpha = Math.max(p.life, 0) * 0.55
@@ -1043,6 +1124,8 @@ export function HandGesturesTool() {
     setMagicArmed(false)
     magicReadyRef.current = false
     chargePalmRef.current = null
+    chargeBladeRef.current = null
+    aimDirRef.current = null
     palmTrailRef.current = []
     activeShapeRef.current = null
     dualGateRef.current = 'idle'
@@ -1128,6 +1211,8 @@ export function HandGesturesTool() {
         magicReadyRef.current = false
         setMagicArmed(false)
         chargePalmRef.current = null
+        chargeBladeRef.current = null
+        aimDirRef.current = null
         palmTrailRef.current = []
         considerGesture('none')
         considerElement(null)
@@ -1139,6 +1224,8 @@ export function HandGesturesTool() {
         magicReadyRef.current = false
         setMagicArmed(false)
         chargePalmRef.current = null
+        chargeBladeRef.current = null
+        aimDirRef.current = null
         considerElement(el)
         setStatus(`五行組合 · ${ELEMENT_META[el].label}（${ELEMENT_META[el].combo}）`)
         return
@@ -1159,6 +1246,8 @@ export function HandGesturesTool() {
       magicReadyRef.current = false
       setMagicArmed(false)
       chargePalmRef.current = null
+      chargeBladeRef.current = null
+      aimDirRef.current = null
       palmTrailRef.current = []
 
       const primaryIdx = ids.findIndex((id) => id !== 'none' && id !== 'l_shape')
@@ -1175,7 +1264,7 @@ export function HandGesturesTool() {
       } else if (primary !== 'none') {
         setStatus(`追蹤中 — ${GESTURE_META[primary].label}`)
       } else {
-        setStatus('追蹤中 — 比魔法手勢蓄力，揮出發射')
+        setStatus('追蹤中 — 比指劍蓄力，朝正前方刺出')
       }
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -1207,7 +1296,7 @@ export function HandGesturesTool() {
       await video.play()
 
       setRunning(true)
-      setStatus('後置鏡頭追蹤中 — 魔法手勢蓄力後揮出發射')
+      setStatus('後置鏡頭 — 指劍朝正前方刺出發射')
       setLoading(false)
       lastVideoTimeRef.current = -1
       lastDetectAtRef.current = 0
@@ -1301,14 +1390,14 @@ export function HandGesturesTool() {
   const badgeTitle = elMeta
     ? `五行 · ${elMeta.label}`
     : magicArmed
-      ? '魔法蓄力'
+      ? '指劍蓄力'
       : shapeLabel ?? meta.label
   const badgeSub = elMeta
     ? elMeta.effect
     : cooldownLeft > 0
       ? `冷卻 ${(cooldownLeft / 1000).toFixed(1)}s`
       : magicArmed
-        ? '向前揮出發射'
+        ? '朝正前方刺出'
         : shapeLabel
           ? '合攏→分開觸發'
           : meta.effect
@@ -1318,11 +1407,11 @@ export function HandGesturesTool() {
       <WindowFrame
         title="手勢特效.exe"
         footer={status}
-        toolbar={<span className="win__menu">Rear · Swing Magic · Hits</span>}
+        toolbar={<span className="win__menu">Rear · Finger Sword · FP</span>}
       >
         <div className="hand-tool">
           <p className="hand-tool__intro">
-            預設後置鏡頭。比出魔法手勢（拇指＋小指）蓄力，再用力揮出即可發射；打中金色目標會有 HIT 回饋。魔法冷卻約 1.5 秒。
+            預設後置鏡頭、第一視角發射。比出指劍（食指＋中指併攏）蓄力，沿指尖方向朝正前方刺出／甩出即可放出魔法彈。冷卻約 1.5 秒。
           </p>
 
           <div className="hand-tool__actions">
@@ -1375,7 +1464,7 @@ export function HandGesturesTool() {
             {!running ? (
               <div className="hand-tool__placeholder">
                 <p>開啟後置鏡頭，把手放進畫面</p>
-                <p className="muted">魔法蓄力 → 揮出發射 · 打金色目標</p>
+                <p className="muted">指劍蓄力 → 正前方刺出 · 打金色目標</p>
               </div>
             ) : null}
             <div className="hand-tool__badge" aria-live="polite">
@@ -1399,7 +1488,7 @@ export function HandGesturesTool() {
               </li>
             </ul>
             <p className="muted hand-tool__hint">
-              魔法：拇指＋小指蓄力，掌心紫球出現後向前揮出；打中金色目標會顯示 HIT。冷卻約 1.5 秒。
+              指劍：食指＋中指併攏伸出（其餘收起）。劍尖紫光蓄力後，朝指尖正前方刺出／甩出；彈道會逐漸變小，像射向遠方。冷卻約 1.5 秒。
             </p>
           </div>
 
@@ -1437,7 +1526,7 @@ export function HandGesturesTool() {
                     triggerEffect(id)
                     setStatus(
                       id === 'magic'
-                        ? '預覽：魔法揮出（可打金色目標）'
+                        ? '預覽：指劍正前方發射（可打金色目標）'
                         : `預覽：${GESTURE_META[id].label}`,
                     )
                   }}
