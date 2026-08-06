@@ -70,7 +70,7 @@ export const GESTURE_META: Record<GestureId, Omit<GestureInfo, 'id'>> = {
   fist: { label: '拳頭', effect: '震動波紋' },
   point: { label: '指向', effect: '雷射點' },
   l_shape: { label: 'L 手勢', effect: '開合後可成四邊形' },
-  magic: { label: '魔法手勢', effect: '發射魔法彈' },
+  magic: { label: '魔法手勢', effect: '蓄力後揮出發射（冷卻 1.5 秒）' },
 }
 
 export const ELEMENT_META: Record<
