@@ -1,4 +1,4 @@
-/** MediaPipe hand landmark indices */
+/** MediaPipe hand landmark indices — tips are 4 / 8 / 12 / 16 / 20 */
 export const HAND = {
   WRIST: 0,
   THUMB_CMC: 1,
@@ -23,9 +23,24 @@ export const HAND = {
   PINKY_TIP: 20,
 } as const
 
-export type Landmark = { x: number; y: number; z: number }
+export const FINGERTIP_IDS = [
+  HAND.THUMB_TIP,
+  HAND.INDEX_TIP,
+  HAND.MIDDLE_TIP,
+  HAND.RING_TIP,
+  HAND.PINKY_TIP,
+] as const
 
+export type Landmark = { x: number; y: number; z: number }
 export type Point2 = { x: number; y: number }
+
+export type ViewMapping = {
+  canvasW: number
+  canvasH: number
+  videoW: number
+  videoH: number
+  mirrored: boolean
+}
 
 export type GestureId =
   | 'none'
@@ -37,6 +52,8 @@ export type GestureId =
   | 'point'
   | 'l_shape'
   | 'magic'
+
+export type ElementId = 'metal' | 'wood' | 'water' | 'fire' | 'earth'
 
 export type GestureInfo = {
   id: GestureId
@@ -56,7 +73,17 @@ export const GESTURE_META: Record<GestureId, Omit<GestureInfo, 'id'>> = {
   magic: { label: '魔法手勢', effect: '發射魔法彈' },
 }
 
-/** Finger chains used for adaptive bone drawing */
+export const ELEMENT_META: Record<
+  ElementId,
+  { label: string; combo: string; effect: string; color: string }
+> = {
+  metal: { label: '金', combo: '雙手指向 或 雙手 L', effect: '金屬碎光', color: '#c0c7d1' },
+  wood: { label: '木', combo: '雙手耶', effect: '葉脈生長', color: '#4caf50' },
+  water: { label: '水', combo: '雙手張開', effect: '水流波紋', color: '#4fc3f7' },
+  fire: { label: '火', combo: '雙手比讚 或 雙手魔法', effect: '火焰爆發', color: '#ff5722' },
+  earth: { label: '土', combo: '雙手拳頭', effect: '地裂塵土', color: '#8d6e63' },
+}
+
 export const FINGER_CHAINS: number[][] = [
   [HAND.WRIST, HAND.THUMB_CMC, HAND.THUMB_MCP, HAND.THUMB_IP, HAND.THUMB_TIP],
   [HAND.WRIST, HAND.INDEX_MCP, HAND.INDEX_PIP, HAND.INDEX_DIP, HAND.INDEX_TIP],
@@ -65,7 +92,6 @@ export const FINGER_CHAINS: number[][] = [
   [HAND.WRIST, HAND.PINKY_MCP, HAND.PINKY_PIP, HAND.PINKY_DIP, HAND.PINKY_TIP],
 ]
 
-/** Palm outline indices (clockwise-ish) */
 export const PALM_OUTLINE = [
   HAND.WRIST,
   HAND.THUMB_CMC,
@@ -77,6 +103,14 @@ export const PALM_OUTLINE = [
 
 export function dist(a: Landmark | Point2, b: Landmark | Point2) {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+export function cloneLandmark(lm: Landmark): Landmark {
+  return { x: lm.x, y: lm.y, z: lm.z }
+}
+
+export function cloneHand(landmarks: Landmark[]): Landmark[] {
+  return landmarks.map(cloneLandmark)
 }
 
 export function palmCenter(landmarks: Landmark[]): Landmark {
@@ -115,7 +149,6 @@ function isOk(landmarks: Landmark[]) {
   return pinch && (middle || ring)
 }
 
-/** L: index + thumb out, other fingers curled. */
 export function isLShape(landmarks: Landmark[]) {
   if (!landmarks || landmarks.length < 21) return false
   const index = fingerExtended(landmarks, HAND.INDEX_TIP, HAND.INDEX_PIP, HAND.INDEX_MCP)
@@ -138,10 +171,6 @@ export function isLShape(landmarks: Landmark[]) {
   return cos > -0.35 && cos < 0.72
 }
 
-/**
- * Magic: thumb + pinky extended, other fingers curled (shaka / hang-loose).
- * Distinct from L (which needs index) and peace.
- */
 export function isMagic(landmarks: Landmark[]) {
   if (!landmarks || landmarks.length < 21) return false
   const index = fingerExtended(landmarks, HAND.INDEX_TIP, HAND.INDEX_PIP, HAND.INDEX_MCP)
@@ -150,7 +179,6 @@ export function isMagic(landmarks: Landmark[]) {
   const pinky = fingerExtended(landmarks, HAND.PINKY_TIP, HAND.PINKY_PIP, HAND.PINKY_MCP)
   if (!thumbExtended(landmarks) || !pinky) return false
   if (index || middle || ring) return false
-  // Thumb and pinky tips should be reasonably far apart.
   return dist(landmarks[HAND.THUMB_TIP], landmarks[HAND.PINKY_TIP]) > 0.14
 }
 
@@ -175,12 +203,30 @@ export function classifyGesture(landmarks: Landmark[]): GestureId {
   return 'none'
 }
 
+/** Dual-hand elemental combo. */
+export function classifyElement(hands: Landmark[][]): ElementId | null {
+  if (hands.length < 2) return null
+  const a = classifyGesture(hands[0])
+  const b = classifyGesture(hands[1])
+  const pair = new Set([a, b])
+
+  if (a === 'point' && b === 'point') return 'metal'
+  if (a === 'l_shape' && b === 'l_shape') return 'metal'
+  if (a === 'peace' && b === 'peace') return 'wood'
+  if (a === 'open_palm' && b === 'open_palm') return 'water'
+  if (a === 'thumbs_up' && b === 'thumbs_up') return 'fire'
+  if (a === 'magic' && b === 'magic') return 'fire'
+  if (a === 'fist' && b === 'fist') return 'earth'
+  if (pair.has('fist') && pair.has('open_palm')) return 'earth'
+  if (pair.has('magic') && pair.has('thumbs_up')) return 'fire'
+  return null
+}
+
 export function getLCorners(landmarks: Landmark[]): [Landmark, Landmark] | null {
   if (!isLShape(landmarks)) return null
   return [landmarks[HAND.THUMB_TIP], landmarks[HAND.INDEX_TIP]]
 }
 
-/** Direction a magic bullet should travel (palm forward-ish). */
 export function magicAim(landmarks: Landmark[]): { origin: Landmark; dir: Point2 } {
   const origin = palmCenter(landmarks)
   const target = {
@@ -190,9 +236,7 @@ export function magicAim(landmarks: Landmark[]): { origin: Landmark; dir: Point2
   let dx = target.x - origin.x
   let dy = target.y - origin.y
   const len = Math.hypot(dx, dy) || 1
-  dx /= len
-  dy /= len
-  return { origin, dir: { x: dx, y: dy } }
+  return { origin, dir: { x: dx / len, y: dy / len } }
 }
 
 export function orderPolygon(points: Point2[]): Point2[] {
@@ -204,10 +248,48 @@ export function orderPolygon(points: Point2[]): Point2[] {
     .sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx))
 }
 
-export function toScreenPoint(lm: Landmark, w: number, h: number, mirrored: boolean): Point2 {
+/** Map MediaPipe landmark onto canvas with object-fit: cover. */
+export function mapLandmark(lm: Landmark, view: ViewMapping): Point2 {
+  const { canvasW, canvasH, videoW, videoH, mirrored } = view
+  if (!videoW || !videoH) {
+    return {
+      x: (mirrored ? 1 - lm.x : lm.x) * canvasW,
+      y: lm.y * canvasH,
+    }
+  }
+  const scale = Math.max(canvasW / videoW, canvasH / videoH)
+  const dispW = videoW * scale
+  const dispH = videoH * scale
+  const ox = (canvasW - dispW) / 2
+  const oy = (canvasH - dispH) / 2
+  const nx = mirrored ? 1 - lm.x : lm.x
   return {
-    x: mirrored ? (1 - lm.x) * w : lm.x * w,
-    y: lm.y * h,
+    x: ox + nx * dispW,
+    y: oy + lm.y * dispH,
+  }
+}
+
+/** Extend past tip slightly along DIP→TIP so rings sit on visible fingertips. */
+export function fingertipDisplayPoint(landmarks: Landmark[], tipId: number): Landmark {
+  const tip = landmarks[tipId]
+  const dipId =
+    tipId === HAND.THUMB_TIP
+      ? HAND.THUMB_IP
+      : tipId === HAND.INDEX_TIP
+        ? HAND.INDEX_DIP
+        : tipId === HAND.MIDDLE_TIP
+          ? HAND.MIDDLE_DIP
+          : tipId === HAND.RING_TIP
+            ? HAND.RING_DIP
+            : HAND.PINKY_DIP
+  const dip = landmarks[dipId]
+  const dx = tip.x - dip.x
+  const dy = tip.y - dip.y
+  const dz = tip.z - dip.z
+  return {
+    x: tip.x + dx * 0.18,
+    y: tip.y + dy * 0.18,
+    z: tip.z + dz * 0.18,
   }
 }
 
@@ -217,7 +299,6 @@ export type DualShape = {
   label: string
 }
 
-/** Build a shape snapshot only when caller decides (after close→open). */
 export function buildDualShape(hands: Landmark[][]): DualShape | null {
   if (hands.length < 2) return null
   const a = hands[0]
@@ -227,21 +308,20 @@ export function buildDualShape(hands: Landmark[][]): DualShape | null {
   if (cornersA && cornersB) {
     return {
       kind: 'l_quad',
-      points: [...cornersA, ...cornersB],
+      points: [...cornersA, ...cornersB].map(cloneLandmark),
       label: '雙手 L → 四邊形',
     }
   }
-  // Span between open palms: outer fingertips + wrists.
   return {
     kind: 'span',
     points: [
-      a[HAND.THUMB_TIP],
-      a[HAND.INDEX_TIP],
-      a[HAND.PINKY_TIP],
-      b[HAND.THUMB_TIP],
-      b[HAND.INDEX_TIP],
-      b[HAND.PINKY_TIP],
-    ],
+      fingertipDisplayPoint(a, HAND.THUMB_TIP),
+      fingertipDisplayPoint(a, HAND.INDEX_TIP),
+      fingertipDisplayPoint(a, HAND.PINKY_TIP),
+      fingertipDisplayPoint(b, HAND.THUMB_TIP),
+      fingertipDisplayPoint(b, HAND.INDEX_TIP),
+      fingertipDisplayPoint(b, HAND.PINKY_TIP),
+    ].map(cloneLandmark),
     label: '開合展開 → 雙手圖形',
   }
 }
@@ -251,7 +331,18 @@ export function handsSeparation(hands: Landmark[][]): number | null {
   return dist(palmCenter(hands[0]), palmCenter(hands[1]))
 }
 
-/** How open / curled a finger tip is (0 curled → 1 extended), for bone width. */
+/** Nearest fingertip distance between two hands (often better for “合攏”). */
+export function handsTipSeparation(hands: Landmark[][]): number | null {
+  if (hands.length < 2) return null
+  let min = Infinity
+  for (const ia of FINGERTIP_IDS) {
+    for (const ib of FINGERTIP_IDS) {
+      min = Math.min(min, dist(hands[0][ia], hands[1][ib]))
+    }
+  }
+  return Number.isFinite(min) ? min : null
+}
+
 export function fingerOpenness(landmarks: Landmark[], tip: number, pip: number, mcp: number) {
   const wrist = landmarks[HAND.WRIST]
   const tipD = dist(landmarks[tip], wrist)

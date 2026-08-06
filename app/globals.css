@@ -829,6 +829,11 @@ code {
   font-size: 0.82rem;
 }
 
+.hand-tool__gate {
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
 .hand-tool__error {
   color: #9b1c1c;
   background: #ffe8e4;
