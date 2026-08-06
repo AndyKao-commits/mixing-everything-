@@ -942,12 +942,10 @@ code {
   gap: 0.35rem;
 }
 
-.hand-tool__legend li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: baseline;
-  font-size: 0.95rem;
+.hand-tool__hint {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 @keyframes hand-shake {
