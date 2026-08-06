@@ -6,9 +6,15 @@ import {
   GESTURE_META,
   HAND_CONNECTIONS,
   classifyGesture,
+  orderPolygon,
+  shapeBetweenHands,
+  toScreenPoint,
   type GestureId,
   type Landmark,
+  type Point2,
 } from './gestures'
+
+type FacingMode = 'user' | 'environment'
 
 type Particle = {
   x: number
@@ -21,18 +27,20 @@ type Particle = {
   kind: 'firework' | 'spark' | 'ripple'
 }
 
-type FlashState = {
-  until: number
-  color: string
-}
-
-type GlowState = {
-  until: number
-  intensity: number
-}
+type FlashState = { until: number; color: string }
+type GlowState = { until: number; intensity: number }
 
 const HOLD_MS = 280
 const COOLDOWN_MS = 900
+const PREVIEW_GESTURES: GestureId[] = [
+  'thumbs_up',
+  'ok',
+  'open_palm',
+  'peace',
+  'fist',
+  'point',
+  'l_shape',
+]
 
 function burstFireworks(particles: Particle[], w: number, h: number) {
   const cx = w * (0.35 + Math.random() * 0.3)
@@ -88,17 +96,13 @@ function drawSkeleton(
   w: number,
   h: number,
   mirrored: boolean,
+  color = '#e4572e',
 ) {
-  const pt = (i: number) => {
-    const lm = landmarks[i]
-    const x = mirrored ? (1 - lm.x) * w : lm.x * w
-    const y = lm.y * h
-    return { x, y }
-  }
+  const pt = (i: number) => toScreenPoint(landmarks[i], w, h, mirrored)
 
   ctx.lineWidth = 3
   ctx.strokeStyle = 'rgba(26, 26, 26, 0.85)'
-  ctx.fillStyle = '#e4572e'
+  ctx.fillStyle = color
 
   for (const [a, b] of HAND_CONNECTIONS) {
     const p1 = pt(a)
@@ -117,6 +121,54 @@ function drawSkeleton(
   }
 }
 
+function drawShapePolygon(
+  ctx: CanvasRenderingContext2D,
+  points: Point2[],
+  kind: 'l_quad' | 'hull',
+) {
+  if (points.length < 3) return
+  const ordered = orderPolygon(points)
+  ctx.beginPath()
+  ctx.moveTo(ordered[0].x, ordered[0].y)
+  for (let i = 1; i < ordered.length; i++) {
+    ctx.lineTo(ordered[i].x, ordered[i].y)
+  }
+  ctx.closePath()
+
+  if (kind === 'l_quad') {
+    ctx.fillStyle = 'rgba(228, 87, 46, 0.28)'
+    ctx.strokeStyle = 'rgba(228, 87, 46, 0.95)'
+    ctx.lineWidth = 4
+  } else {
+    ctx.fillStyle = 'rgba(79, 195, 247, 0.18)'
+    ctx.strokeStyle = 'rgba(26, 26, 26, 0.65)'
+    ctx.lineWidth = 3
+    ctx.setLineDash([8, 6])
+  }
+  ctx.fill()
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  ctx.fillStyle = kind === 'l_quad' ? '#e4572e' : '#1a1a1a'
+  for (const p of ordered) {
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#fffdf8'
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+}
+
+function sampleDualLPoints(w: number, h: number): Point2[] {
+  return orderPolygon([
+    { x: w * 0.28, y: h * 0.32 },
+    { x: w * 0.38, y: h * 0.62 },
+    { x: w * 0.72, y: h * 0.28 },
+    { x: w * 0.66, y: h * 0.68 },
+  ])
+}
+
 export function HandGesturesTool() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -130,17 +182,24 @@ export function HandGesturesTool() {
   const flashRef = useRef<FlashState | null>(null)
   const glowRef = useRef<GlowState | null>(null)
   const laserRef = useRef<{ x: number; y: number; until: number } | null>(null)
+  const demoShapeRef = useRef<{ points: Point2[]; until: number } | null>(null)
   const lastVideoTimeRef = useRef(-1)
+  const facingRef = useRef<FacingMode>('user')
+  const mirroredRef = useRef(true)
 
   const holdGestureRef = useRef<GestureId>('none')
   const holdSinceRef = useRef(0)
   const lastFiredRef = useRef<{ id: GestureId; at: number }>({ id: 'none', at: 0 })
-  const landmarksRef = useRef<Landmark[] | null>(null)
+  const handsRef = useRef<Landmark[][]>([])
+  const shapeLabelRef = useRef<string | null>(null)
 
   const [running, setRunning] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [switching, setSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [gesture, setGesture] = useState<GestureId>('none')
+  const [shapeLabel, setShapeLabel] = useState<string | null>(null)
+  const [facing, setFacing] = useState<FacingMode>('user')
   const [shake, setShake] = useState(false)
   const [status, setStatus] = useState('尚未啟動鏡頭')
 
@@ -150,6 +209,7 @@ export function HandGesturesTool() {
     const w = canvas.width
     const h = canvas.height
     const now = performance.now()
+    const mirrored = mirroredRef.current
 
     if (id === 'thumbs_up') {
       burstFireworks(particlesRef.current, w, h)
@@ -173,16 +233,15 @@ export function HandGesturesTool() {
       setShake(true)
       setTimeout(() => setShake(false), 450)
     } else if (id === 'point') {
-      const lm = landmarksRef.current
+      const lm = handsRef.current[0]
       if (lm) {
-        laserRef.current = {
-          x: (1 - lm[8].x) * w,
-          y: lm[8].y * h,
-          until: now + 700,
-        }
+        const p = toScreenPoint(lm[8], w, h, mirrored)
+        laserRef.current = { x: p.x, y: p.y, until: now + 700 }
       } else {
         laserRef.current = { x: w * 0.5, y: h * 0.35, until: now + 700 }
       }
+    } else if (id === 'l_shape') {
+      flashRef.current = { until: now + 260, color: 'rgba(228, 87, 46, 0.28)' }
     }
   }
 
@@ -195,7 +254,7 @@ export function HandGesturesTool() {
       return
     }
     setGesture(next)
-    if (next === 'none') return
+    if (next === 'none' || next === 'l_shape') return
     if (now - holdSinceRef.current < HOLD_MS) return
     const last = lastFiredRef.current
     if (last.id === next && now - last.at < COOLDOWN_MS) return
@@ -253,6 +312,13 @@ export function HandGesturesTool() {
       laserRef.current = null
     }
 
+    const demo = demoShapeRef.current
+    if (demo && demo.until > now) {
+      drawShapePolygon(ctx, demo.points, 'l_quad')
+    } else if (demo) {
+      demoShapeRef.current = null
+    }
+
     const next: Particle[] = []
     for (const p of particlesRef.current) {
       if (p.kind === 'ripple') {
@@ -282,7 +348,6 @@ export function HandGesturesTool() {
 
   const syncCanvasSize = () => {
     const stage = stageRef.current
-    const video = videoRef.current
     const overlay = overlayRef.current
     const effect = effectRef.current
     if (!stage || !overlay || !effect) return
@@ -294,23 +359,54 @@ export function HandGesturesTool() {
         c.height = h
       }
     }
-    if (video && video.videoWidth) {
-      // keep object-fit cover alignment for drawing
+  }
+
+  const paintOverlay = (hands: Landmark[][], mirrored: boolean) => {
+    const overlay = overlayRef.current
+    if (!overlay) return
+    const ctx = overlay.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, overlay.width, overlay.height)
+
+    const colors = ['#e4572e', '#2a9d8f']
+    hands.forEach((hand, i) => {
+      drawSkeleton(ctx, hand, overlay.width, overlay.height, mirrored, colors[i % colors.length])
+    })
+
+    const shape = shapeBetweenHands(hands)
+    if (shape) {
+      const screenPts = shape.points.map((p) =>
+        toScreenPoint(p, overlay.width, overlay.height, mirrored),
+      )
+      drawShapePolygon(ctx, screenPts, shape.kind)
+      if (shapeLabelRef.current !== shape.label) {
+        shapeLabelRef.current = shape.label
+        setShapeLabel(shape.label)
+      }
+    } else if (shapeLabelRef.current) {
+      shapeLabelRef.current = null
+      setShapeLabel(null)
     }
+  }
+
+  const stopTracksOnly = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
   }
 
   const stopCamera = () => {
     cancelAnimationFrame(rafRef.current)
     rafRef.current = 0
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
+    stopTracksOnly()
     landmarkerRef.current?.close()
     landmarkerRef.current = null
-    if (videoRef.current) videoRef.current.srcObject = null
     setRunning(false)
     setStatus('已停止')
     setGesture('none')
-    landmarksRef.current = null
+    setShapeLabel(null)
+    shapeLabelRef.current = null
+    handsRef.current = []
     const overlay = overlayRef.current
     if (overlay) {
       const ctx = overlay.getContext('2d')
@@ -318,90 +414,142 @@ export function HandGesturesTool() {
     }
   }
 
-  const startCamera = async () => {
+  const openStream = async (mode: FacingMode) => {
+    const constraints: MediaStreamConstraints = {
+      audio: false,
+      video: {
+        facingMode: { ideal: mode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    }
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints)
+    } catch (firstErr) {
+      // Some desktops reject facingMode ideal — retry plain video.
+      if (mode === 'environment') throw firstErr
+      return navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+      })
+    }
+  }
+
+  const ensureLandmarker = async () => {
+    if (landmarkerRef.current) return landmarkerRef.current
+    const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
+    const vision = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
+    )
+    const landmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath:
+          'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 2,
+    })
+    landmarkerRef.current = landmarker
+    return landmarker
+  }
+
+  const startLoop = (video: HTMLVideoElement) => {
+    cancelAnimationFrame(rafRef.current)
+    const loop = () => {
+      rafRef.current = requestAnimationFrame(loop)
+      syncCanvasSize()
+      paintEffects()
+
+      const lm = landmarkerRef.current
+      const mirrored = mirroredRef.current
+      if (!lm || !video) return
+      if (video.readyState < 2) return
+
+      const now = performance.now()
+      if (video.currentTime === lastVideoTimeRef.current) {
+        paintOverlay(handsRef.current, mirrored)
+        return
+      }
+      lastVideoTimeRef.current = video.currentTime
+
+      const result = lm.detectForVideo(video, now)
+      const hands = (result.landmarks ?? []).filter((h) => h.length >= 21) as Landmark[][]
+      handsRef.current = hands
+      paintOverlay(hands, mirrored)
+
+      if (hands.length === 0) {
+        considerGesture('none')
+        return
+      }
+
+      const shape = shapeBetweenHands(hands)
+      if (shape?.kind === 'l_quad') {
+        setGesture('l_shape')
+        holdGestureRef.current = 'l_shape'
+        setStatus('雙手 L：四個頂角連成四邊形')
+        return
+      }
+
+      // Prefer a non-none gesture from either hand for single-hand effects.
+      const ids = hands.map((h) => classifyGesture(h))
+      const primary =
+        ids.find((id) => id !== 'none' && id !== 'l_shape') ?? ids.find((id) => id !== 'none') ?? 'none'
+      considerGesture(primary)
+      if (hands.length > 1 && shape) {
+        setStatus(`${GESTURE_META[primary].label} · ${shape.label}`)
+      } else if (primary !== 'none') {
+        setStatus(`追蹤中 — ${GESTURE_META[primary].label}`)
+      } else {
+        setStatus('追蹤中 — 比個手勢試試')
+      }
+    }
+    rafRef.current = requestAnimationFrame(loop)
+  }
+
+  const applyFacing = (mode: FacingMode) => {
+    facingRef.current = mode
+    mirroredRef.current = mode === 'user'
+    setFacing(mode)
+    const video = videoRef.current
+    if (video) {
+      video.style.transform = mode === 'user' ? 'scaleX(-1)' : 'none'
+    }
+  }
+
+  const startCamera = async (mode: FacingMode = facingRef.current) => {
     setError(null)
     setLoading(true)
     setStatus('載入手部模型中…')
     try {
-      const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
-      const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
-      )
-      const landmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-          delegate: 'GPU',
-        },
-        runningMode: 'VIDEO',
-        numHands: 1,
-      })
-      landmarkerRef.current = landmarker
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
+      await ensureLandmarker()
+      const stream = await openStream(mode)
+      stopTracksOnly()
       streamRef.current = stream
       const video = videoRef.current
       if (!video) throw new Error('找不到 video 元素')
       video.srcObject = stream
+      applyFacing(mode)
       await video.play()
 
       setRunning(true)
-      setStatus('追蹤中 — 比個手勢試試')
+      setStatus('追蹤中 — 單手特效，雙手比 L 可畫四邊形')
       setLoading(false)
-
-      const loop = () => {
-        rafRef.current = requestAnimationFrame(loop)
-        syncCanvasSize()
-        paintEffects()
-
-        const lm = landmarkerRef.current
-        const overlay = overlayRef.current
-        if (!lm || !video || !overlay) return
-        if (video.readyState < 2) return
-
-        const now = performance.now()
-        if (video.currentTime === lastVideoTimeRef.current) {
-          // still redraw skeleton from last landmarks
-          const ctx = overlay.getContext('2d')
-          if (ctx) {
-            ctx.clearRect(0, 0, overlay.width, overlay.height)
-            if (landmarksRef.current) {
-              drawSkeleton(ctx, landmarksRef.current, overlay.width, overlay.height, true)
-            }
-          }
-          return
-        }
-        lastVideoTimeRef.current = video.currentTime
-
-        const result = lm.detectForVideo(video, now)
-        const ctx = overlay.getContext('2d')
-        if (!ctx) return
-        ctx.clearRect(0, 0, overlay.width, overlay.height)
-
-        const hand = result.landmarks?.[0]
-        if (hand && hand.length >= 21) {
-          landmarksRef.current = hand as Landmark[]
-          drawSkeleton(ctx, landmarksRef.current, overlay.width, overlay.height, true)
-          considerGesture(classifyGesture(landmarksRef.current))
-        } else {
-          landmarksRef.current = null
-          considerGesture('none')
-        }
-      }
-      rafRef.current = requestAnimationFrame(loop)
+      lastVideoTimeRef.current = -1
+      startLoop(video)
     } catch (err) {
       console.error(err)
       setLoading(false)
       setRunning(false)
-      const message =
-        err instanceof Error ? err.message : '無法啟動鏡頭或載入模型'
+      const message = err instanceof Error ? err.message : '無法啟動鏡頭或載入模型'
       if (/NotAllowedError|Permission/i.test(String(err))) {
         setError('需要允許攝影機權限才能追蹤手部。')
-      } else if (/NotFoundError|Requested device not found|DevicesNotFound/i.test(String(err))) {
-        setError('找不到攝影機。可先用下方按鈕預覽特效，有鏡頭再開啟追蹤。')
+      } else if (/NotFoundError|Requested device not found|DevicesNotFound|could not start/i.test(String(err))) {
+        setError(
+          mode === 'environment'
+            ? '找不到後置鏡頭。可改回前置，或用下方按鈕預覽。'
+            : '找不到攝影機。可先用下方按鈕預覽特效，有鏡頭再開啟追蹤。',
+        )
       } else {
         setError(message)
       }
@@ -410,8 +558,50 @@ export function HandGesturesTool() {
     }
   }
 
+  const switchCamera = async () => {
+    if (!running || switching) return
+    const next: FacingMode = facingRef.current === 'user' ? 'environment' : 'user'
+    setSwitching(true)
+    setError(null)
+    setStatus(next === 'user' ? '切換前置鏡頭…' : '切換後置鏡頭…')
+    try {
+      const stream = await openStream(next)
+      stopTracksOnly()
+      streamRef.current = stream
+      const video = videoRef.current
+      if (!video) throw new Error('找不到 video 元素')
+      video.srcObject = stream
+      applyFacing(next)
+      await video.play()
+      lastVideoTimeRef.current = -1
+      setStatus(next === 'user' ? '前置鏡頭' : '後置鏡頭')
+    } catch (err) {
+      console.error(err)
+      setError(
+        next === 'environment'
+          ? '這台裝置可能沒有後置鏡頭，或瀏覽器不支援切換。'
+          : '無法切換回前置鏡頭。',
+      )
+      // Try to restore previous camera.
+      try {
+        const stream = await openStream(facingRef.current)
+        stopTracksOnly()
+        streamRef.current = stream
+        const video = videoRef.current
+        if (video) {
+          video.srcObject = stream
+          applyFacing(facingRef.current)
+          await video.play()
+        }
+      } catch {
+        /* keep error */
+      }
+    } finally {
+      setSwitching(false)
+    }
+  }
+
   useEffect(() => {
-    // Keep effects animating when camera loop is not painting (preview buttons).
     let id = 0
     const tick = () => {
       id = requestAnimationFrame(tick)
@@ -431,18 +621,19 @@ export function HandGesturesTool() {
   }, [])
 
   const meta = GESTURE_META[gesture]
-  const previewGestures: GestureId[] = ['thumbs_up', 'ok', 'open_palm', 'peace', 'fist', 'point']
+  const badgeTitle = shapeLabel ?? meta.label
+  const badgeSub = shapeLabel ? '四個頂角連線' : meta.effect
 
   return (
-    <div className="tool-page">
+    <div className="tool-page tool-page--camera">
       <WindowFrame
         title="手勢特效.exe"
         footer={status}
-        toolbar={<span className="win__menu">Camera · Gestures · Effects</span>}
+        toolbar={<span className="win__menu">Camera · Gestures · Shapes</span>}
       >
         <div className="hand-tool">
           <p className="hand-tool__intro">
-            用鏡頭抓手部骨架，辨識手勢後觸發不同特效。個人實驗用，資料都在本機。
+            鏡頭追蹤單／雙手骨架。單手觸發特效；兩手都比 L 時，四個頂角會連成不規則四邊形。
           </p>
 
           <div className="hand-tool__actions">
@@ -451,22 +642,42 @@ export function HandGesturesTool() {
                 type="button"
                 className="btn btn--primary"
                 disabled={loading}
-                onClick={() => void startCamera()}
+                onClick={() => void startCamera('user')}
               >
                 {loading ? '載入中…' : '開啟鏡頭'}
               </button>
             ) : (
-              <button type="button" className="btn btn--ghost" onClick={stopCamera}>
-                關閉鏡頭
-              </button>
+              <>
+                <button type="button" className="btn btn--ghost" onClick={stopCamera}>
+                  關閉鏡頭
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  disabled={switching}
+                  onClick={() => void switchCamera()}
+                >
+                  {switching
+                    ? '切換中…'
+                    : facing === 'user'
+                      ? '切換後置鏡頭'
+                      : '切換前置鏡頭'}
+                </button>
+              </>
             )}
+            <span className="hand-tool__facing muted">
+              目前：{facing === 'user' ? '前置' : '後置'}
+              {facing === 'user' ? '（鏡像）' : ''}
+            </span>
           </div>
 
           {error ? <p className="hand-tool__error">{error}</p> : null}
 
           <div
             ref={stageRef}
-            className={`hand-tool__stage${shake ? ' is-shake' : ''}${running ? ' is-live' : ''}`}
+            className={`hand-tool__stage${shake ? ' is-shake' : ''}${running ? ' is-live' : ''}${
+              facing === 'user' ? ' is-mirrored' : ''
+            }`}
           >
             <video ref={videoRef} className="hand-tool__video" playsInline muted />
             <canvas ref={overlayRef} className="hand-tool__overlay" />
@@ -474,37 +685,42 @@ export function HandGesturesTool() {
             {!running ? (
               <div className="hand-tool__placeholder">
                 <p>開啟鏡頭後，把手放進畫面</p>
-                <p className="muted">也可先用下方按鈕預覽特效</p>
+                <p className="muted">雙手比 L 可看到四邊形 · 也可先預覽特效</p>
               </div>
             ) : null}
             <div className="hand-tool__badge" aria-live="polite">
-              <strong>{meta.label}</strong>
-              <span>{meta.effect}</span>
+              <strong>{badgeTitle}</strong>
+              <span>{badgeSub}</span>
             </div>
           </div>
 
           <div className="hand-tool__legend">
             <p className="hand-tool__legend-title">手勢對應</p>
             <ul>
-              {previewGestures.map((id) => (
+              {PREVIEW_GESTURES.map((id) => (
                 <li key={id}>
                   <span>{GESTURE_META[id].label}</span>
                   <span className="muted">→ {GESTURE_META[id].effect}</span>
                 </li>
               ))}
+              <li>
+                <span>雙手都比 L</span>
+                <span className="muted">→ 四個頂角連成四邊形</span>
+              </li>
             </ul>
           </div>
 
           <div className="hand-tool__preview">
-            <p className="hand-tool__legend-title">預覽特效（不用鏡頭）</p>
+            <p className="hand-tool__legend-title">預覽（不用鏡頭）</p>
             <div className="hand-tool__preview-actions">
-              {previewGestures.map((id) => (
+              {PREVIEW_GESTURES.filter((id) => id !== 'l_shape').map((id) => (
                 <button
                   key={id}
                   type="button"
                   className="btn btn--ghost"
                   onClick={() => {
                     setGesture(id)
+                    setShapeLabel(null)
                     triggerEffect(id)
                     setStatus(`預覽：${GESTURE_META[id].label} → ${GESTURE_META[id].effect}`)
                   }}
@@ -512,6 +728,22 @@ export function HandGesturesTool() {
                   {GESTURE_META[id].label}
                 </button>
               ))}
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  syncCanvasSize()
+                  const canvas = effectRef.current
+                  if (!canvas) return
+                  const points = sampleDualLPoints(canvas.width || 800, canvas.height || 450)
+                  demoShapeRef.current = { points, until: performance.now() + 2800 }
+                  setGesture('l_shape')
+                  setShapeLabel('雙手 L → 四邊形')
+                  setStatus('預覽：雙手 L → 不規則四邊形')
+                }}
+              >
+                雙手 L 四邊形
+              </button>
             </div>
           </div>
         </div>
