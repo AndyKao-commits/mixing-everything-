@@ -3,21 +3,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { WindowFrame } from '@/components/WindowFrame'
 import {
+  ELEMENT_META,
+  FINGERTIP_IDS,
   FINGER_CHAINS,
   GESTURE_META,
   HAND,
   PALM_OUTLINE,
   buildDualShape,
+  classifyElement,
   classifyGesture,
+  cloneHand,
   fingerOpenness,
+  fingertipDisplayPoint,
   handsSeparation,
+  handsTipSeparation,
   magicAim,
+  mapLandmark,
   orderPolygon,
-  toScreenPoint,
   type DualShape,
+  type ElementId,
   type GestureId,
   type Landmark,
   type Point2,
+  type ViewMapping,
 } from './gestures'
 
 type FacingMode = 'user' | 'environment'
@@ -30,7 +38,7 @@ type Particle = {
   life: number
   color: string
   size: number
-  kind: 'firework' | 'spark' | 'ripple' | 'bullet' | 'trail'
+  kind: 'firework' | 'spark' | 'ripple' | 'bullet' | 'trail' | 'ember' | 'leaf' | 'drop' | 'shard' | 'dust'
 }
 
 type FlashState = { until: number; color: string }
@@ -40,9 +48,10 @@ type DualGate = 'idle' | 'closed' | 'ready'
 const HOLD_MS = 280
 const COOLDOWN_MS = 900
 const MAGIC_COOLDOWN_MS = 420
-const CLOSE_THRESH = 0.16
-const OPEN_THRESH = 0.3
-const SHAPE_HOLD_MS = 4500
+const ELEMENT_COOLDOWN_MS = 1200
+const DETECT_INTERVAL_MS = 500
+const SHAPE_HOLD_MS = 5000
+const CLOSED_HOLD_MS = 180
 
 const PREVIEW_GESTURES: GestureId[] = [
   'thumbs_up',
@@ -55,8 +64,8 @@ const PREVIEW_GESTURES: GestureId[] = [
 ]
 
 const HAND_COLORS = [
-  { bone: '#c44b28', joint: '#e4572e', palm: 'rgba(228, 87, 46, 0.22)' },
-  { bone: '#1f7a6e', joint: '#2a9d8f', palm: 'rgba(42, 157, 143, 0.22)' },
+  { bone: '#c44b28', joint: '#e4572e', palm: 'rgba(228, 87, 46, 0.22)', tip: '#ff8a65' },
+  { bone: '#1f7a6e', joint: '#2a9d8f', palm: 'rgba(42, 157, 143, 0.22)', tip: '#80cbc4' },
 ]
 
 function burstFireworks(particles: Particle[], w: number, h: number) {
@@ -107,12 +116,7 @@ function burstRipple(particles: Particle[], w: number, h: number) {
   })
 }
 
-function fireMagicBullets(
-  particles: Particle[],
-  origin: Point2,
-  dir: Point2,
-  count = 3,
-) {
+function fireMagicBullets(particles: Particle[], origin: Point2, dir: Point2, count = 3) {
   const colors = ['#b388ff', '#7c4dff', '#ea80fc', '#82b1ff', '#ffffff']
   for (let i = 0; i < count; i++) {
     const spread = (i - (count - 1) / 2) * 0.18
@@ -134,8 +138,93 @@ function fireMagicBullets(
   }
 }
 
+function castElement(particles: Particle[], w: number, h: number, element: ElementId) {
+  const cx = w / 2
+  const cy = h / 2
+  if (element === 'fire') {
+    for (let i = 0; i < 70; i++) {
+      const a = Math.random() * Math.PI * 2
+      const s = 2 + Math.random() * 5
+      particles.push({
+        x: cx + (Math.random() - 0.5) * 40,
+        y: cy + 40,
+        vx: Math.cos(a) * s * 0.4,
+        vy: -Math.abs(Math.sin(a) * s) - 2,
+        life: 1,
+        color: i % 2 ? '#ff5722' : '#ffc107',
+        size: 3 + Math.random() * 4,
+        kind: 'ember',
+      })
+    }
+  } else if (element === 'water') {
+    for (let i = 0; i < 55; i++) {
+      particles.push({
+        x: Math.random() * w,
+        y: -10 - Math.random() * 40,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: 2 + Math.random() * 4,
+        life: 1,
+        color: i % 2 ? '#4fc3f7' : '#0288d1',
+        size: 2 + Math.random() * 3,
+        kind: 'drop',
+      })
+    }
+    particles.push({
+      x: cx,
+      y: cy,
+      vx: 0,
+      vy: 0,
+      life: 1,
+      color: 'rgba(79, 195, 247, 0.5)',
+      size: 10,
+      kind: 'ripple',
+    })
+  } else if (element === 'wood') {
+    for (let i = 0; i < 50; i++) {
+      particles.push({
+        x: cx + (Math.random() - 0.5) * w * 0.5,
+        y: h + 10,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: -2 - Math.random() * 3.5,
+        life: 1,
+        color: i % 2 ? '#66bb6a' : '#2e7d32',
+        size: 3 + Math.random() * 3,
+        kind: 'leaf',
+      })
+    }
+  } else if (element === 'metal') {
+    for (let i = 0; i < 60; i++) {
+      const a = (Math.PI * 2 * i) / 60
+      const s = 3 + Math.random() * 6
+      particles.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s,
+        life: 1,
+        color: i % 2 ? '#eceff1' : '#90a4ae',
+        size: 2 + Math.random() * 2.5,
+        kind: 'shard',
+      })
+    }
+  } else {
+    for (let i = 0; i < 65; i++) {
+      particles.push({
+        x: cx + (Math.random() - 0.5) * 80,
+        y: cy + 30,
+        vx: (Math.random() - 0.5) * 4,
+        vy: -1 - Math.random() * 3,
+        life: 1,
+        color: i % 2 ? '#8d6e63' : '#a1887f',
+        size: 2 + Math.random() * 4,
+        kind: 'dust',
+      })
+    }
+    burstRipple(particles, w, h)
+  }
+}
+
 function depthScale(z: number) {
-  // MediaPipe z is roughly relative; closer (more negative) → larger.
   return Math.max(0.7, Math.min(1.45, 1.05 - z * 3.2))
 }
 
@@ -162,19 +251,15 @@ function drawBone(
   ctx.fill()
 }
 
-/** Skeleton that thickens with open fingers and scales joints by depth. */
 function drawAdaptiveSkeleton(
   ctx: CanvasRenderingContext2D,
   landmarks: Landmark[],
-  w: number,
-  h: number,
-  mirrored: boolean,
+  view: ViewMapping,
   palette = HAND_COLORS[0],
 ) {
-  const pt = (i: number) => toScreenPoint(landmarks[i], w, h, mirrored)
+  const pt = (i: number) => mapLandmark(landmarks[i], view)
   const scaleOf = (i: number) => depthScale(landmarks[i].z)
 
-  // Palm plate follows current hand posture.
   const palm = PALM_OUTLINE.map((i) => pt(i))
   ctx.beginPath()
   ctx.moveTo(palm[0].x, palm[0].y)
@@ -200,10 +285,14 @@ function drawAdaptiveSkeleton(
     for (let i = 0; i < chain.length - 1; i++) {
       const ia = chain[i]
       const ib = chain[i + 1]
+      const tipPt =
+        i === chain.length - 2 && (FINGERTIP_IDS as readonly number[]).includes(ib)
+          ? mapLandmark(fingertipDisplayPoint(landmarks, ib), view)
+          : pt(ib)
       const taper = 1 - i * 0.14
       const wa = (baseW * taper * scaleOf(ia)) / 2
       const wb = (baseW * (taper - 0.1) * scaleOf(ib)) / 2
-      drawBone(ctx, pt(ia), pt(ib), Math.max(wa, 1.2), Math.max(wb, 1), palette.bone)
+      drawBone(ctx, pt(ia), tipPt, Math.max(wa, 1.2), Math.max(wb, 1), palette.bone)
     }
   })
 
@@ -214,28 +303,22 @@ function drawAdaptiveSkeleton(
     HAND.PINKY_MCP,
     HAND.THUMB_MCP,
   ])
-  const tipJoints = new Set<number>([
-    HAND.THUMB_TIP,
-    HAND.INDEX_TIP,
-    HAND.MIDDLE_TIP,
-    HAND.RING_TIP,
-    HAND.PINKY_TIP,
-  ])
 
   for (let i = 0; i < landmarks.length; i++) {
-    const p = pt(i)
+    const isTip = (FINGERTIP_IDS as readonly number[]).includes(i)
+    const p = isTip ? mapLandmark(fingertipDisplayPoint(landmarks, i), view) : pt(i)
     const s = scaleOf(i)
     let r = 3.2 * s
     if (i === HAND.WRIST) r = 7.5 * s
     else if (mcpJoints.has(i)) r = 5.2 * s
-    else if (tipJoints.has(i)) r = 2.6 * s
+    else if (isTip) r = 4.2 * s
 
     ctx.beginPath()
-    ctx.fillStyle = palette.joint
+    ctx.fillStyle = isTip ? palette.tip : palette.joint
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(255, 253, 248, 0.75)'
-    ctx.lineWidth = 1.4
+    ctx.strokeStyle = 'rgba(255, 253, 248, 0.9)'
+    ctx.lineWidth = isTip ? 2.2 : 1.4
     ctx.stroke()
   }
 }
@@ -302,23 +385,28 @@ export function HandGesturesTool() {
   )
   const activeShapeRef = useRef<{ shape: DualShape; until: number } | null>(null)
   const dualGateRef = useRef<DualGate>('idle')
+  const closedSinceRef = useRef(0)
+  const closedSepRef = useRef(0)
+  const lastDetectAtRef = useRef(0)
   const lastVideoTimeRef = useRef(-1)
   const facingRef = useRef<FacingMode>('user')
   const mirroredRef = useRef(true)
+  const gateHintRef = useRef<string | null>(null)
 
   const holdGestureRef = useRef<GestureId>('none')
   const holdSinceRef = useRef(0)
-  const lastFiredRef = useRef<{ id: GestureId; at: number }>({ id: 'none', at: 0 })
+  const lastFiredRef = useRef<{ id: string; at: number }>({ id: 'none', at: 0 })
   const handsRef = useRef<Landmark[][]>([])
   const shapeLabelRef = useRef<string | null>(null)
-
-  const gateHintRef = useRef<string | null>(null)
+  const elementHoldRef = useRef<ElementId | null>(null)
+  const elementSinceRef = useRef(0)
 
   const [running, setRunning] = useState(false)
   const [loading, setLoading] = useState(false)
   const [switching, setSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [gesture, setGesture] = useState<GestureId>('none')
+  const [element, setElement] = useState<ElementId | null>(null)
   const [shapeLabel, setShapeLabel] = useState<string | null>(null)
   const [gateHint, setGateHintState] = useState<string | null>(null)
   const [facing, setFacing] = useState<FacingMode>('user')
@@ -336,13 +424,25 @@ export function HandGesturesTool() {
     setShapeLabel(label)
   }
 
+  const currentView = (): ViewMapping => {
+    const stage = stageRef.current
+    const video = videoRef.current
+    return {
+      canvasW: stage?.clientWidth || overlayRef.current?.width || 640,
+      canvasH: stage?.clientHeight || overlayRef.current?.height || 360,
+      videoW: video?.videoWidth || 0,
+      videoH: video?.videoHeight || 0,
+      mirrored: mirroredRef.current,
+    }
+  }
+
   const triggerEffect = (id: GestureId, hand?: Landmark[]) => {
     const canvas = effectRef.current
     if (!canvas) return
     const w = canvas.width
     const h = canvas.height
     const now = performance.now()
-    const mirrored = mirroredRef.current
+    const view = currentView()
 
     if (id === 'thumbs_up') {
       burstFireworks(particlesRef.current, w, h)
@@ -368,7 +468,7 @@ export function HandGesturesTool() {
     } else if (id === 'point') {
       const lm = hand ?? handsRef.current[0]
       if (lm) {
-        const p = toScreenPoint(lm[8], w, h, mirrored)
+        const p = mapLandmark(fingertipDisplayPoint(lm, HAND.INDEX_TIP), view)
         laserRef.current = { x: p.x, y: p.y, until: now + 700 }
       } else {
         laserRef.current = { x: w * 0.5, y: h * 0.35, until: now + 700 }
@@ -377,13 +477,19 @@ export function HandGesturesTool() {
       const lm = hand ?? handsRef.current[0]
       if (lm) {
         const aim = magicAim(lm)
-        const origin = toScreenPoint(aim.origin, w, h, mirrored)
-        // Mirror X component of direction when preview is mirrored.
-        const dir = {
-          x: mirrored ? -aim.dir.x : aim.dir.x,
-          y: aim.dir.y,
-        }
-        fireMagicBullets(particlesRef.current, origin, dir, 4)
+        const origin = mapLandmark(aim.origin, view)
+        const dirTip = mapLandmark(
+          {
+            x: aim.origin.x + aim.dir.x * 0.1,
+            y: aim.origin.y + aim.dir.y * 0.1,
+            z: aim.origin.z,
+          },
+          view,
+        )
+        const dx = dirTip.x - origin.x
+        const dy = dirTip.y - origin.y
+        const len = Math.hypot(dx, dy) || 1
+        fireMagicBullets(particlesRef.current, origin, { x: dx / len, y: dy / len }, 4)
       } else {
         fireMagicBullets(particlesRef.current, { x: w * 0.5, y: h * 0.55 }, { x: 0, y: -1 }, 4)
       }
@@ -391,6 +497,20 @@ export function HandGesturesTool() {
     } else if (id === 'l_shape') {
       flashRef.current = { until: now + 220, color: 'rgba(228, 87, 46, 0.22)' }
     }
+  }
+
+  const triggerElement = (id: ElementId) => {
+    const canvas = effectRef.current
+    if (!canvas) return
+    castElement(particlesRef.current, canvas.width, canvas.height, id)
+    const meta = ELEMENT_META[id]
+    flashRef.current = { until: performance.now() + 280, color: `${meta.color}55` }
+    if (id === 'earth' || id === 'fire') {
+      setShake(true)
+      setTimeout(() => setShake(false), 500)
+    }
+    setElement(id)
+    setStatus(`五行 · ${meta.label}：${meta.effect}`)
   }
 
   const considerGesture = (next: GestureId, hand?: Landmark[]) => {
@@ -412,12 +532,35 @@ export function HandGesturesTool() {
     triggerEffect(next, hand)
   }
 
+  const considerElement = (next: ElementId | null) => {
+    const now = performance.now()
+    if (!next) {
+      elementHoldRef.current = null
+      setElement(null)
+      return
+    }
+    if (elementHoldRef.current !== next) {
+      elementHoldRef.current = next
+      elementSinceRef.current = now
+      setElement(next)
+      return
+    }
+    setElement(next)
+    if (now - elementSinceRef.current < HOLD_MS) return
+    const last = lastFiredRef.current
+    if (last.id === `el:${next}` && now - last.at < ELEMENT_COOLDOWN_MS) return
+    lastFiredRef.current = { id: `el:${next}`, at: now }
+    triggerElement(next)
+  }
+
   const updateDualGate = (hands: Landmark[][]) => {
-    const sep = handsSeparation(hands)
+    const palmSep = handsSeparation(hands)
+    const tipSep = handsTipSeparation(hands)
     const now = performance.now()
 
-    if (sep == null) {
+    if (palmSep == null || tipSep == null) {
       dualGateRef.current = 'idle'
+      closedSepRef.current = 0
       setGateHint(null)
       if (activeShapeRef.current && activeShapeRef.current.until < now) {
         activeShapeRef.current = null
@@ -426,13 +569,31 @@ export function HandGesturesTool() {
       return
     }
 
-    if (sep < CLOSE_THRESH) {
+    // Adaptive: tip distance is easier to hit on phone selfies.
+    const closeScore = Math.min(palmSep, tipSep * 1.35)
+    const isClosed = closeScore < 0.28 || tipSep < 0.14
+    const openedEnough =
+      closedSepRef.current > 0 &&
+      (closeScore > closedSepRef.current * 1.55 || tipSep > closedSepRef.current * 1.8 + 0.05)
+
+    if (isClosed) {
+      if (dualGateRef.current !== 'closed') {
+        closedSinceRef.current = now
+        closedSepRef.current = Math.max(closeScore, 0.06)
+      } else {
+        closedSepRef.current = Math.min(closedSepRef.current, closeScore)
+      }
       dualGateRef.current = 'closed'
-      setGateHint('雙手合攏 — 再張開可顯形')
+      const held = now - closedSinceRef.current
+      setGateHint(held < CLOSED_HOLD_MS ? '合攏中…' : '已合攏 — 雙手再分開')
       return
     }
 
-    if (dualGateRef.current === 'closed' && sep > OPEN_THRESH) {
+    if (
+      dualGateRef.current === 'closed' &&
+      now - closedSinceRef.current >= CLOSED_HOLD_MS &&
+      openedEnough
+    ) {
       const shape = buildDualShape(hands)
       if (shape) {
         activeShapeRef.current = { shape, until: now + SHAPE_HOLD_MS }
@@ -440,7 +601,6 @@ export function HandGesturesTool() {
         setGateHint('已展開圖形')
         setStatus(shape.label)
         dualGateRef.current = 'ready'
-        // Soft burst when shape appears.
         const canvas = effectRef.current
         if (canvas) burstSparks(particlesRef.current, canvas.width, canvas.height)
       } else {
@@ -450,13 +610,16 @@ export function HandGesturesTool() {
     }
 
     if (dualGateRef.current === 'ready') {
-      setGateHint('可再合攏 → 張開重畫')
-      if (sep < CLOSE_THRESH) {
+      setGateHint('可再合攏 → 分開重畫')
+      if (isClosed) {
         dualGateRef.current = 'closed'
-        setGateHint('雙手合攏 — 再張開可顯形')
+        closedSinceRef.current = now
+        closedSepRef.current = Math.max(closeScore, 0.06)
+        setGateHint('合攏中…')
       }
-    } else if (dualGateRef.current === 'idle') {
-      setGateHint('雙手先合攏，再張開才會出現圖形')
+    } else {
+      dualGateRef.current = 'idle'
+      setGateHint('雙手靠近合攏，再分開才會出現圖形')
     }
 
     if (activeShapeRef.current && activeShapeRef.current.until < now) {
@@ -571,13 +734,30 @@ export function HandGesturesTool() {
       } else {
         p.x += p.vx
         p.y += p.vy
-        if (p.kind === 'firework') p.vy += 0.08
-        p.life -= p.kind === 'spark' ? 0.018 : 0.016
+        if (p.kind === 'firework' || p.kind === 'ember' || p.kind === 'dust') p.vy += 0.08
+        if (p.kind === 'leaf') {
+          p.x += Math.sin(now / 120 + p.y) * 0.6
+          p.vy += 0.02
+        }
+        if (p.kind === 'drop') p.vy += 0.05
+        p.life -= p.kind === 'spark' || p.kind === 'leaf' ? 0.016 : 0.014
         ctx.globalAlpha = Math.max(p.life, 0)
         ctx.fillStyle = p.color
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
-        ctx.fill()
+        if (p.kind === 'shard') {
+          ctx.save()
+          ctx.translate(p.x, p.y)
+          ctx.rotate(p.vx + p.vy)
+          ctx.fillRect(-p.size, -p.size * 0.35, p.size * 2, p.size * 0.7)
+          ctx.restore()
+        } else if (p.kind === 'leaf') {
+          ctx.beginPath()
+          ctx.ellipse(p.x, p.y, p.size, p.size * 0.55, p.vx, 0, Math.PI * 2)
+          ctx.fill()
+        } else {
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+          ctx.fill()
+        }
         ctx.globalAlpha = 1
       }
       if (p.life > 0 && p.x > -40 && p.x < w + 40 && p.y > -40 && p.y < h + 40) next.push(p)
@@ -600,7 +780,7 @@ export function HandGesturesTool() {
     }
   }
 
-  const paintOverlay = (hands: Landmark[][], mirrored: boolean) => {
+  const paintOverlay = (hands: Landmark[][], view: ViewMapping) => {
     const overlay = overlayRef.current
     if (!overlay) return
     const ctx = overlay.getContext('2d')
@@ -608,21 +788,12 @@ export function HandGesturesTool() {
     ctx.clearRect(0, 0, overlay.width, overlay.height)
 
     hands.forEach((hand, i) => {
-      drawAdaptiveSkeleton(
-        ctx,
-        hand,
-        overlay.width,
-        overlay.height,
-        mirrored,
-        HAND_COLORS[i % HAND_COLORS.length],
-      )
+      drawAdaptiveSkeleton(ctx, hand, view, HAND_COLORS[i % HAND_COLORS.length])
     })
 
     const active = activeShapeRef.current
     if (active && active.until > performance.now()) {
-      const screenPts = active.shape.points.map((p) =>
-        toScreenPoint(p, overlay.width, overlay.height, mirrored),
-      )
+      const screenPts = active.shape.points.map((p) => mapLandmark(p, view))
       drawShapePolygon(ctx, screenPts, active.shape.kind)
     }
   }
@@ -642,6 +813,7 @@ export function HandGesturesTool() {
     setRunning(false)
     setStatus('已停止')
     setGesture('none')
+    setElement(null)
     setShapeLabelSafe(null)
     setGateHint(null)
     activeShapeRef.current = null
@@ -701,27 +873,46 @@ export function HandGesturesTool() {
       paintEffects()
 
       const lm = landmarkerRef.current
-      const mirrored = mirroredRef.current
       if (!lm || !video) return
       if (video.readyState < 2) return
 
       const now = performance.now()
-      if (video.currentTime === lastVideoTimeRef.current) {
-        paintOverlay(handsRef.current, mirrored)
+      const view = currentView()
+
+      // Always redraw last skeleton; only re-detect every 0.5s.
+      if (now - lastDetectAtRef.current < DETECT_INTERVAL_MS) {
+        paintOverlay(handsRef.current, view)
         return
       }
+      if (video.currentTime === lastVideoTimeRef.current && handsRef.current.length) {
+        paintOverlay(handsRef.current, view)
+        return
+      }
+
+      lastDetectAtRef.current = now
       lastVideoTimeRef.current = video.currentTime
 
       const result = lm.detectForVideo(video, now)
-      const hands = (result.landmarks ?? []).filter((h) => h.length >= 21) as Landmark[][]
+      const hands = (result.landmarks ?? [])
+        .filter((h) => h.length >= 21)
+        .map((h) => cloneHand(h as Landmark[]))
       handsRef.current = hands
       updateDualGate(hands)
-      paintOverlay(hands, mirrored)
+      paintOverlay(hands, view)
 
       if (hands.length === 0) {
         considerGesture('none')
+        considerElement(null)
         return
       }
+
+      const el = classifyElement(hands)
+      if (el) {
+        considerElement(el)
+        setStatus(`五行組合 · ${ELEMENT_META[el].label}（${ELEMENT_META[el].combo}）`)
+        return
+      }
+      considerElement(null)
 
       if (activeShapeRef.current && activeShapeRef.current.until > now) {
         setGesture(activeShapeRef.current.shape.kind === 'l_quad' ? 'l_shape' : 'open_palm')
@@ -743,9 +934,9 @@ export function HandGesturesTool() {
       if (gateHintRef.current) {
         setStatus(gateHintRef.current)
       } else if (primary !== 'none') {
-        setStatus(`追蹤中 — ${GESTURE_META[primary].label}`)
+        setStatus(`追蹤中 — ${GESTURE_META[primary].label}（0.5s）`)
       } else {
-        setStatus('追蹤中 — 比個手勢試試')
+        setStatus('追蹤中 — 0.5 秒偵測一次')
       }
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -777,9 +968,10 @@ export function HandGesturesTool() {
       await video.play()
 
       setRunning(true)
-      setStatus('追蹤中 — 單手特效；雙手合攏再開才顯形')
+      setStatus('追蹤中 — 指尖對齊 · 0.5s 偵測 · 合攏再開顯形')
       setLoading(false)
       lastVideoTimeRef.current = -1
+      lastDetectAtRef.current = 0
       startLoop(video)
     } catch (err) {
       console.error(err)
@@ -818,6 +1010,7 @@ export function HandGesturesTool() {
       applyFacing(next)
       await video.play()
       lastVideoTimeRef.current = -1
+      lastDetectAtRef.current = 0
       setStatus(next === 'user' ? '前置鏡頭' : '後置鏡頭')
     } catch (err) {
       console.error(err)
@@ -864,19 +1057,20 @@ export function HandGesturesTool() {
   }, [])
 
   const meta = GESTURE_META[gesture]
-  const badgeTitle = shapeLabel ?? meta.label
-  const badgeSub = shapeLabel ? '合攏→張開觸發' : meta.effect
+  const elMeta = element ? ELEMENT_META[element] : null
+  const badgeTitle = elMeta ? `五行 · ${elMeta.label}` : shapeLabel ?? meta.label
+  const badgeSub = elMeta ? elMeta.effect : shapeLabel ? '合攏→分開觸發' : meta.effect
 
   return (
     <div className="tool-page tool-page--camera">
       <WindowFrame
         title="手勢特效.exe"
         footer={status}
-        toolbar={<span className="win__menu">Camera · Gestures · Magic</span>}
+        toolbar={<span className="win__menu">Camera · Tips · Elements</span>}
       >
         <div className="hand-tool">
           <p className="hand-tool__intro">
-            骨架會依手型粗細與遠近調整。雙手不會一出現就畫圖形——先合攏再張開才顯形。拇指＋小指的魔法手勢可發射魔法彈。
+            指尖會對齊畫面（含 cover 校正）。偵測約 0.5 秒一次。雙手先合攏再分開才顯形；雙手同勢可發動金木水火土。
           </p>
 
           <div className="hand-tool__actions">
@@ -910,11 +1104,12 @@ export function HandGesturesTool() {
             )}
             <span className="hand-tool__facing muted">
               目前：{facing === 'user' ? '前置' : '後置'}
-              {facing === 'user' ? '（鏡像）' : ''}
+              {facing === 'user' ? '（鏡像）' : ''} · 偵測 0.5s
             </span>
           </div>
 
           {error ? <p className="hand-tool__error">{error}</p> : null}
+          {gateHint ? <p className="hand-tool__gate muted">{gateHint}</p> : null}
 
           <div
             ref={stageRef}
@@ -928,7 +1123,7 @@ export function HandGesturesTool() {
             {!running ? (
               <div className="hand-tool__placeholder">
                 <p>開啟鏡頭後，把手放進畫面</p>
-                <p className="muted">雙手合攏再開才顯形 · 魔法手勢發射彈</p>
+                <p className="muted">合攏→分開顯形 · 五行雙手同勢</p>
               </div>
             ) : null}
             <div className="hand-tool__badge" aria-live="polite">
@@ -938,7 +1133,7 @@ export function HandGesturesTool() {
           </div>
 
           <div className="hand-tool__legend">
-            <p className="hand-tool__legend-title">手勢對應</p>
+            <p className="hand-tool__legend-title">單手特效</p>
             <ul>
               {PREVIEW_GESTURES.map((id) => (
                 <li key={id}>
@@ -947,13 +1142,24 @@ export function HandGesturesTool() {
                 </li>
               ))}
               <li>
-                <span>雙手合攏 → 張開</span>
-                <span className="muted">→ 才出現雙手圖形（L 則為四邊形）</span>
+                <span>雙手合攏 → 分開</span>
+                <span className="muted">→ 才出現雙手圖形</span>
               </li>
             </ul>
-            <p className="muted hand-tool__hint">
-              魔法手勢：伸出拇指與小指（中間三指收起），朝前發射紫色魔法彈。
-            </p>
+          </div>
+
+          <div className="hand-tool__legend">
+            <p className="hand-tool__legend-title">五行組合魔法</p>
+            <ul>
+              {(Object.keys(ELEMENT_META) as ElementId[]).map((id) => (
+                <li key={id}>
+                  <span>
+                    {ELEMENT_META[id].label}（{ELEMENT_META[id].combo}）
+                  </span>
+                  <span className="muted">→ {ELEMENT_META[id].effect}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div className="hand-tool__preview">
@@ -966,9 +1172,10 @@ export function HandGesturesTool() {
                   className="btn btn--ghost"
                   onClick={() => {
                     setGesture(id)
+                    setElement(null)
                     setShapeLabelSafe(null)
                     triggerEffect(id)
-                    setStatus(`預覽：${GESTURE_META[id].label} → ${GESTURE_META[id].effect}`)
+                    setStatus(`預覽：${GESTURE_META[id].label}`)
                   }}
                 >
                   {GESTURE_META[id].label}
@@ -981,19 +1188,32 @@ export function HandGesturesTool() {
                   syncCanvasSize()
                   const canvas = effectRef.current
                   if (!canvas) return
-                  const points = sampleDualLPoints(canvas.width || 800, canvas.height || 450)
                   demoShapeRef.current = {
-                    points,
+                    points: sampleDualLPoints(canvas.width || 800, canvas.height || 450),
                     until: performance.now() + 2800,
                     kind: 'l_quad',
                   }
                   setGesture('l_shape')
                   setShapeLabelSafe('雙手 L → 四邊形')
-                  setStatus('預覽：合攏→張開後的四邊形')
+                  setStatus('預覽：合攏→分開後的四邊形')
                 }}
               >
                 開合四邊形
               </button>
+              {(Object.keys(ELEMENT_META) as ElementId[]).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => {
+                    setElement(id)
+                    setShapeLabelSafe(null)
+                    triggerElement(id)
+                  }}
+                >
+                  {ELEMENT_META[id].label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
