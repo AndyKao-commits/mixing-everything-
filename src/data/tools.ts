@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { CounterTool } from '@/tools/counter/CounterTool'
 import { NotesTool } from '@/tools/notes/NotesTool'
+import { HandGesturesTool } from '@/tools/hand-gestures/HandGesturesTool'
 
 export type ToolStatus = 'ready' | 'draft'
 
@@ -11,11 +12,21 @@ export type ToolDefinition = {
   description: string
   status: ToolStatus
   tags: string[]
-  icon: 'counter' | 'notes' | 'folder'
+  icon: 'counter' | 'notes' | 'folder' | 'hand'
   Component: ComponentType
 }
 
 export const tools: ToolDefinition[] = [
+  {
+    id: 'hand-gestures',
+    name: '手勢特效',
+    nameEn: 'Hand Gestures',
+    description: '鏡頭追蹤手部骨架，比讚放煙火、OK 閃爍等手勢對應特效。',
+    status: 'ready',
+    tags: ['鏡頭', '手勢', '實驗'],
+    icon: 'hand',
+    Component: HandGesturesTool,
+  },
   {
     id: 'counter',
     name: '計數器',

@@ -796,6 +796,160 @@ code {
   line-height: 1.55;
 }
 
+.hand-tool {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+
+.hand-tool__intro {
+  color: var(--ink-soft);
+  line-height: 1.55;
+  max-width: 42rem;
+}
+
+.hand-tool__actions,
+.hand-tool__preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.hand-tool__error {
+  color: #9b1c1c;
+  background: #ffe8e4;
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  padding: 0.65rem 0.8rem;
+  line-height: 1.45;
+}
+
+.hand-tool__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 240px;
+  overflow: hidden;
+  border: var(--border);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.55), transparent 45%),
+    linear-gradient(160deg, #d7e8f4 0%, #f3efe6 55%, #e7f2ea 100%);
+  box-shadow: 4px 4px 0 var(--line);
+}
+
+.hand-tool__stage.is-shake {
+  animation: hand-shake 0.45s ease-in-out;
+}
+
+.hand-tool__video,
+.hand-tool__overlay,
+.hand-tool__effects {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hand-tool__video {
+  object-fit: cover;
+  transform: scaleX(-1);
+  background: #111;
+  opacity: 0;
+}
+
+.hand-tool__stage.is-live .hand-tool__video {
+  opacity: 1;
+}
+
+.hand-tool__overlay,
+.hand-tool__effects {
+  pointer-events: none;
+}
+
+.hand-tool__placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.35rem;
+  text-align: center;
+  padding: 1rem;
+  color: var(--ink);
+  font-family: var(--font-display-stack);
+}
+
+.hand-tool__badge {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 253, 248, 0.92);
+  border: 2px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 var(--line);
+  min-width: 7rem;
+}
+
+.hand-tool__badge strong {
+  font-family: var(--font-display-stack);
+  font-size: 1.05rem;
+}
+
+.hand-tool__badge span {
+  font-family: var(--font-mono-stack);
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.hand-tool__legend,
+.hand-tool__preview {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.hand-tool__legend-title {
+  font-family: var(--font-display-stack);
+  font-size: 1rem;
+}
+
+.hand-tool__legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.hand-tool__legend li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  font-size: 0.95rem;
+}
+
+@keyframes hand-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-6px, 2px);
+  }
+  40% {
+    transform: translate(7px, -2px);
+  }
+  60% {
+    transform: translate(-4px, 1px);
+  }
+  80% {
+    transform: translate(4px, -1px);
+  }
+}
+
 .steps {
   margin: 0;
   padding-left: 1.2rem;
