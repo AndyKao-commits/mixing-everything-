@@ -70,7 +70,10 @@ export const GESTURE_META: Record<GestureId, Omit<GestureInfo, 'id'>> = {
   fist: { label: '拳頭', effect: '震動波紋' },
   point: { label: '指向', effect: '雷射點' },
   l_shape: { label: 'L 手勢', effect: '開合後可成四邊形' },
-  magic: { label: '指劍', effect: '指尖蓄力，朝正前方刺出／揮出（冷卻 1.5 秒）' },
+  magic: {
+    label: '前刺魔法',
+    effect: '拳頭／指劍蓄力，整手前刺發射（冷卻 1.5 秒）',
+  },
 }
 
 export const ELEMENT_META: Record<
@@ -173,8 +176,9 @@ export function isLShape(landmarks: Landmark[]) {
 
 /**
  * 指劍：食指＋中指併攏伸出，其餘手指收起（與「耶」分開看指尖距離）。
+ * 第一視角時常失敗，僅作加分；蓄力另看 canChargeMagic。
  */
-export function isMagic(landmarks: Landmark[]) {
+export function isFingerSword(landmarks: Landmark[]) {
   if (!landmarks || landmarks.length < 21) return false
   const index = fingerExtended(landmarks, HAND.INDEX_TIP, HAND.INDEX_PIP, HAND.INDEX_MCP)
   const middle = fingerExtended(landmarks, HAND.MIDDLE_TIP, HAND.MIDDLE_PIP, HAND.MIDDLE_MCP)
@@ -182,11 +186,43 @@ export function isMagic(landmarks: Landmark[]) {
   const pinky = fingerExtended(landmarks, HAND.PINKY_TIP, HAND.PINKY_PIP, HAND.PINKY_MCP)
   if (!index || !middle) return false
   if (ring || pinky) return false
-  // Blade: tips close together (peace spreads them).
   if (dist(landmarks[HAND.INDEX_TIP], landmarks[HAND.MIDDLE_TIP]) > 0.078) return false
-  // Avoid classifying thumbs-up / L as sword.
   if (thumbUp(landmarks)) return false
   return true
+}
+
+/** @deprecated use isFingerSword — kept as alias for magic gesture id path */
+export function isMagic(landmarks: Landmark[]) {
+  return isFingerSword(landmarks)
+}
+
+/** Apparent hand size — shrinks when thrusting away from camera (FP rear). */
+export function handSpan(landmarks: Landmark[]) {
+  return (
+    dist(landmarks[HAND.INDEX_MCP], landmarks[HAND.PINKY_MCP]) * 0.55 +
+    dist(landmarks[HAND.WRIST], landmarks[HAND.MIDDLE_TIP]) * 0.45
+  )
+}
+
+/**
+ * Easy charge poses for first-person: fist, finger-sword, or mostly closed hand.
+ * Avoids relying on fine fingertip shapes under foreshortening.
+ */
+export function canChargeMagic(landmarks: Landmark[]) {
+  if (!landmarks || landmarks.length < 21) return false
+  if (isFingerSword(landmarks)) return true
+  const g = classifyGesture(landmarks)
+  if (g === 'fist' || g === 'magic') return true
+  // Soft closed: average finger openness low (fist misread as none / point stubs).
+  const opens = [
+    fingerOpenness(landmarks, HAND.INDEX_TIP, HAND.INDEX_PIP, HAND.INDEX_MCP),
+    fingerOpenness(landmarks, HAND.MIDDLE_TIP, HAND.MIDDLE_PIP, HAND.MIDDLE_MCP),
+    fingerOpenness(landmarks, HAND.RING_TIP, HAND.RING_PIP, HAND.RING_MCP),
+    fingerOpenness(landmarks, HAND.PINKY_TIP, HAND.PINKY_PIP, HAND.PINKY_MCP),
+  ]
+  const avg = opens.reduce((s, v) => s + v, 0) / opens.length
+  if (avg < 0.38 && !thumbUp(landmarks)) return true
+  return false
 }
 
 export function classifyGesture(landmarks: Landmark[]): GestureId {
@@ -200,7 +236,7 @@ export function classifyGesture(landmarks: Landmark[]): GestureId {
   const extendedCount = [index, middle, ring, pinky].filter(Boolean).length
 
   if (isOk(landmarks)) return 'ok'
-  if (isMagic(landmarks)) return 'magic'
+  if (isFingerSword(landmarks)) return 'magic'
   if (isLShape(landmarks)) return 'l_shape'
   if (thumb && extendedCount <= 1) return 'thumbs_up'
   if (index && middle && !ring && !pinky) return 'peace'
@@ -234,30 +270,56 @@ export function getLCorners(landmarks: Landmark[]): [Landmark, Landmark] | null 
   return [landmarks[HAND.THUMB_TIP], landmarks[HAND.INDEX_TIP]]
 }
 
-/** 指劍瞄準：劍尖在食／中指尖，方向沿指骨朝正前方（第一視角）。 */
+/** 瞄準：有指劍用劍尖；否則用拳峰／前臂方向；過扁時改朝畫面正前方。 */
 export function magicAim(landmarks: Landmark[]): {
   origin: Landmark
   base: Landmark
   dir: Point2
 } {
-  const iTip = fingertipDisplayPoint(landmarks, HAND.INDEX_TIP)
-  const mTip = fingertipDisplayPoint(landmarks, HAND.MIDDLE_TIP)
-  const origin: Landmark = {
-    x: (iTip.x + mTip.x) / 2,
-    y: (iTip.y + mTip.y) / 2,
-    z: (iTip.z + mTip.z) / 2,
+  const wrist = landmarks[HAND.WRIST]
+  const knuckles: Landmark = {
+    x: (landmarks[HAND.INDEX_MCP].x + landmarks[HAND.MIDDLE_MCP].x + landmarks[HAND.RING_MCP].x) / 3,
+    y: (landmarks[HAND.INDEX_MCP].y + landmarks[HAND.MIDDLE_MCP].y + landmarks[HAND.RING_MCP].y) / 3,
+    z: (landmarks[HAND.INDEX_MCP].z + landmarks[HAND.MIDDLE_MCP].z + landmarks[HAND.RING_MCP].z) / 3,
   }
-  const base: Landmark = {
-    x: (landmarks[HAND.INDEX_MCP].x + landmarks[HAND.MIDDLE_MCP].x) / 2,
-    y: (landmarks[HAND.INDEX_MCP].y + landmarks[HAND.MIDDLE_MCP].y) / 2,
-    z: (landmarks[HAND.INDEX_MCP].z + landmarks[HAND.MIDDLE_MCP].z) / 2,
+
+  let origin: Landmark
+  let base: Landmark
+
+  if (isFingerSword(landmarks)) {
+    const iTip = fingertipDisplayPoint(landmarks, HAND.INDEX_TIP)
+    const mTip = fingertipDisplayPoint(landmarks, HAND.MIDDLE_TIP)
+    origin = {
+      x: (iTip.x + mTip.x) / 2,
+      y: (iTip.y + mTip.y) / 2,
+      z: (iTip.z + mTip.z) / 2,
+    }
+    base = {
+      x: (landmarks[HAND.INDEX_MCP].x + landmarks[HAND.MIDDLE_MCP].x) / 2,
+      y: (landmarks[HAND.INDEX_MCP].y + landmarks[HAND.MIDDLE_MCP].y) / 2,
+      z: (landmarks[HAND.INDEX_MCP].z + landmarks[HAND.MIDDLE_MCP].z) / 2,
+    }
+  } else {
+    // Fist / closed: fire from knuckle line along forearm.
+    origin = knuckles
+    base = wrist
   }
+
   let dx = origin.x - base.x
   let dy = origin.y - base.y
-  const len = Math.hypot(dx, dy) || 1
-  dx /= len
-  dy /= len
-  return { origin, base, dir: { x: dx, y: dy } }
+  let len = Math.hypot(dx, dy)
+
+  // Foreshortened FP: finger/forearm almost disappears — aim "into the room"
+  // (toward upper-center of a typical rear-camera hold).
+  const fingerLen = dist(landmarks[HAND.MIDDLE_MCP], landmarks[HAND.MIDDLE_TIP])
+  if (len < 0.04 || fingerLen < 0.055) {
+    dx = 0.5 - origin.x
+    dy = 0.28 - origin.y
+    if (Math.abs(dy) < 0.08) dy = -0.85
+    len = Math.hypot(dx, dy) || 1
+  }
+
+  return { origin, base, dir: { x: dx / len, y: dy / len } }
 }
 
 export function orderPolygon(points: Point2[]): Point2[] {

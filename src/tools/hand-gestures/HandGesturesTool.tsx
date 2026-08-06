@@ -10,11 +10,13 @@ import {
   HAND,
   PALM_OUTLINE,
   buildDualShape,
+  canChargeMagic,
   classifyElement,
   classifyGesture,
   cloneHand,
   fingerOpenness,
   fingertipDisplayPoint,
+  handSpan,
   handsSeparation,
   handsTipSeparation,
   magicAim,
@@ -45,7 +47,7 @@ type Particle = {
 type FlashState = { until: number; color: string }
 type GlowState = { until: number; intensity: number }
 type DualGate = 'idle' | 'closed' | 'ready'
-type PalmSample = { t: number; x: number; y: number }
+type PalmSample = { t: number; x: number; y: number; span: number }
 type HitTarget = {
   id: number
   x: number
@@ -62,9 +64,13 @@ const MAGIC_COOLDOWN_MS = 1500
 const ELEMENT_COOLDOWN_MS = 1200
 const SHAPE_HOLD_MS = 5000
 const CLOSED_HOLD_MS = 180
-/** Normalized palm travel / ms to count as a throw swing. */
-const SWING_SPEED = 0.00115
-const SWING_DISTANCE = 0.07
+/** Normalized tip travel / ms (secondary trigger). */
+const SWING_SPEED = 0.0009
+const SWING_DISTANCE = 0.055
+/** Hand appears ≥22% smaller within the thrust window = forward poke. */
+const THRUST_SHRINK = 0.78
+const THRUST_WINDOW_MS = 240
+const CHARGE_STABLE_MS = 140
 const TARGET_COUNT = 3
 
 const PREVIEW_GESTURES: GestureId[] = [
@@ -626,11 +632,11 @@ export function HandGesturesTool() {
     const now = performance.now()
     const aim = magicAim(hand)
     const origin = mapLandmark(aim.origin, view)
-    // Always fire along the finger-sword axis (first-person forward), not swing residual.
+    // Always fire along aim (FP forward), not residual swing noise.
     const ahead = mapLandmark(
       {
-        x: aim.origin.x + aim.dir.x * 0.2,
-        y: aim.origin.y + aim.dir.y * 0.2,
+        x: aim.origin.x + aim.dir.x * 0.22,
+        y: aim.origin.y + aim.dir.y * 0.22,
         z: aim.origin.z,
       },
       view,
@@ -650,7 +656,8 @@ export function HandGesturesTool() {
     chargePalmRef.current = null
     chargeBladeRef.current = null
     aimDirRef.current = null
-    setStatus('指劍 — 正前方發射！')
+    setGesture('magic')
+    setStatus('前刺！正前方發射')
   }
 
   const updateMagicSwing = (hand: Landmark[], view: ViewMapping) => {
@@ -665,7 +672,7 @@ export function HandGesturesTool() {
       palmTrailRef.current = []
       setCooldownLeft(coolLeft)
       setGesture('magic')
-      setStatus(`指劍冷卻 ${(coolLeft / 1000).toFixed(1)}s`)
+      setStatus(`前刺冷卻 ${(coolLeft / 1000).toFixed(1)}s`)
       return
     }
     setCooldownLeft(0)
@@ -673,12 +680,13 @@ export function HandGesturesTool() {
     const aim = magicAim(hand)
     const tip = mapLandmark(aim.origin, view)
     const base = mapLandmark(aim.base, view)
+    const span = handSpan(hand)
     chargePalmRef.current = tip
     chargeBladeRef.current = { from: base, to: tip }
     aimDirRef.current = aim.dir
 
-    palmTrailRef.current.push({ t: now, x: aim.origin.x, y: aim.origin.y })
-    palmTrailRef.current = palmTrailRef.current.filter((s) => now - s.t <= 200)
+    palmTrailRef.current.push({ t: now, x: aim.origin.x, y: aim.origin.y, span })
+    palmTrailRef.current = palmTrailRef.current.filter((s) => now - s.t <= THRUST_WINDOW_MS + 80)
 
     magicReadyRef.current = true
     setMagicArmed(true)
@@ -686,23 +694,34 @@ export function HandGesturesTool() {
 
     const trail = palmTrailRef.current
     if (trail.length >= 3) {
-      const a = trail[0]
-      const b = trail[trail.length - 1]
-      const dt = b.t - a.t
-      const travel = Math.hypot(b.x - a.x, b.y - a.y)
-      if (dt > 30 && travel > SWING_DISTANCE * 0.85) {
-        const speed = travel / dt
-        const vx = (b.x - a.x) / travel
-        const vy = (b.y - a.y) / travel
-        // Prefer thrust along the sword aim (dot with finger direction).
+      const newest = trail[trail.length - 1]
+      const window = trail.filter((s) => newest.t - s.t <= THRUST_WINDOW_MS)
+      if (window.length >= 3) {
+        const oldest = window[0]
+        const maxSpan = Math.max(...window.map((s) => s.span))
+        const shrink = newest.span / Math.max(maxSpan, 1e-6)
+        const dt = newest.t - oldest.t
+        const travel = Math.hypot(newest.x - oldest.x, newest.y - oldest.y)
+        const speed = dt > 1 ? travel / dt : 0
+        const vx = travel > 1e-6 ? (newest.x - oldest.x) / travel : 0
+        const vy = travel > 1e-6 ? (newest.y - oldest.y) / travel : 0
         const alongAim = vx * aim.dir.x + vy * aim.dir.y
-        if (speed >= SWING_SPEED * 0.9 && alongAim > 0.35) {
-          castMagicFromSwing(hand, { x: vx, y: vy }, view)
+
+        // Primary FP signal: hand gets smaller (= thrusting away from camera).
+        const thrustByShrink = maxSpan > 0.04 && shrink <= THRUST_SHRINK && dt >= CHARGE_STABLE_MS
+        // Secondary: fast move along aim / up-screen.
+        const thrustByMotion =
+          speed >= SWING_SPEED &&
+          travel >= SWING_DISTANCE &&
+          (alongAim > 0.25 || vy < -0.35)
+
+        if (thrustByShrink || thrustByMotion) {
+          castMagicFromSwing(hand, { x: vx || aim.dir.x, y: vy || aim.dir.y }, view)
           return
         }
       }
     }
-    setStatus('指劍蓄力 — 朝正前方刺出／甩出')
+    setStatus('蓄力中 — 拳頭／收掌後，整隻手向前刺出')
   }
 
   const considerElement = (next: ElementId | null) => {
@@ -1237,9 +1256,9 @@ export function HandGesturesTool() {
       }
 
       const ids = hands.map((h) => classifyGesture(h))
-      const magicIdx = ids.findIndex((id) => id === 'magic')
-      if (magicIdx >= 0) {
-        updateMagicSwing(hands[magicIdx], view)
+      const chargeIdx = hands.findIndex((h) => canChargeMagic(h))
+      if (chargeIdx >= 0) {
+        updateMagicSwing(hands[chargeIdx], view)
         return
       }
 
@@ -1250,7 +1269,7 @@ export function HandGesturesTool() {
       aimDirRef.current = null
       palmTrailRef.current = []
 
-      const primaryIdx = ids.findIndex((id) => id !== 'none' && id !== 'l_shape')
+      const primaryIdx = ids.findIndex((id) => id !== 'none' && id !== 'l_shape' && id !== 'magic')
       const primary = primaryIdx >= 0 ? ids[primaryIdx] : ids.find((id) => id !== 'none') ?? 'none'
       const hand = primaryIdx >= 0 ? hands[primaryIdx] : hands[0]
       considerGesture(primary, hand)
@@ -1264,7 +1283,7 @@ export function HandGesturesTool() {
       } else if (primary !== 'none') {
         setStatus(`追蹤中 — ${GESTURE_META[primary].label}`)
       } else {
-        setStatus('追蹤中 — 比指劍蓄力，朝正前方刺出')
+        setStatus('追蹤中 — 握拳蓄力，整手前刺發射')
       }
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -1296,7 +1315,7 @@ export function HandGesturesTool() {
       await video.play()
 
       setRunning(true)
-      setStatus('後置鏡頭 — 指劍朝正前方刺出發射')
+      setStatus('後置鏡頭 — 握拳蓄力，前刺發射')
       setLoading(false)
       lastVideoTimeRef.current = -1
       lastDetectAtRef.current = 0
@@ -1390,14 +1409,14 @@ export function HandGesturesTool() {
   const badgeTitle = elMeta
     ? `五行 · ${elMeta.label}`
     : magicArmed
-      ? '指劍蓄力'
+      ? '前刺蓄力'
       : shapeLabel ?? meta.label
   const badgeSub = elMeta
     ? elMeta.effect
     : cooldownLeft > 0
       ? `冷卻 ${(cooldownLeft / 1000).toFixed(1)}s`
       : magicArmed
-        ? '朝正前方刺出'
+        ? '整手前刺發射'
         : shapeLabel
           ? '合攏→分開觸發'
           : meta.effect
@@ -1407,11 +1426,11 @@ export function HandGesturesTool() {
       <WindowFrame
         title="手勢特效.exe"
         footer={status}
-        toolbar={<span className="win__menu">Rear · Finger Sword · FP</span>}
+        toolbar={<span className="win__menu">Rear · Thrust Cast · FP</span>}
       >
         <div className="hand-tool">
           <p className="hand-tool__intro">
-            預設後置鏡頭、第一視角發射。比出指劍（食指＋中指併攏）蓄力，沿指尖方向朝正前方刺出／甩出即可放出魔法彈。冷卻約 1.5 秒。
+            第一視角指尖很難辨識，改用更穩的方式：握拳／收掌蓄力，再把整隻手向前刺出（手在畫面變小）就會朝正前方發射。指劍仍可用。冷卻約 1.5 秒。
           </p>
 
           <div className="hand-tool__actions">
@@ -1464,7 +1483,7 @@ export function HandGesturesTool() {
             {!running ? (
               <div className="hand-tool__placeholder">
                 <p>開啟後置鏡頭，把手放進畫面</p>
-                <p className="muted">指劍蓄力 → 正前方刺出 · 打金色目標</p>
+                <p className="muted">握拳蓄力 → 整手前刺 · 打金色目標</p>
               </div>
             ) : null}
             <div className="hand-tool__badge" aria-live="polite">
@@ -1488,7 +1507,7 @@ export function HandGesturesTool() {
               </li>
             </ul>
             <p className="muted hand-tool__hint">
-              指劍：食指＋中指併攏伸出（其餘收起）。劍尖紫光蓄力後，朝指尖正前方刺出／甩出；彈道會逐漸變小，像射向遠方。冷卻約 1.5 秒。
+              向前不好認指尖時：先握拳蓄力，再整隻手往前刺（手變小＝前刺）。也可用指劍。發射朝正前方，冷卻約 1.5 秒。
             </p>
           </div>
 
@@ -1526,7 +1545,7 @@ export function HandGesturesTool() {
                     triggerEffect(id)
                     setStatus(
                       id === 'magic'
-                        ? '預覽：指劍正前方發射（可打金色目標）'
+                        ? '預覽：前刺正前方發射（可打金色目標）'
                         : `預覽：${GESTURE_META[id].label}`,
                     )
                   }}
