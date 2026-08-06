@@ -20,6 +20,7 @@ import {
   magicAim,
   mapLandmark,
   orderPolygon,
+  palmCenter,
   type DualShape,
   type ElementId,
   type GestureId,
@@ -44,14 +45,27 @@ type Particle = {
 type FlashState = { until: number; color: string }
 type GlowState = { until: number; intensity: number }
 type DualGate = 'idle' | 'closed' | 'ready'
+type PalmSample = { t: number; x: number; y: number }
+type HitTarget = {
+  id: number
+  x: number
+  y: number
+  r: number
+  alive: boolean
+  respawnAt: number
+}
+type HitMarker = { x: number; y: number; until: number; text: string }
 
 const HOLD_MS = 280
 const COOLDOWN_MS = 900
-const MAGIC_COOLDOWN_MS = 420
+const MAGIC_COOLDOWN_MS = 1500
 const ELEMENT_COOLDOWN_MS = 1200
-const DETECT_INTERVAL_MS = 500
 const SHAPE_HOLD_MS = 5000
 const CLOSED_HOLD_MS = 180
+/** Normalized palm travel / ms to count as a throw swing. */
+const SWING_SPEED = 0.00115
+const SWING_DISTANCE = 0.07
+const TARGET_COUNT = 3
 
 const PREVIEW_GESTURES: GestureId[] = [
   'thumbs_up',
@@ -119,23 +133,66 @@ function burstRipple(particles: Particle[], w: number, h: number) {
 function fireMagicBullets(particles: Particle[], origin: Point2, dir: Point2, count = 3) {
   const colors = ['#b388ff', '#7c4dff', '#ea80fc', '#82b1ff', '#ffffff']
   for (let i = 0; i < count; i++) {
-    const spread = (i - (count - 1) / 2) * 0.18
+    const spread = (i - (count - 1) / 2) * 0.12
     const cos = Math.cos(spread)
     const sin = Math.sin(spread)
     const dx = dir.x * cos - dir.y * sin
     const dy = dir.x * sin + dir.y * cos
-    const speed = 7.5 + i * 0.6
+    const speed = 9.5 + i * 0.85
     particles.push({
       x: origin.x,
       y: origin.y,
       vx: dx * speed,
       vy: dy * speed,
-      life: 1,
+      life: 1.15,
       color: colors[i % colors.length],
-      size: 9 - i,
+      size: 11 - i,
       kind: 'bullet',
     })
   }
+}
+
+function impactBurst(particles: Particle[], x: number, y: number) {
+  const colors = ['#ffffff', '#ea80fc', '#ffd54f', '#7c4dff', '#82b1ff']
+  for (let i = 0; i < 36; i++) {
+    const a = (Math.PI * 2 * i) / 36 + Math.random() * 0.2
+    const s = 2.5 + Math.random() * 5.5
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: 1,
+      color: colors[i % colors.length],
+      size: 2 + Math.random() * 3,
+      kind: 'spark',
+    })
+  }
+  particles.push({
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    life: 1,
+    color: 'rgba(234, 128, 252, 0.65)',
+    size: 12,
+    kind: 'ripple',
+  })
+}
+
+function spawnTargets(w: number, h: number, startId = 1): HitTarget[] {
+  const targets: HitTarget[] = []
+  for (let i = 0; i < TARGET_COUNT; i++) {
+    targets.push({
+      id: startId + i,
+      x: w * (0.22 + Math.random() * 0.56),
+      y: h * (0.18 + Math.random() * 0.45),
+      r: 28 + Math.random() * 14,
+      alive: true,
+      respawnAt: 0,
+    })
+  }
+  return targets
 }
 
 function castElement(particles: Particle[], w: number, h: number, element: ElementId) {
@@ -389,9 +446,15 @@ export function HandGesturesTool() {
   const closedSepRef = useRef(0)
   const lastDetectAtRef = useRef(0)
   const lastVideoTimeRef = useRef(-1)
-  const facingRef = useRef<FacingMode>('user')
-  const mirroredRef = useRef(true)
+  const facingRef = useRef<FacingMode>('environment')
+  const mirroredRef = useRef(false)
   const gateHintRef = useRef<string | null>(null)
+  const palmTrailRef = useRef<PalmSample[]>([])
+  const magicReadyRef = useRef(false)
+  const lastMagicCastRef = useRef(0)
+  const chargePalmRef = useRef<Point2 | null>(null)
+  const targetsRef = useRef<HitTarget[]>([])
+  const hitMarkersRef = useRef<HitMarker[]>([])
 
   const holdGestureRef = useRef<GestureId>('none')
   const holdSinceRef = useRef(0)
@@ -409,8 +472,11 @@ export function HandGesturesTool() {
   const [element, setElement] = useState<ElementId | null>(null)
   const [shapeLabel, setShapeLabel] = useState<string | null>(null)
   const [gateHint, setGateHintState] = useState<string | null>(null)
-  const [facing, setFacing] = useState<FacingMode>('user')
+  const [facing, setFacing] = useState<FacingMode>('environment')
   const [shake, setShake] = useState(false)
+  const [magicArmed, setMagicArmed] = useState(false)
+  const [cooldownLeft, setCooldownLeft] = useState(0)
+  const [hitCount, setHitCount] = useState(0)
   const [status, setStatus] = useState('尚未啟動鏡頭')
 
   const setGateHint = (hint: string | null) => {
@@ -493,6 +559,9 @@ export function HandGesturesTool() {
       } else {
         fireMagicBullets(particlesRef.current, { x: w * 0.5, y: h * 0.55 }, { x: 0, y: -1 }, 4)
       }
+      lastMagicCastRef.current = now
+      magicReadyRef.current = false
+      setMagicArmed(false)
       flashRef.current = { until: now + 180, color: 'rgba(124, 77, 255, 0.35)' }
     } else if (id === 'l_shape') {
       flashRef.current = { until: now + 220, color: 'rgba(228, 87, 46, 0.22)' }
@@ -522,14 +591,79 @@ export function HandGesturesTool() {
       return
     }
     setGesture(next)
-    if (next === 'none' || next === 'l_shape') return
-    const need = next === 'magic' ? HOLD_MS * 0.7 : HOLD_MS
-    if (now - holdSinceRef.current < need) return
-    const cool = next === 'magic' ? MAGIC_COOLDOWN_MS : COOLDOWN_MS
+    // Magic is cast by swing, not auto-fire on hold.
+    if (next === 'none' || next === 'l_shape' || next === 'magic') return
+    if (now - holdSinceRef.current < HOLD_MS) return
     const last = lastFiredRef.current
-    if (last.id === next && now - last.at < cool) return
+    if (last.id === next && now - last.at < COOLDOWN_MS) return
     lastFiredRef.current = { id: next, at: now }
     triggerEffect(next, hand)
+  }
+
+  const castMagicFromSwing = (hand: Landmark[], dirNorm: Point2, view: ViewMapping) => {
+    const now = performance.now()
+    const originLm = palmCenter(hand)
+    const origin = mapLandmark(originLm, view)
+    const ahead = mapLandmark(
+      { x: originLm.x + dirNorm.x * 0.08, y: originLm.y + dirNorm.y * 0.08, z: originLm.z },
+      view,
+    )
+    let dx = ahead.x - origin.x
+    let dy = ahead.y - origin.y
+    const len = Math.hypot(dx, dy) || 1
+    dx /= len
+    dy /= len
+    fireMagicBullets(particlesRef.current, origin, { x: dx, y: dy }, 5)
+    flashRef.current = { until: now + 200, color: 'rgba(124, 77, 255, 0.4)' }
+    lastMagicCastRef.current = now
+    lastFiredRef.current = { id: 'magic', at: now }
+    magicReadyRef.current = false
+    setMagicArmed(false)
+    palmTrailRef.current = []
+    chargePalmRef.current = null
+    setStatus('揮出！魔法發射')
+  }
+
+  const updateMagicSwing = (hand: Landmark[], view: ViewMapping) => {
+    const now = performance.now()
+    const coolLeft = MAGIC_COOLDOWN_MS - (now - lastMagicCastRef.current)
+    if (coolLeft > 0) {
+      magicReadyRef.current = false
+      setMagicArmed(false)
+      chargePalmRef.current = null
+      palmTrailRef.current = []
+      setCooldownLeft(coolLeft)
+      setGesture('magic')
+      setStatus(`魔法冷卻 ${(coolLeft / 1000).toFixed(1)}s`)
+      return
+    }
+    setCooldownLeft(0)
+
+    const palm = palmCenter(hand)
+    chargePalmRef.current = mapLandmark(palm, view)
+    palmTrailRef.current.push({ t: now, x: palm.x, y: palm.y })
+    palmTrailRef.current = palmTrailRef.current.filter((s) => now - s.t <= 220)
+
+    magicReadyRef.current = true
+    setMagicArmed(true)
+    setGesture('magic')
+
+    const trail = palmTrailRef.current
+    if (trail.length >= 3) {
+      const a = trail[0]
+      const b = trail[trail.length - 1]
+      const dt = b.t - a.t
+      const travel = Math.hypot(b.x - a.x, b.y - a.y)
+      if (dt > 35 && travel > SWING_DISTANCE) {
+        const speed = travel / dt
+        if (speed >= SWING_SPEED) {
+          const dir = { x: (b.x - a.x) / travel, y: (b.y - a.y) / travel }
+          castMagicFromSwing(hand, dir, view)
+          return
+        }
+      }
+    }
+    setStatus('魔法蓄力中 — 保持手勢，向前用力揮出')
   }
 
   const considerElement = (next: ElementId | null) => {
@@ -686,11 +820,61 @@ export function HandGesturesTool() {
       demoShapeRef.current = null
     }
 
+    // Ensure targets exist once canvas has size.
+    if (targetsRef.current.length === 0 && w > 10 && h > 10) {
+      targetsRef.current = spawnTargets(w, h)
+    }
+
+    // Respawn / draw hit targets.
+    for (const t of targetsRef.current) {
+      if (!t.alive && t.respawnAt > 0 && now >= t.respawnAt) {
+        t.alive = true
+        t.x = w * (0.2 + Math.random() * 0.6)
+        t.y = h * (0.15 + Math.random() * 0.5)
+        t.r = 28 + Math.random() * 14
+        t.respawnAt = 0
+      }
+      if (!t.alive) continue
+      const pulse = 1 + 0.08 * Math.sin(now / 140 + t.id)
+      const g = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.r * pulse)
+      g.addColorStop(0, 'rgba(255,255,255,0.95)')
+      g.addColorStop(0.35, 'rgba(255, 213, 79, 0.85)')
+      g.addColorStop(1, 'rgba(255, 87, 34, 0.05)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(t.x, t.y, t.r * pulse, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+
+    // Charged magic orb at palm.
+    const charge = chargePalmRef.current
+    if (magicReadyRef.current && charge) {
+      const pulse = 1 + 0.15 * Math.sin(now / 90)
+      const g = ctx.createRadialGradient(charge.x, charge.y, 2, charge.x, charge.y, 34 * pulse)
+      g.addColorStop(0, '#ffffff')
+      g.addColorStop(0.4, 'rgba(179, 136, 255, 0.9)')
+      g.addColorStop(1, 'rgba(124, 77, 255, 0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(charge.x, charge.y, 34 * pulse, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(charge.x, charge.y, 18 * pulse, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
     const next: Particle[] = []
     const trails: Particle[] = []
+    const impacts: Particle[] = []
+    let hitsThisFrame = 0
     for (const p of particlesRef.current) {
       if (p.kind === 'ripple') {
-        const radius = (1 - p.life) * Math.min(w, h) * 0.55
+        const radius = (1 - p.life) * Math.min(w, h) * 0.35
         ctx.beginPath()
         ctx.arc(p.x, p.y, Math.max(radius, 4), 0, Math.PI * 2)
         ctx.strokeStyle = p.color.replace(/[\d.]+\)$/, `${0.55 * p.life})`)
@@ -710,19 +894,37 @@ export function HandGesturesTool() {
         })
         p.x += p.vx
         p.y += p.vy
-        p.life -= 0.012
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 1.8)
-        g.addColorStop(0, '#ffffff')
-        g.addColorStop(0.35, p.color)
-        g.addColorStop(1, 'rgba(124, 77, 255, 0)')
-        ctx.fillStyle = g
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.size * 1.8, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = '#fff'
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.size * 0.45, 0, Math.PI * 2)
-        ctx.fill()
+        p.life -= 0.01
+
+        // Collision with targets → hit feedback.
+        for (const t of targetsRef.current) {
+          if (!t.alive) continue
+          if (Math.hypot(p.x - t.x, p.y - t.y) <= t.r + p.size * 0.6) {
+            t.alive = false
+            t.respawnAt = now + 900
+            impactBurst(impacts, t.x, t.y)
+            hitMarkersRef.current.push({ x: t.x, y: t.y - 18, until: now + 700, text: 'HIT!' })
+            flashRef.current = { until: now + 140, color: 'rgba(255, 213, 79, 0.45)' }
+            hitsThisFrame += 1
+            p.life = 0
+            break
+          }
+        }
+
+        if (p.life > 0) {
+          const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 1.8)
+          g.addColorStop(0, '#ffffff')
+          g.addColorStop(0.35, p.color)
+          g.addColorStop(1, 'rgba(124, 77, 255, 0)')
+          ctx.fillStyle = g
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size * 1.8, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#fff'
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, p.size * 0.45, 0, Math.PI * 2)
+          ctx.fill()
+        }
       } else if (p.kind === 'trail') {
         p.life -= 0.04
         ctx.globalAlpha = Math.max(p.life, 0) * 0.55
@@ -762,7 +964,29 @@ export function HandGesturesTool() {
       }
       if (p.life > 0 && p.x > -40 && p.x < w + 40 && p.y > -40 && p.y < h + 40) next.push(p)
     }
-    particlesRef.current = next.concat(trails)
+    particlesRef.current = next.concat(trails, impacts)
+
+    if (hitsThisFrame > 0) {
+      setHitCount((c) => c + hitsThisFrame)
+      setShake(true)
+      setTimeout(() => setShake(false), 280)
+      setStatus(`命中 ×${hitsThisFrame}！`)
+    }
+
+    // Floating HIT markers.
+    hitMarkersRef.current = hitMarkersRef.current.filter((m) => m.until > now)
+    for (const m of hitMarkersRef.current) {
+      const alpha = Math.max(0, (m.until - now) / 700)
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = '#fff8e1'
+      ctx.strokeStyle = '#e65100'
+      ctx.lineWidth = 3
+      ctx.font = '700 28px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.strokeText(m.text, m.x, m.y - (1 - alpha) * 24)
+      ctx.fillText(m.text, m.x, m.y - (1 - alpha) * 24)
+      ctx.globalAlpha = 1
+    }
   }
 
   const syncCanvasSize = () => {
@@ -816,9 +1040,15 @@ export function HandGesturesTool() {
     setElement(null)
     setShapeLabelSafe(null)
     setGateHint(null)
+    setMagicArmed(false)
+    magicReadyRef.current = false
+    chargePalmRef.current = null
+    palmTrailRef.current = []
     activeShapeRef.current = null
     dualGateRef.current = 'idle'
     handsRef.current = []
+    targetsRef.current = []
+    hitMarkersRef.current = []
     const overlay = overlayRef.current
     if (overlay) {
       const ctx = overlay.getContext('2d')
@@ -879,18 +1109,12 @@ export function HandGesturesTool() {
       const now = performance.now()
       const view = currentView()
 
-      // Always redraw last skeleton; only re-detect every 0.5s.
-      if (now - lastDetectAtRef.current < DETECT_INTERVAL_MS) {
+      if (video.currentTime === lastVideoTimeRef.current) {
         paintOverlay(handsRef.current, view)
         return
       }
-      if (video.currentTime === lastVideoTimeRef.current && handsRef.current.length) {
-        paintOverlay(handsRef.current, view)
-        return
-      }
-
-      lastDetectAtRef.current = now
       lastVideoTimeRef.current = video.currentTime
+      lastDetectAtRef.current = now
 
       const result = lm.detectForVideo(video, now)
       const hands = (result.landmarks ?? [])
@@ -901,6 +1125,10 @@ export function HandGesturesTool() {
       paintOverlay(hands, view)
 
       if (hands.length === 0) {
+        magicReadyRef.current = false
+        setMagicArmed(false)
+        chargePalmRef.current = null
+        palmTrailRef.current = []
         considerGesture('none')
         considerElement(null)
         return
@@ -908,6 +1136,9 @@ export function HandGesturesTool() {
 
       const el = classifyElement(hands)
       if (el) {
+        magicReadyRef.current = false
+        setMagicArmed(false)
+        chargePalmRef.current = null
         considerElement(el)
         setStatus(`五行組合 · ${ELEMENT_META[el].label}（${ELEMENT_META[el].combo}）`)
         return
@@ -921,22 +1152,30 @@ export function HandGesturesTool() {
       const ids = hands.map((h) => classifyGesture(h))
       const magicIdx = ids.findIndex((id) => id === 'magic')
       if (magicIdx >= 0) {
-        considerGesture('magic', hands[magicIdx])
-        setStatus('魔法手勢 — 發射魔法彈')
+        updateMagicSwing(hands[magicIdx], view)
         return
       }
+
+      magicReadyRef.current = false
+      setMagicArmed(false)
+      chargePalmRef.current = null
+      palmTrailRef.current = []
 
       const primaryIdx = ids.findIndex((id) => id !== 'none' && id !== 'l_shape')
       const primary = primaryIdx >= 0 ? ids[primaryIdx] : ids.find((id) => id !== 'none') ?? 'none'
       const hand = primaryIdx >= 0 ? hands[primaryIdx] : hands[0]
       considerGesture(primary, hand)
 
+      const coolLeft = MAGIC_COOLDOWN_MS - (now - lastMagicCastRef.current)
+      if (coolLeft > 0) setCooldownLeft(coolLeft)
+      else setCooldownLeft(0)
+
       if (gateHintRef.current) {
         setStatus(gateHintRef.current)
       } else if (primary !== 'none') {
-        setStatus(`追蹤中 — ${GESTURE_META[primary].label}（0.5s）`)
+        setStatus(`追蹤中 — ${GESTURE_META[primary].label}`)
       } else {
-        setStatus('追蹤中 — 0.5 秒偵測一次')
+        setStatus('追蹤中 — 比魔法手勢蓄力，揮出發射')
       }
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -968,10 +1207,11 @@ export function HandGesturesTool() {
       await video.play()
 
       setRunning(true)
-      setStatus('追蹤中 — 指尖對齊 · 0.5s 偵測 · 合攏再開顯形')
+      setStatus('後置鏡頭追蹤中 — 魔法手勢蓄力後揮出發射')
       setLoading(false)
       lastVideoTimeRef.current = -1
       lastDetectAtRef.current = 0
+      targetsRef.current = []
       startLoop(video)
     } catch (err) {
       console.error(err)
@@ -1058,19 +1298,31 @@ export function HandGesturesTool() {
 
   const meta = GESTURE_META[gesture]
   const elMeta = element ? ELEMENT_META[element] : null
-  const badgeTitle = elMeta ? `五行 · ${elMeta.label}` : shapeLabel ?? meta.label
-  const badgeSub = elMeta ? elMeta.effect : shapeLabel ? '合攏→分開觸發' : meta.effect
+  const badgeTitle = elMeta
+    ? `五行 · ${elMeta.label}`
+    : magicArmed
+      ? '魔法蓄力'
+      : shapeLabel ?? meta.label
+  const badgeSub = elMeta
+    ? elMeta.effect
+    : cooldownLeft > 0
+      ? `冷卻 ${(cooldownLeft / 1000).toFixed(1)}s`
+      : magicArmed
+        ? '向前揮出發射'
+        : shapeLabel
+          ? '合攏→分開觸發'
+          : meta.effect
 
   return (
     <div className="tool-page tool-page--camera">
       <WindowFrame
         title="手勢特效.exe"
         footer={status}
-        toolbar={<span className="win__menu">Camera · Tips · Elements</span>}
+        toolbar={<span className="win__menu">Rear · Swing Magic · Hits</span>}
       >
         <div className="hand-tool">
           <p className="hand-tool__intro">
-            指尖會對齊畫面（含 cover 校正）。偵測約 0.5 秒一次。雙手先合攏再分開才顯形；雙手同勢可發動金木水火土。
+            預設後置鏡頭。比出魔法手勢（拇指＋小指）蓄力，再用力揮出即可發射；打中金色目標會有 HIT 回饋。魔法冷卻約 1.5 秒。
           </p>
 
           <div className="hand-tool__actions">
@@ -1079,9 +1331,9 @@ export function HandGesturesTool() {
                 type="button"
                 className="btn btn--primary"
                 disabled={loading}
-                onClick={() => void startCamera('user')}
+                onClick={() => void startCamera('environment')}
               >
-                {loading ? '載入中…' : '開啟鏡頭'}
+                {loading ? '載入中…' : '開啟後置鏡頭'}
               </button>
             ) : (
               <>
@@ -1096,15 +1348,15 @@ export function HandGesturesTool() {
                 >
                   {switching
                     ? '切換中…'
-                    : facing === 'user'
-                      ? '切換後置鏡頭'
-                      : '切換前置鏡頭'}
+                    : facing === 'environment'
+                      ? '切換前置鏡頭'
+                      : '切換後置鏡頭'}
                 </button>
               </>
             )}
             <span className="hand-tool__facing muted">
-              目前：{facing === 'user' ? '前置' : '後置'}
-              {facing === 'user' ? '（鏡像）' : ''} · 偵測 0.5s
+              目前：{facing === 'user' ? '前置（鏡像）' : '後置'}
+              {hitCount > 0 ? ` · 命中 ${hitCount}` : ''}
             </span>
           </div>
 
@@ -1122,8 +1374,8 @@ export function HandGesturesTool() {
             <canvas ref={effectRef} className="hand-tool__effects" />
             {!running ? (
               <div className="hand-tool__placeholder">
-                <p>開啟鏡頭後，把手放進畫面</p>
-                <p className="muted">合攏→分開顯形 · 五行雙手同勢</p>
+                <p>開啟後置鏡頭，把手放進畫面</p>
+                <p className="muted">魔法蓄力 → 揮出發射 · 打金色目標</p>
               </div>
             ) : null}
             <div className="hand-tool__badge" aria-live="polite">
@@ -1146,6 +1398,9 @@ export function HandGesturesTool() {
                 <span className="muted">→ 才出現雙手圖形</span>
               </li>
             </ul>
+            <p className="muted hand-tool__hint">
+              魔法：拇指＋小指蓄力，掌心紫球出現後向前揮出；打中金色目標會顯示 HIT。冷卻約 1.5 秒。
+            </p>
           </div>
 
           <div className="hand-tool__legend">
@@ -1174,8 +1429,17 @@ export function HandGesturesTool() {
                     setGesture(id)
                     setElement(null)
                     setShapeLabelSafe(null)
+                    syncCanvasSize()
+                    const canvas = effectRef.current
+                    if (canvas && targetsRef.current.length === 0) {
+                      targetsRef.current = spawnTargets(canvas.width || 800, canvas.height || 450)
+                    }
                     triggerEffect(id)
-                    setStatus(`預覽：${GESTURE_META[id].label}`)
+                    setStatus(
+                      id === 'magic'
+                        ? '預覽：魔法揮出（可打金色目標）'
+                        : `預覽：${GESTURE_META[id].label}`,
+                    )
                   }}
                 >
                   {GESTURE_META[id].label}
