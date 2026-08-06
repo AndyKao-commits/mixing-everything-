@@ -400,6 +400,8 @@ export function HandGesturesTool() {
         err instanceof Error ? err.message : '無法啟動鏡頭或載入模型'
       if (/NotAllowedError|Permission/i.test(String(err))) {
         setError('需要允許攝影機權限才能追蹤手部。')
+      } else if (/NotFoundError|Requested device not found|DevicesNotFound/i.test(String(err))) {
+        setError('找不到攝影機。可先用下方按鈕預覽特效，有鏡頭再開啟追蹤。')
       } else {
         setError(message)
       }
