@@ -1,0 +1,94 @@
+import Foundation
+import SwiftData
+import UIKit
+
+@MainActor
+final class PhotoStore: ObservableObject {
+    private let fileManager = FileManager.default
+
+    var photosDirectory: URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let directory = base.appendingPathComponent(AppConstants.photosDirectoryName, isDirectory: true)
+        if !fileManager.fileExists(atPath: directory.path) {
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        return directory
+    }
+
+    var thumbnailsDirectory: URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let directory = base.appendingPathComponent(AppConstants.thumbnailsDirectoryName, isDirectory: true)
+        if !fileManager.fileExists(atPath: directory.path) {
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        return directory
+    }
+
+    func makeFilename(for date: Date = .now) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let stamp = formatter.string(from: date)
+        return "ShuntPai_\(stamp)_\(Int.random(in: 100...999)).jpg"
+    }
+
+    func saveCapturedPhoto(data: Data, modelContext: ModelContext) throws -> PhotoRecord {
+        let filename = makeFilename()
+        let localURL = photosDirectory.appendingPathComponent(filename)
+        try data.write(to: localURL, options: .atomic)
+
+        if let thumbnail = UIImage(data: data)?.preparingThumbnail(of: CGSize(width: 300, height: 300)),
+           let thumbnailData = thumbnail.jpegData(compressionQuality: 0.75) {
+            let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
+            try? thumbnailData.write(to: thumbURL, options: .atomic)
+        }
+
+        let record = PhotoRecord(
+            localFileName: filename,
+            remoteFileName: filename,
+            uploadStatus: .pending
+        )
+        modelContext.insert(record)
+        try modelContext.save()
+        return record
+    }
+
+    func localURL(for record: PhotoRecord) -> URL {
+        photosDirectory.appendingPathComponent(record.localFileName)
+    }
+
+    func thumbnailURL(for record: PhotoRecord) -> URL {
+        thumbnailsDirectory.appendingPathComponent(record.localFileName)
+    }
+
+    func loadImage(for record: PhotoRecord) -> UIImage? {
+        UIImage(contentsOfFile: localURL(for: record).path)
+    }
+
+    func loadThumbnail(for record: PhotoRecord) -> UIImage? {
+        if let image = UIImage(contentsOfFile: thumbnailURL(for: record).path) {
+            return image
+        }
+        return loadImage(for: record)
+    }
+
+    func delete(record: PhotoRecord, modelContext: ModelContext) throws {
+        try? fileManager.removeItem(at: localURL(for: record))
+        try? fileManager.removeItem(at: thumbnailURL(for: record))
+        modelContext.delete(record)
+        try modelContext.save()
+    }
+
+    func groupedRecords(_ records: [PhotoRecord]) -> [(String, [PhotoRecord])] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_TW")
+        formatter.dateFormat = "yyyy年M月d日"
+
+        let grouped = Dictionary(grouping: records.sorted { $0.capturedAt > $1.capturedAt }) {
+            formatter.string(from: $0.capturedAt)
+        }
+
+        return grouped.keys.sorted(by: >).map { key in
+            (key, grouped[key] ?? [])
+        }
+    }
+}
