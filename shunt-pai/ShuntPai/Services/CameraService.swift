@@ -16,12 +16,40 @@ enum CameraServiceError: LocalizedError {
     }
 }
 
+enum ZoomPreset: Hashable {
+    case ultraWide
+    case oneX
+    case twoX
+    case threeX
+
+    var label: String {
+        switch self {
+        case .ultraWide: return ".5"
+        case .oneX: return "1x"
+        case .twoX: return "2"
+        case .threeX: return "3"
+        }
+    }
+
+    var targetFactor: CGFloat {
+        switch self {
+        case .ultraWide: return 0.5
+        case .oneX: return 1
+        case .twoX: return 2
+        case .threeX: return 3
+        }
+    }
+}
+
 @MainActor
 final class CameraService: NSObject, ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var authorizationStatus: AVAuthorizationStatus = .notDetermined
     @Published private(set) var flashMode: AVCaptureDevice.FlashMode = .off
     @Published private(set) var zoomFactor: CGFloat = 1
+    @Published private(set) var selectedPreset: ZoomPreset = .oneX
+    @Published private(set) var availablePresets: [ZoomPreset] = [.oneX, .twoX]
+    @Published private(set) var supportsFlash = false
     @Published var errorMessage: String?
 
     let session = AVCaptureSession()
@@ -29,8 +57,9 @@ final class CameraService: NSObject, ObservableObject {
     private let sessionQueue = DispatchQueue(label: "com.shuntpai.camera.session")
     private let photoOutput = AVCapturePhotoOutput()
     private var videoInput: AVCaptureDeviceInput?
-    private var currentDevice: AVCaptureDevice?
+    private var isConfigured = false
     private var captureContinuation: CheckedContinuation<Data, Error>?
+    private var currentPosition: AVCaptureDevice.Position = .back
 
     override init() {
         super.init()
@@ -54,49 +83,26 @@ final class CameraService: NSObject, ObservableObject {
         }
     }
 
-    func configureSession() {
-        sessionQueue.async {
-            self.session.beginConfiguration()
-            self.session.sessionPreset = .photo
-
-            self.session.inputs.forEach { self.session.removeInput($0) }
-            self.session.outputs.forEach { self.session.removeOutput($0) }
-
-            do {
-                guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-                    throw CameraServiceError.unavailable
-                }
-
-                let input = try AVCaptureDeviceInput(device: device)
-                if self.session.canAddInput(input) {
-                    self.session.addInput(input)
-                    self.videoInput = input
-                    self.currentDevice = device
-                }
-
-                if self.session.canAddOutput(self.photoOutput) {
-                    self.session.addOutput(self.photoOutput)
-                    self.photoOutput.maxPhotoQualityPrioritization = .quality
-                }
-
-                self.session.commitConfiguration()
-            } catch {
-                DispatchQueue.main.async {
-                    self.errorMessage = error.localizedDescription
-                }
-            }
-        }
-    }
-
     func startSession() {
         guard authorizationStatus == .authorized else { return }
 
         sessionQueue.async {
-            guard !self.session.isRunning else { return }
-            self.configureSession()
-            self.session.startRunning()
-            DispatchQueue.main.async {
-                self.isRunning = true
+            do {
+                if !self.isConfigured {
+                    try self.configureSessionLocked(position: .back)
+                    self.isConfigured = true
+                }
+                if !self.session.isRunning {
+                    self.session.startRunning()
+                }
+                self.publishDeviceState()
+                DispatchQueue.main.async {
+                    self.isRunning = true
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -113,30 +119,10 @@ final class CameraService: NSObject, ObservableObject {
 
     func switchCamera() {
         sessionQueue.async {
-            guard let currentInput = self.videoInput else { return }
-            let newPosition: AVCaptureDevice.Position = currentInput.device.position == .back ? .front : .back
-
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPosition) else {
-                return
-            }
-
+            let newPosition: AVCaptureDevice.Position = self.currentPosition == .back ? .front : .back
             do {
-                let newInput = try AVCaptureDeviceInput(device: device)
-                self.session.beginConfiguration()
-                self.session.removeInput(currentInput)
-
-                if self.session.canAddInput(newInput) {
-                    self.session.addInput(newInput)
-                    self.videoInput = newInput
-                    self.currentDevice = device
-                    DispatchQueue.main.async {
-                        self.zoomFactor = 1
-                    }
-                } else {
-                    self.session.addInput(currentInput)
-                }
-
-                self.session.commitConfiguration()
+                try self.configureSessionLocked(position: newPosition)
+                self.publishDeviceState()
             } catch {
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
@@ -146,27 +132,51 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     func toggleFlash() {
-        guard let device = currentDevice, device.hasFlash else { return }
-        flashMode = flashMode == .off ? .on : .off
+        sessionQueue.async {
+            guard let device = self.videoInput?.device, device.hasFlash else { return }
+            let next: AVCaptureDevice.FlashMode = self.flashMode == .off ? .on : .off
+            DispatchQueue.main.async {
+                self.flashMode = next
+            }
+        }
     }
 
-    func setZoom(_ factor: CGFloat) {
+    func applyPreset(_ preset: ZoomPreset) {
         sessionQueue.async {
-            guard let device = self.currentDevice else { return }
-            let clamped = min(max(factor, 1), min(device.activeFormat.videoMaxZoomFactor, 5))
-
             do {
-                try device.lockForConfiguration()
-                device.videoZoomFactor = clamped
-                device.unlockForConfiguration()
-                DispatchQueue.main.async {
-                    self.zoomFactor = clamped
+                if preset == .ultraWide {
+                    try self.switchToDeviceType(.builtInUltraWideCamera, position: .back, displayFactor: 0.5, preset: .ultraWide)
+                    return
                 }
+
+                // Ensure we are on wide/tele capable back camera for 1x/2x/3x.
+                if self.currentPosition == .back {
+                    let preferredType: AVCaptureDevice.DeviceType =
+                        AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) != nil
+                        ? .builtInTripleCamera
+                        : (AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) != nil
+                           ? .builtInDualWideCamera
+                           : .builtInWideAngleCamera)
+                    try self.switchToDeviceType(preferredType, position: .back, displayFactor: preset.targetFactor, preset: preset)
+                    self.setZoomFactorLocked(preset.targetFactor, preset: preset)
+                } else {
+                    self.setZoomFactorLocked(max(preset.targetFactor, 1), preset: .oneX)
+                }
+                self.publishDeviceState()
             } catch {
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
                 }
             }
+        }
+    }
+
+    func bumpZoom(by scale: CGFloat) {
+        sessionQueue.async {
+            guard let device = self.videoInput?.device else { return }
+            let next = device.videoZoomFactor * scale
+            self.setZoomFactorLocked(next, preset: nil)
+            self.publishDeviceState()
         }
     }
 
@@ -181,13 +191,143 @@ final class CameraService: NSObject, ObservableObject {
                 self.captureContinuation = continuation
 
                 let settings = AVCapturePhotoSettings()
-                if self.photoOutput.supportedFlashModes.contains(self.flashMode) {
+                if let device = self.videoInput?.device,
+                   device.hasFlash,
+                   self.photoOutput.supportedFlashModes.contains(self.flashMode) {
                     settings.flashMode = self.flashMode
                 }
 
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
         }
+    }
+
+    // MARK: - Private
+
+    private func configureSessionLocked(position: AVCaptureDevice.Position) throws {
+        session.beginConfiguration()
+        session.sessionPreset = .photo
+
+        session.inputs.forEach { session.removeInput($0) }
+        session.outputs.forEach { session.removeOutput($0) }
+
+        let device = try preferredDevice(for: position)
+        let input = try AVCaptureDeviceInput(device: device)
+        guard session.canAddInput(input) else {
+            session.commitConfiguration()
+            throw CameraServiceError.unavailable
+        }
+        session.addInput(input)
+        videoInput = input
+        currentPosition = position
+
+        if session.canAddOutput(photoOutput) {
+            session.addOutput(photoOutput)
+            photoOutput.maxPhotoQualityPrioritization = .quality
+        }
+
+        session.commitConfiguration()
+
+        setZoomFactorLocked(1, preset: .oneX)
+    }
+
+    private func preferredDevice(for position: AVCaptureDevice.Position) throws -> AVCaptureDevice {
+        if position == .back {
+            if let triple = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) {
+                return triple
+            }
+            if let dualWide = AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) {
+                return dualWide
+            }
+            if let wide = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
+                return wide
+            }
+        } else if let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
+            return front
+        }
+        throw CameraServiceError.unavailable
+    }
+
+    private func switchToDeviceType(
+        _ type: AVCaptureDevice.DeviceType,
+        position: AVCaptureDevice.Position,
+        displayFactor: CGFloat,
+        preset: ZoomPreset
+    ) throws {
+        guard let device = AVCaptureDevice.default(type, for: .video, position: position)
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+        else {
+            throw CameraServiceError.unavailable
+        }
+
+        let input = try AVCaptureDeviceInput(device: device)
+        session.beginConfiguration()
+        if let current = videoInput {
+            session.removeInput(current)
+        }
+        if session.canAddInput(input) {
+            session.addInput(input)
+            videoInput = input
+            currentPosition = position
+        }
+        session.commitConfiguration()
+        setZoomFactorLocked(max(displayFactor, device.minAvailableVideoZoomFactor), preset: preset)
+    }
+
+    private func setZoomFactorLocked(_ factor: CGFloat, preset: ZoomPreset?) {
+        guard let device = videoInput?.device else { return }
+        let minZoom = device.minAvailableVideoZoomFactor
+        let maxZoom = min(device.maxAvailableVideoZoomFactor, 12)
+        let clamped = min(max(factor, minZoom), maxZoom)
+
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = clamped
+            device.unlockForConfiguration()
+
+            let resolvedPreset = preset ?? Self.nearestPreset(for: clamped, position: currentPosition)
+            DispatchQueue.main.async {
+                self.zoomFactor = clamped
+                self.selectedPreset = resolvedPreset
+            }
+        } catch {
+            DispatchQueue.main.async {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func publishDeviceState() {
+        guard let device = videoInput?.device else { return }
+
+        var presets: [ZoomPreset] = [.oneX]
+        if currentPosition == .back {
+            if AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) != nil {
+                presets.insert(.ultraWide, at: 0)
+            }
+            if device.maxAvailableVideoZoomFactor >= 2 {
+                presets.append(.twoX)
+            }
+            if device.maxAvailableVideoZoomFactor >= 3 {
+                presets.append(.threeX)
+            }
+        }
+
+        let flash = device.hasFlash
+        let factor = device.videoZoomFactor
+
+        DispatchQueue.main.async {
+            self.availablePresets = presets
+            self.supportsFlash = flash
+            self.zoomFactor = factor
+        }
+    }
+
+    private static func nearestPreset(for factor: CGFloat, position: AVCaptureDevice.Position) -> ZoomPreset {
+        if position == .back, factor < 0.75 { return .ultraWide }
+        if abs(factor - 2) < abs(factor - 3) && abs(factor - 2) < abs(factor - 1) { return .twoX }
+        if abs(factor - 3) <= abs(factor - 2) && factor >= 2.5 { return .threeX }
+        return .oneX
     }
 }
 

@@ -18,6 +18,7 @@ struct CameraScreenView: View {
     @State private var showSettings = false
     @State private var isCapturing = false
     @State private var uploadToast: String?
+    @State private var pinchBase: CGFloat = 1
 
     private var latestThumbnail: UIImage? {
         guard let latest = records.first else { return nil }
@@ -31,34 +32,43 @@ struct CameraScreenView: View {
             if cameraService.authorizationStatus == .authorized {
                 CameraPreviewView(session: cameraService.session)
                     .ignoresSafeArea()
+                    .gesture(pinchGesture)
             } else {
                 permissionView
             }
 
-            VStack {
+            VStack(spacing: 0) {
                 topBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+
                 Spacer()
+
                 if cameraService.authorizationStatus == .authorized {
                     zoomControls
-                    controlBar
+                        .padding(.bottom, 14)
+
+                    shutterRow
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 18)
                 }
-                modeBar
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .safeAreaPadding(.bottom, 8)
 
             if let uploadToast {
                 VStack {
                     Spacer()
                     Text(uploadToast)
                         .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
+                        .background(Color.black.opacity(0.72))
                         .clipShape(Capsule())
-                        .padding(.bottom, 120)
+                        .padding(.bottom, 140)
                 }
                 .transition(.opacity)
+                .allowsHitTesting(false)
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -97,69 +107,97 @@ struct CameraScreenView: View {
     }
 
     private var topBar: some View {
-        HStack {
-            Text(String(format: "%.1f EV", 0.0))
-                .font(.caption.monospacedDigit())
+        HStack(spacing: 12) {
+            if cameraService.supportsFlash {
+                Button {
+                    cameraService.toggleFlash()
+                } label: {
+                    Image(systemName: cameraService.flashMode == .on ? "bolt.fill" : "bolt.slash.fill")
+                        .cameraChromeButton()
+                }
+            }
+
+            Spacer()
+
+            Text(zoomLabel)
+                .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.yellow)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.35))
+                .clipShape(Capsule())
 
             Spacer()
 
             Button {
-                cameraService.toggleFlash()
-            } label: {
-                Image(systemName: cameraService.flashMode == .on ? "bolt.fill" : "bolt.slash.fill")
-            }
-            .cameraChromeButton()
-
-            Button {
                 showSettings = true
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "gearshape.fill")
+                    .cameraChromeButton()
             }
-            .cameraChromeButton()
         }
-        .padding(.top, 8)
+    }
+
+    private var zoomLabel: String {
+        if cameraService.selectedPreset == .ultraWide {
+            return "0.5x"
+        }
+        let value = cameraService.zoomFactor
+        if abs(value - value.rounded()) < 0.05 {
+            return "\(Int(value.rounded()))x"
+        }
+        return String(format: "%.1fx", value)
     }
 
     private var zoomControls: some View {
-        HStack(spacing: 18) {
-            ForEach([0.5, 1.0, 2.0], id: \.self) { value in
+        HStack(spacing: 10) {
+            ForEach(cameraService.availablePresets, id: \.self) { preset in
                 Button {
-                    cameraService.setZoom(max(value, 1))
+                    cameraService.applyPreset(preset)
                 } label: {
-                    Text(value == 1.0 ? "1x" : String(format: "%.1f", value))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(abs(cameraService.zoomFactor - max(value, 1)) < 0.1 ? .yellow : .white)
-                        .frame(width: 36, height: 36)
-                        .background(abs(cameraService.zoomFactor - max(value, 1)) < 0.1 ? Color.white.opacity(0.18) : Color.clear)
-                        .clipShape(Circle())
+                    Text(preset.label)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(cameraService.selectedPreset == preset ? .black : .white)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle().fill(
+                                cameraService.selectedPreset == preset
+                                ? Color.yellow
+                                : Color.black.opacity(0.45)
+                            )
+                        )
                 }
+                .buttonStyle(.plain)
             }
         }
-        .padding(.bottom, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.28))
+        .clipShape(Capsule())
     }
 
-    private var controlBar: some View {
+    private var shutterRow: some View {
         HStack {
             Button {
                 appState.selectedTab = .gallery
             } label: {
-                Group {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.12))
                     if let latestThumbnail {
                         Image(uiImage: latestThumbnail)
                             .resizable()
                             .scaledToFill()
-                    } else {
-                        Color.white.opacity(0.15)
                     }
                 }
-                .frame(width: 46, height: 46)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.55), lineWidth: 1)
                 )
             }
+            .buttonStyle(.plain)
 
             Spacer()
 
@@ -168,13 +206,14 @@ struct CameraScreenView: View {
             } label: {
                 ZStack {
                     Circle()
-                        .stroke(Color.white, lineWidth: 4)
-                        .frame(width: 78, height: 78)
+                        .stroke(Color.white, lineWidth: 5)
+                        .frame(width: 82, height: 82)
                     Circle()
-                        .fill(Color.white.opacity(isCapturing ? 0.35 : 1))
-                        .frame(width: 64, height: 64)
+                        .fill(Color.white.opacity(isCapturing ? 0.4 : 1))
+                        .frame(width: 68, height: 68)
                 }
             }
+            .buttonStyle(.plain)
             .disabled(isCapturing)
             .accessibilityLabel("快門")
 
@@ -183,26 +222,23 @@ struct CameraScreenView: View {
             Button {
                 cameraService.switchCamera()
             } label: {
-                Image(systemName: "arrow.triangle.2.circlepath.camera")
+                Image(systemName: "arrow.triangle.2.circlepath")
                     .cameraChromeButton()
             }
+            .buttonStyle(.plain)
         }
-        .padding(.vertical, 8)
     }
 
-    private var modeBar: some View {
-        HStack {
-            Spacer()
-            Text("拍照")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.yellow)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.15))
-                .clipShape(Capsule())
-            Spacer()
-        }
-        .padding(.bottom, 4)
+    private var pinchGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let delta = value / pinchBase
+                pinchBase = value
+                cameraService.bumpZoom(by: delta)
+            }
+            .onEnded { _ in
+                pinchBase = 1
+            }
     }
 
     private func capturePhoto() async {
@@ -251,10 +287,10 @@ struct CameraScreenView: View {
 private extension View {
     func cameraChromeButton() -> some View {
         self
-            .font(.title3)
+            .font(.title3.weight(.semibold))
             .foregroundStyle(.white)
-            .frame(width: 40, height: 40)
-            .background(Color.black.opacity(0.35))
+            .frame(width: 42, height: 42)
+            .background(Color.black.opacity(0.4))
             .clipShape(Circle())
     }
 }
@@ -269,7 +305,9 @@ struct CameraPreviewView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
+    func updateUIView(_ uiView: PreviewView, context: Context) {
+        uiView.videoPreviewLayer.session = session
+    }
 }
 
 final class PreviewView: UIView {

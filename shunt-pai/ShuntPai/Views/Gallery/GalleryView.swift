@@ -14,41 +14,56 @@ struct GalleryView: View {
     @State private var selectedRecord: PhotoRecord?
     @State private var showSettings = false
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+
     var body: some View {
         NavigationStack {
-            ScrollView {
+            Group {
                 if records.isEmpty {
                     ContentUnavailableView(
                         "尚無照片",
                         systemImage: "photo.on.rectangle.angled",
                         description: Text("在相機頁拍的照片會顯示在這裡。")
                     )
-                    .padding(.top, 80)
                 } else {
-                    LazyVStack(alignment: .leading, spacing: 18) {
-                        ForEach(photoStore.groupedRecords(records), id: \.0) { section, items in
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(section)
-                                    .font(.headline)
-                                    .padding(.horizontal, 4)
-
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 4)], spacing: 4) {
-                                    ForEach(items) { record in
-                                        Button {
-                                            selectedRecord = record
-                                        } label: {
-                                            GalleryCell(record: record, photoStore: photoStore)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 20, pinnedViews: [.sectionHeaders]) {
+                            ForEach(photoStore.groupedRecords(records), id: \.0) { section, items in
+                                Section {
+                                    LazyVGrid(columns: columns, spacing: 2) {
+                                        ForEach(items) { record in
+                                            Button {
+                                                selectedRecord = record
+                                            } label: {
+                                                GalleryCell(record: record, photoStore: photoStore)
+                                            }
+                                            .buttonStyle(.plain)
                                         }
                                     }
+                                } header: {
+                                    Text(section)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.black.opacity(0.92))
                                 }
                             }
                         }
+                        .padding(.bottom, 12)
                     }
-                    .padding(12)
                 }
             }
-            .background(Color.black)
+            .background(Color.black.ignoresSafeArea())
             .navigationTitle("分流拍相簿")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -96,30 +111,30 @@ struct GalleryCell: View {
     let photoStore: PhotoStore
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Group {
+        Color.black
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
                 if let image = photoStore.loadThumbnail(for: record) {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
                 } else {
-                    Color.gray.opacity(0.3)
+                    Color.white.opacity(0.08)
                 }
             }
-            .frame(minWidth: 0, maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fill)
             .clipped()
-
-            if record.uploadStatus != .uploaded {
-                Image(systemName: record.uploadStatus.symbolName)
-                    .font(.caption2)
-                    .padding(6)
-                    .background(.black.opacity(0.55))
-                    .foregroundStyle(record.uploadStatus == .failed ? .red : .yellow)
-                    .clipShape(Circle())
-                    .padding(6)
+            .contentShape(Rectangle())
+            .overlay(alignment: .topTrailing) {
+                if record.uploadStatus != .uploaded {
+                    Image(systemName: record.uploadStatus.symbolName)
+                        .font(.caption2.weight(.bold))
+                        .padding(5)
+                        .background(.black.opacity(0.6))
+                        .foregroundStyle(record.uploadStatus == .failed ? Color.red : Color.yellow)
+                        .clipShape(Circle())
+                        .padding(5)
+                }
             }
-        }
     }
 }
 
@@ -144,6 +159,7 @@ struct PhotoDetailView: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
                 VStack {
@@ -162,12 +178,17 @@ struct PhotoDetailView: View {
                         }
                     }
                     .font(.headline)
-                    .padding()
-                    .background(.ultraThinMaterial)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle(record.uploadStatus.displayTitle)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("關閉") { dismiss() }
