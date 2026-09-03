@@ -528,8 +528,11 @@ final class PreviewView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let connection = videoPreviewLayer.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = .portrait
+        // Portrait-only app: 90° is the iOS 17 replacement for `.portrait`.
+        let portraitAngle: CGFloat = 90
+        if let connection = videoPreviewLayer.connection,
+           connection.isVideoRotationAngleSupported(portraitAngle) {
+            connection.videoRotationAngle = portraitAngle
         }
     }
 }
