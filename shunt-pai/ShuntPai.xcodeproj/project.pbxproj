@@ -20,6 +20,8 @@
 		AA000001000000000000000F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000F /* SettingsView.swift */; };
 		AA0000010000000000000010 /* ActivityShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000010 /* ActivityShareSheet.swift */; };
 		AA0000010000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000011 /* Assets.xcassets */; };
+		AA0000010000000000000014 /* AppLockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000014 /* AppLockService.swift */; };
+		AA0000010000000000000015 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000015 /* LockScreenView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +40,8 @@
 		AA0000020000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA0000020000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* ShuntPai.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShuntPai.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000020000000000000014 /* AppLockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockService.swift; sourceTree = "<group>"; };
+		AA0000020000000000000015 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -102,6 +106,7 @@
 				AA0000020000000000000008 /* CameraService.swift */,
 				AA0000020000000000000009 /* PhotoStore.swift */,
 				AA0000020000000000000013 /* PhotoLibrarySaver.swift */,
+				AA0000020000000000000014 /* AppLockService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -164,6 +169,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000010 /* ActivityShareSheet.swift */,
+				AA0000020000000000000015 /* LockScreenView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -250,6 +256,8 @@
 				AA000001000000000000000E /* GalleryView.swift in Sources */,
 				AA000001000000000000000F /* SettingsView.swift in Sources */,
 				AA0000010000000000000010 /* ActivityShareSheet.swift in Sources */,
+				AA0000010000000000000015 /* LockScreenView.swift in Sources */,
+				AA0000010000000000000014 /* AppLockService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

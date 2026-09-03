@@ -14,7 +14,6 @@ struct CameraScreenView: View {
     @State private var showSettings = false
     @State private var isCapturing = false
     @State private var toast: String?
-    @State private var pinchBase: CGFloat = 1
 
     private var latestThumbnail: UIImage? {
         guard let latest = records.first else { return nil }
@@ -26,9 +25,23 @@ struct CameraScreenView: View {
             Color.black.ignoresSafeArea()
 
             if cameraService.authorizationStatus == .authorized {
-                CameraPreviewView(session: cameraService.session)
-                    .ignoresSafeArea()
-                    .gesture(pinchGesture)
+                CameraPreviewView(
+                    session: cameraService.session,
+                    onTapToFocus: { viewPoint, devicePoint in
+                        cameraService.focusAndExpose(at: devicePoint)
+                        cameraService.showFocusIndicator(at: viewPoint)
+                    },
+                    onPinch: { scale in
+                        cameraService.bumpZoom(by: scale)
+                    }
+                )
+                .ignoresSafeArea()
+
+                if let focusPoint = cameraService.focusPoint {
+                    FocusSquare()
+                        .position(focusPoint)
+                        .allowsHitTesting(false)
+                }
             } else {
                 permissionView
             }
@@ -38,7 +51,8 @@ struct CameraScreenView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
 
-                Spacer()
+                Spacer(minLength: 0)
+                    .allowsHitTesting(false)
 
                 if cameraService.authorizationStatus == .authorized {
                     zoomControls
@@ -63,12 +77,11 @@ struct CameraScreenView: View {
                         .clipShape(Capsule())
                         .padding(.bottom, 140)
                 }
-                .transition(.opacity)
                 .allowsHitTesting(false)
             }
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(photoStore: photoStore)
         }
         .task {
             let granted = await cameraService.requestPermissionIfNeeded()
@@ -127,10 +140,8 @@ struct CameraScreenView: View {
     }
 
     private var zoomLabel: String {
-        if cameraService.selectedPreset == .ultraWide {
-            return "0.5x"
-        }
-        let value = cameraService.zoomFactor
+        let value = cameraService.displayZoom
+        if abs(value - 0.5) < 0.05 { return "0.5x" }
         if abs(value - value.rounded()) < 0.05 {
             return "\(Int(value.rounded()))x"
         }
@@ -139,17 +150,17 @@ struct CameraScreenView: View {
 
     private var zoomControls: some View {
         HStack(spacing: 10) {
-            ForEach(cameraService.availablePresets, id: \.self) { preset in
+            ForEach(cameraService.zoomOptions) { option in
                 Button {
-                    cameraService.applyPreset(preset)
+                    cameraService.applyZoomOption(option)
                 } label: {
-                    Text(preset.label)
+                    Text(option.label)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(cameraService.selectedPreset == preset ? .black : .white)
-                        .frame(width: 40, height: 40)
+                        .foregroundStyle(cameraService.selectedZoomID == option.id ? .black : .white)
+                        .frame(width: 42, height: 42)
                         .background(
                             Circle().fill(
-                                cameraService.selectedPreset == preset
+                                cameraService.selectedZoomID == option.id
                                 ? Color.yellow
                                 : Color.black.opacity(0.45)
                             )
@@ -203,7 +214,6 @@ struct CameraScreenView: View {
             }
             .buttonStyle(.plain)
             .disabled(isCapturing)
-            .accessibilityLabel("快門")
 
             Spacer()
 
@@ -215,18 +225,6 @@ struct CameraScreenView: View {
             }
             .buttonStyle(.plain)
         }
-    }
-
-    private var pinchGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                let delta = value / pinchBase
-                pinchBase = value
-                cameraService.bumpZoom(by: delta)
-            }
-            .onEnded { _ in
-                pinchBase = 1
-            }
     }
 
     private func capturePhoto() async {
@@ -249,16 +247,20 @@ struct CameraScreenView: View {
     }
 
     private func showToast(_ message: String) {
-        withAnimation {
-            toast = message
-        }
-
+        withAnimation { toast = message }
         Task {
             try? await Task.sleep(for: .seconds(1.2))
-            withAnimation {
-                toast = nil
-            }
+            withAnimation { toast = nil }
         }
+    }
+}
+
+private struct FocusSquare: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .stroke(Color.yellow, lineWidth: 2)
+            .frame(width: 72, height: 72)
+            .shadow(color: .black.opacity(0.4), radius: 2)
     }
 }
 
@@ -275,16 +277,68 @@ private extension View {
 
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
+    let onTapToFocus: (CGPoint, CGPoint) -> Void
+    let onPinch: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTapToFocus: onTapToFocus, onPinch: onPinch)
+    }
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
+        context.coordinator.attach(to: view)
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         uiView.videoPreviewLayer.session = session
+        context.coordinator.onTapToFocus = onTapToFocus
+        context.coordinator.onPinch = onPinch
+    }
+
+    final class Coordinator: NSObject {
+        var onTapToFocus: (CGPoint, CGPoint) -> Void
+        var onPinch: (CGFloat) -> Void
+        private var lastPinch: CGFloat = 1
+        private weak var previewView: PreviewView?
+
+        init(onTapToFocus: @escaping (CGPoint, CGPoint) -> Void, onPinch: @escaping (CGFloat) -> Void) {
+            self.onTapToFocus = onTapToFocus
+            self.onPinch = onPinch
+        }
+
+        func attach(to view: PreviewView) {
+            previewView = view
+            view.isUserInteractionEnabled = true
+
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+            view.addGestureRecognizer(tap)
+
+            let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+            view.addGestureRecognizer(pinch)
+        }
+
+        @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+            guard let view = previewView else { return }
+            let point = gesture.location(in: view)
+            let devicePoint = view.videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: point)
+            onTapToFocus(point, devicePoint)
+        }
+
+        @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                lastPinch = 1
+            case .changed:
+                let delta = gesture.scale / lastPinch
+                lastPinch = gesture.scale
+                onPinch(delta)
+            default:
+                lastPinch = 1
+            }
+        }
     }
 }
 

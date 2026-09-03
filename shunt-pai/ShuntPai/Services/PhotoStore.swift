@@ -87,4 +87,37 @@ final class PhotoStore: ObservableObject {
             (key, grouped[key] ?? [])
         }
     }
+
+    func storageUsageBytes() -> Int64 {
+        directorySize(photosDirectory) + directorySize(thumbnailsDirectory)
+    }
+
+    func formattedStorageUsage() -> String {
+        ByteCountFormatter.string(fromByteCount: storageUsageBytes(), countStyle: .file)
+    }
+
+    func deviceFreeSpaceFormatted() -> String {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let values = try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        let free = values?.volumeAvailableCapacityForImportantUsage ?? 0
+        return ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+    }
+
+    private func directorySize(_ url: URL) -> Int64 {
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            guard
+                let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                values.isRegularFile == true
+            else { continue }
+            total += Int64(values.fileSize ?? 0)
+        }
+        return total
+    }
 }

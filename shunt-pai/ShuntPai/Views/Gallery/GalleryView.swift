@@ -2,12 +2,11 @@ import SwiftData
 import SwiftUI
 
 struct GalleryView: View {
-    @Environment(\.modelContext) private var modelContext
     @ObservedObject var photoStore: PhotoStore
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
-    @State private var selectedRecord: PhotoRecord?
+    @State private var selectedID: UUID?
     @State private var showSettings = false
 
     private let columns = [
@@ -33,7 +32,7 @@ struct GalleryView: View {
                                     LazyVGrid(columns: columns, spacing: 2) {
                                         ForEach(items) { record in
                                             Button {
-                                                selectedRecord = record
+                                                selectedID = record.id
                                             } label: {
                                                 GalleryCell(record: record, photoStore: photoStore)
                                             }
@@ -69,15 +68,20 @@ struct GalleryView: View {
                     }
                 }
             }
-            .sheet(item: $selectedRecord) { record in
-                PhotoDetailView(
-                    record: record,
-                    photoStore: photoStore,
-                    modelContext: modelContext
-                )
+            .fullScreenCover(isPresented: Binding(
+                get: { selectedID != nil },
+                set: { if !$0 { selectedID = nil } }
+            )) {
+                if let selectedID {
+                    PhotoPagerView(
+                        initialID: selectedID,
+                        photoStore: photoStore,
+                        onClose: { self.selectedID = nil }
+                    )
+                }
             }
             .sheet(isPresented: $showSettings) {
-                SettingsView()
+                SettingsView(photoStore: photoStore)
             }
         }
     }
@@ -104,27 +108,56 @@ struct GalleryCell: View {
     }
 }
 
-struct PhotoDetailView: View {
-    @Environment(\.dismiss) private var dismiss
+struct PhotoPagerView: View {
+    @Environment(\.modelContext) private var modelContext
 
-    let record: PhotoRecord
+    let initialID: UUID
     let photoStore: PhotoStore
-    let modelContext: ModelContext
+    let onClose: () -> Void
 
+    @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
+
+    @State private var currentID: UUID
     @State private var showDeleteConfirm = false
     @State private var showShareSheet = false
     @State private var errorMessage: String?
+
+    init(initialID: UUID, photoStore: PhotoStore, onClose: @escaping () -> Void) {
+        self.initialID = initialID
+        self.photoStore = photoStore
+        self.onClose = onClose
+        _currentID = State(initialValue: initialID)
+    }
+
+    private var currentRecord: PhotoRecord? {
+        records.first { $0.id == currentID } ?? records.first
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                if let image = photoStore.loadImage(for: record) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if records.isEmpty {
+                    Text("沒有照片")
+                        .foregroundStyle(.secondary)
+                } else {
+                    TabView(selection: $currentID) {
+                        ForEach(records) { record in
+                            Group {
+                                if let image = photoStore.loadImage(for: record) {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else {
+                                    Color.black
+                                }
+                            }
+                            .tag(record.id)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .automatic))
                 }
 
                 VStack {
@@ -148,24 +181,24 @@ struct PhotoDetailView: View {
                     .padding(.vertical, 14)
                     .background(Color.white.opacity(0.12))
                     .clipShape(Capsule())
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 28)
                 }
             }
-            .navigationTitle("照片")
+            .navigationTitle(titleText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("關閉") { dismiss() }
+                    Button("關閉", action: onClose)
                 }
             }
             .confirmationDialog("確定刪除這張照片？", isPresented: $showDeleteConfirm) {
                 Button("刪除", role: .destructive) {
-                    deletePhoto()
+                    deleteCurrent()
                 }
             }
             .sheet(isPresented: $showShareSheet) {
-                if let image = photoStore.loadImage(for: record) {
+                if let record = currentRecord, let image = photoStore.loadImage(for: record) {
                     ActivityShareSheet(items: [image])
                 }
             }
@@ -177,13 +210,35 @@ struct PhotoDetailView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .onChange(of: records.map(\.id)) { _, ids in
+                if records.isEmpty {
+                    onClose()
+                } else if !ids.contains(currentID), let first = records.first {
+                    currentID = first.id
+                }
+            }
         }
     }
 
-    private func deletePhoto() {
+    private var titleText: String {
+        guard let index = records.firstIndex(where: { $0.id == currentID }) else {
+            return "照片"
+        }
+        return "\(index + 1) / \(records.count)"
+    }
+
+    private func deleteCurrent() {
+        guard let record = currentRecord else { return }
+        let index = records.firstIndex(where: { $0.id == record.id }) ?? 0
+
         do {
             try photoStore.delete(record: record, modelContext: modelContext)
-            dismiss()
+            let remaining = records.filter { $0.id != record.id }
+            if remaining.isEmpty {
+                onClose()
+            } else {
+                currentID = remaining[min(index, remaining.count - 1)].id
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

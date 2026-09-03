@@ -19,11 +19,13 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>3</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>分流拍需要使用相機來拍攝工作照片。</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>分流拍使用 Face ID 保護你的工作照片。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>若你開啟同步選項，分流拍會將照片另存到 iPhone 相簿。</string>
 	<key>UIApplicationSceneManifest</key>

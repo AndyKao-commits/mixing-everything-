@@ -4,13 +4,18 @@ import SwiftData
 @main
 struct ShuntPaiApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var lockService = AppLockService()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
+                .environmentObject(lockService)
                 .modelContainer(for: [PhotoRecord.self])
                 .preferredColorScheme(.dark)
+                .onAppear {
+                    lockService.relockIfNeededOnLaunch()
+                }
         }
     }
 }

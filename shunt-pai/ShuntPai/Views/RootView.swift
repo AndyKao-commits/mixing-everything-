@@ -2,13 +2,16 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var lockService: AppLockService
 
     var body: some View {
         Group {
-            if appState.isOnboarded {
-                MainTabView()
-            } else {
+            if !appState.isOnboarded {
                 OnboardingFlowView()
+            } else if lockService.needsLockScreen {
+                LockScreenView()
+            } else {
+                MainTabView()
             }
         }
     }
