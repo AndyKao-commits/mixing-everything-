@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import UIKit
 
@@ -130,9 +130,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.setDeviceZoom(option.deviceFactor, animated: true)
+            let baseline = self.baselineZoom
             self.publishOnMain {
                 $0.selectedZoomID = option.id
-                $0.displayZoom = option.deviceFactor / max(self.baselineZoom, 0.01)
+                $0.displayZoom = option.deviceFactor / max(baseline, 0.01)
             }
         }
     }
@@ -371,10 +372,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let matched = options.min { lhs, rhs in
             abs(lhs.deviceFactor - device.videoZoomFactor) < abs(rhs.deviceFactor - device.videoZoomFactor)
         }
+        let matchThreshold = max(0.2, baselineZoom * 0.08)
+        let currentFactor = device.videoZoomFactor
         publishOnMain {
             $0.displayZoom = display
             $0.zoomOptions = options
-            if let matched, abs(matched.deviceFactor - device.videoZoomFactor) < max(0.2, baselineZoom * 0.08) {
+            if let matched, abs(matched.deviceFactor - currentFactor) < matchThreshold {
                 $0.selectedZoomID = matched.id
             }
         }
@@ -486,22 +489,24 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: Error?
     ) {
+        let photoData = photo.fileDataRepresentation()
+        let capturedError = error
         sessionQueue.async { [weak self] in
             guard let self else { return }
 
-            if let error {
-                self.captureContinuation?.resume(throwing: error)
+            if let capturedError {
+                self.captureContinuation?.resume(throwing: capturedError)
                 self.captureContinuation = nil
                 return
             }
 
-            guard let data = photo.fileDataRepresentation() else {
+            guard let photoData else {
                 self.captureContinuation?.resume(throwing: CameraServiceError.captureFailed)
                 self.captureContinuation = nil
                 return
             }
 
-            self.captureContinuation?.resume(returning: data)
+            self.captureContinuation?.resume(returning: photoData)
             self.captureContinuation = nil
         }
     }
