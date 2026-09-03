@@ -10,13 +10,9 @@
 		AA0000010000000000000001 /* ShuntPaiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* ShuntPaiApp.swift */; };
 		AA0000010000000000000002 /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000002 /* AppConstants.swift */; };
 		AA0000010000000000000003 /* PhotoRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000003 /* PhotoRecord.swift */; };
-		AA0000010000000000000004 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000004 /* AppSettings.swift */; };
-		AA0000010000000000000005 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000005 /* KeychainHelper.swift */; };
-		AA0000010000000000000006 /* GoogleAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000006 /* GoogleAuthService.swift */; };
-		AA0000010000000000000007 /* GoogleDriveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000007 /* GoogleDriveService.swift */; };
 		AA0000010000000000000008 /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000008 /* CameraService.swift */; };
 		AA0000010000000000000009 /* PhotoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000009 /* PhotoStore.swift */; };
-		AA000001000000000000000A /* UploadQueueManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000A /* UploadQueueManager.swift */; };
+		AA0000010000000000000013 /* PhotoLibrarySaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000013 /* PhotoLibrarySaver.swift */; };
 		AA000001000000000000000B /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000B /* RootView.swift */; };
 		AA000001000000000000000C /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000C /* OnboardingFlowView.swift */; };
 		AA000001000000000000000D /* CameraScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000D /* CameraScreenView.swift */; };
@@ -30,13 +26,9 @@
 		AA0000020000000000000001 /* ShuntPaiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuntPaiApp.swift; sourceTree = "<group>"; };
 		AA0000020000000000000002 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
 		AA0000020000000000000003 /* PhotoRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoRecord.swift; sourceTree = "<group>"; };
-		AA0000020000000000000004 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		AA0000020000000000000005 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
-		AA0000020000000000000006 /* GoogleAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuthService.swift; sourceTree = "<group>"; };
-		AA0000020000000000000007 /* GoogleDriveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000008 /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000009 /* PhotoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoStore.swift; sourceTree = "<group>"; };
-		AA000002000000000000000A /* UploadQueueManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadQueueManager.swift; sourceTree = "<group>"; };
+		AA0000020000000000000013 /* PhotoLibrarySaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibrarySaver.swift; sourceTree = "<group>"; };
 		AA000002000000000000000B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		AA000002000000000000000C /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		AA000002000000000000000D /* CameraScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreenView.swift; sourceTree = "<group>"; };
@@ -100,7 +92,6 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000003 /* PhotoRecord.swift */,
-				AA0000020000000000000004 /* AppSettings.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -108,12 +99,9 @@
 		AA0000050000000000000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000020000000000000005 /* KeychainHelper.swift */,
-				AA0000020000000000000006 /* GoogleAuthService.swift */,
-				AA0000020000000000000007 /* GoogleDriveService.swift */,
 				AA0000020000000000000008 /* CameraService.swift */,
 				AA0000020000000000000009 /* PhotoStore.swift */,
-				AA000002000000000000000A /* UploadQueueManager.swift */,
+				AA0000020000000000000013 /* PhotoLibrarySaver.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -253,13 +241,9 @@
 				AA0000010000000000000001 /* ShuntPaiApp.swift in Sources */,
 				AA0000010000000000000002 /* AppConstants.swift in Sources */,
 				AA0000010000000000000003 /* PhotoRecord.swift in Sources */,
-				AA0000010000000000000004 /* AppSettings.swift in Sources */,
-				AA0000010000000000000005 /* KeychainHelper.swift in Sources */,
-				AA0000010000000000000006 /* GoogleAuthService.swift in Sources */,
-				AA0000010000000000000007 /* GoogleDriveService.swift in Sources */,
 				AA0000010000000000000008 /* CameraService.swift in Sources */,
 				AA0000010000000000000009 /* PhotoStore.swift in Sources */,
-				AA000001000000000000000A /* UploadQueueManager.swift in Sources */,
+				AA0000010000000000000013 /* PhotoLibrarySaver.swift in Sources */,
 				AA000001000000000000000B /* RootView.swift in Sources */,
 				AA000001000000000000000C /* OnboardingFlowView.swift in Sources */,
 				AA000001000000000000000D /* CameraScreenView.swift in Sources */,

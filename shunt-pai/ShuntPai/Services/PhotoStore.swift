@@ -42,11 +42,7 @@ final class PhotoStore: ObservableObject {
             try? thumbnailData.write(to: thumbURL, options: .atomic)
         }
 
-        let record = PhotoRecord(
-            localFileName: filename,
-            remoteFileName: filename,
-            uploadStatus: .pending
-        )
+        let record = PhotoRecord(localFileName: filename)
         modelContext.insert(record)
         try modelContext.save()
         return record

@@ -9,7 +9,7 @@ struct ShuntPaiApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
-                .modelContainer(for: [PhotoRecord.self, AppSettings.self])
+                .modelContainer(for: [PhotoRecord.self])
                 .preferredColorScheme(.dark)
         }
     }

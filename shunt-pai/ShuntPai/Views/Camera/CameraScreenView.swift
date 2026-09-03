@@ -6,18 +6,14 @@ struct CameraScreenView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appState: AppState
 
-    @ObservedObject var authService: GoogleAuthService
-    let driveService: GoogleDriveService
     @ObservedObject var photoStore: PhotoStore
-    @ObservedObject var uploadManager: UploadQueueManager
-
     @StateObject private var cameraService = CameraService()
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
     @State private var showSettings = false
     @State private var isCapturing = false
-    @State private var uploadToast: String?
+    @State private var toast: String?
     @State private var pinchBase: CGFloat = 1
 
     private var latestThumbnail: UIImage? {
@@ -55,10 +51,10 @@ struct CameraScreenView: View {
             }
             .safeAreaPadding(.bottom, 8)
 
-            if let uploadToast {
+            if let toast {
                 VStack {
                     Spacer()
-                    Text(uploadToast)
+                    Text(toast)
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
@@ -72,20 +68,12 @@ struct CameraScreenView: View {
             }
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(authService: authService, driveService: driveService)
+            SettingsView()
         }
         .task {
             let granted = await cameraService.requestPermissionIfNeeded()
             if granted {
                 cameraService.startSession()
-            }
-            await uploadManager.processPendingUploads(modelContext: modelContext)
-        }
-        .onChange(of: uploadManager.needsProcessing) { _, needs in
-            guard needs else { return }
-            Task {
-                await uploadManager.processPendingUploads(modelContext: modelContext)
-                uploadManager.needsProcessing = false
             }
         }
         .onDisappear {
@@ -248,23 +236,13 @@ struct CameraScreenView: View {
         do {
             let data = try await cameraService.capturePhoto()
             let record = try photoStore.saveCapturedPhoto(data: data, modelContext: modelContext)
-            showToast("已儲存")
 
             let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
-            await uploadManager.enqueueUpload(
-                for: record,
-                saveToPhotoLibrary: saveToLibrary,
-                modelContext: modelContext
-            )
-
-            switch record.uploadStatus {
-            case .uploaded:
-                showToast("已上傳")
-            case .failed:
-                showToast("待傳")
-            default:
-                showToast("上傳中")
+            if let image = photoStore.loadImage(for: record) {
+                await PhotoLibrarySaver.saveIfNeeded(image, enabled: saveToLibrary)
             }
+
+            showToast("已儲存")
         } catch {
             showToast(error.localizedDescription)
         }
@@ -272,13 +250,13 @@ struct CameraScreenView: View {
 
     private func showToast(_ message: String) {
         withAnimation {
-            uploadToast = message
+            toast = message
         }
 
         Task {
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(1.2))
             withAnimation {
-                uploadToast = nil
+                toast = nil
             }
         }
     }

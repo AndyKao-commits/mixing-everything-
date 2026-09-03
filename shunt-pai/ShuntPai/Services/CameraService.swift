@@ -144,24 +144,45 @@ final class CameraService: NSObject, ObservableObject {
     func applyPreset(_ preset: ZoomPreset) {
         sessionQueue.async {
             do {
-                if preset == .ultraWide {
-                    try self.switchToDeviceType(.builtInUltraWideCamera, position: .back, displayFactor: 0.5, preset: .ultraWide)
-                    return
+                switch preset {
+                case .ultraWide:
+                    if let device = self.videoInput?.device,
+                       self.currentPosition == .back,
+                       device.minAvailableVideoZoomFactor <= 0.5 {
+                        self.setZoomFactorLocked(0.5, preset: .ultraWide)
+                    } else {
+                        try self.switchToDeviceType(
+                            .builtInUltraWideCamera,
+                            position: .back,
+                            displayFactor: 1,
+                            preset: .ultraWide
+                        )
+                    }
+
+                case .oneX, .twoX, .threeX:
+                    if self.currentPosition == .back {
+                        let onUltraWideOnly = self.videoInput?.device.deviceType == .builtInUltraWideCamera
+                        if onUltraWideOnly {
+                            let preferredType: AVCaptureDevice.DeviceType =
+                                AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) != nil
+                                ? .builtInTripleCamera
+                                : (AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) != nil
+                                   ? .builtInDualWideCamera
+                                   : .builtInWideAngleCamera)
+                            try self.switchToDeviceType(
+                                preferredType,
+                                position: .back,
+                                displayFactor: preset.targetFactor,
+                                preset: preset
+                            )
+                        } else {
+                            self.setZoomFactorLocked(preset.targetFactor, preset: preset)
+                        }
+                    } else {
+                        self.setZoomFactorLocked(1, preset: .oneX)
+                    }
                 }
 
-                // Ensure we are on wide/tele capable back camera for 1x/2x/3x.
-                if self.currentPosition == .back {
-                    let preferredType: AVCaptureDevice.DeviceType =
-                        AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) != nil
-                        ? .builtInTripleCamera
-                        : (AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) != nil
-                           ? .builtInDualWideCamera
-                           : .builtInWideAngleCamera)
-                    try self.switchToDeviceType(preferredType, position: .back, displayFactor: preset.targetFactor, preset: preset)
-                    self.setZoomFactorLocked(preset.targetFactor, preset: preset)
-                } else {
-                    self.setZoomFactorLocked(max(preset.targetFactor, 1), preset: .oneX)
-                }
                 self.publishDeviceState()
             } catch {
                 DispatchQueue.main.async {

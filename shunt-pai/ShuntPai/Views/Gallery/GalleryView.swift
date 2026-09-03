@@ -3,11 +3,7 @@ import SwiftUI
 
 struct GalleryView: View {
     @Environment(\.modelContext) private var modelContext
-
-    @ObservedObject var authService: GoogleAuthService
-    let driveService: GoogleDriveService
     @ObservedObject var photoStore: PhotoStore
-    @ObservedObject var uploadManager: UploadQueueManager
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
@@ -27,7 +23,7 @@ struct GalleryView: View {
                     ContentUnavailableView(
                         "尚無照片",
                         systemImage: "photo.on.rectangle.angled",
-                        description: Text("在相機頁拍的照片會顯示在這裡。")
+                        description: Text("在相機頁拍的照片會保存在這裡。")
                     )
                 } else {
                     ScrollView {
@@ -72,35 +68,16 @@ struct GalleryView: View {
                         Image(systemName: "gearshape")
                     }
                 }
-
-                ToolbarItem(placement: .topBarLeading) {
-                    if records.contains(where: { $0.uploadStatus == .failed || $0.uploadStatus == .pending }) {
-                        Button("重試上傳") {
-                            Task { await uploadManager.retryFailed(modelContext: modelContext) }
-                        }
-                    }
-                }
             }
             .sheet(item: $selectedRecord) { record in
                 PhotoDetailView(
                     record: record,
                     photoStore: photoStore,
-                    driveService: driveService,
                     modelContext: modelContext
                 )
             }
             .sheet(isPresented: $showSettings) {
-                SettingsView(authService: authService, driveService: driveService)
-            }
-            .task {
-                await uploadManager.processPendingUploads(modelContext: modelContext)
-            }
-            .onChange(of: uploadManager.needsProcessing) { _, needs in
-                guard needs else { return }
-                Task {
-                    await uploadManager.processPendingUploads(modelContext: modelContext)
-                    uploadManager.needsProcessing = false
-                }
+                SettingsView()
             }
         }
     }
@@ -124,17 +101,6 @@ struct GalleryCell: View {
             }
             .clipped()
             .contentShape(Rectangle())
-            .overlay(alignment: .topTrailing) {
-                if record.uploadStatus != .uploaded {
-                    Image(systemName: record.uploadStatus.symbolName)
-                        .font(.caption2.weight(.bold))
-                        .padding(5)
-                        .background(.black.opacity(0.6))
-                        .foregroundStyle(record.uploadStatus == .failed ? Color.red : Color.yellow)
-                        .clipShape(Circle())
-                        .padding(5)
-                }
-            }
     }
 }
 
@@ -143,7 +109,6 @@ struct PhotoDetailView: View {
 
     let record: PhotoRecord
     let photoStore: PhotoStore
-    let driveService: GoogleDriveService
     let modelContext: ModelContext
 
     @State private var showDeleteConfirm = false
@@ -186,7 +151,7 @@ struct PhotoDetailView: View {
                     .padding(.bottom, 24)
                 }
             }
-            .navigationTitle(record.uploadStatus.displayTitle)
+            .navigationTitle("照片")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -196,7 +161,7 @@ struct PhotoDetailView: View {
             }
             .confirmationDialog("確定刪除這張照片？", isPresented: $showDeleteConfirm) {
                 Button("刪除", role: .destructive) {
-                    Task { await deletePhoto() }
+                    deletePhoto()
                 }
             }
             .sheet(isPresented: $showShareSheet) {
@@ -215,11 +180,8 @@ struct PhotoDetailView: View {
         }
     }
 
-    private func deletePhoto() async {
+    private func deletePhoto() {
         do {
-            if let remoteID = record.remoteFileID {
-                try await driveService.deleteRemoteFile(id: remoteID)
-            }
             try photoStore.delete(record: record, modelContext: modelContext)
             dismiss()
         } catch {
