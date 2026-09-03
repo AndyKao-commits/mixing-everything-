@@ -82,8 +82,8 @@ final class PhotoStore: ObservableObject {
         let fullPath = localURL(for: record).path
         if let image = await downsample(path: fullPath, maxPixelSize: 300) {
             cacheThumbnail(image, key: key)
-            if let jpeg = image.jpegData(compressionQuality: 0.75) {
-                try? jpeg.write(to: thumbnailURL(for: record), options: .atomic)
+            if let cgImage = image.cgImage {
+                ImageProcessing.writeOpaqueJPEG(cgImage, to: thumbnailURL(for: record))
             }
             return image
         }
@@ -181,6 +181,11 @@ private enum ImageProcessing {
             [kCGImageSourceShouldCache: false] as CFDictionary
         ) else { return }
         guard let image = makeThumbnail(from: source, maxPixelSize: maxPixelSize) else { return }
+        writeOpaqueJPEG(image, to: url)
+    }
+
+    static func writeOpaqueJPEG(_ image: CGImage, to url: URL) {
+        let opaque = opaqueRGBImage(image)
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL,
             "public.jpeg" as CFString,
@@ -189,7 +194,7 @@ private enum ImageProcessing {
         ) else { return }
         CGImageDestinationAddImage(
             destination,
-            image,
+            opaque,
             [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary
         )
         CGImageDestinationFinalize(destination)
@@ -203,7 +208,7 @@ private enum ImageProcessing {
             [kCGImageSourceShouldCache: false] as CFDictionary
         ) else { return nil }
         guard let image = makeThumbnail(from: source, maxPixelSize: maxPixelSize) else { return nil }
-        return UIImage(cgImage: image)
+        return UIImage(cgImage: opaqueRGBImage(image))
     }
 
     static func directorySize(_ url: URL) -> Int64 {
@@ -233,5 +238,31 @@ private enum ImageProcessing {
             kCGImageSourceShouldCacheImmediately: true
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    /// JPEG has no alpha. ImageIO logs an error if we write an opaque bitmap that still
+    /// carries `AlphaPremulLast`, and decoding it later uses about twice the memory.
+    private static func opaqueRGBImage(_ image: CGImage) -> CGImage {
+        guard image.alphaInfo != .none, image.alphaInfo != .noneSkipLast, image.alphaInfo != .noneSkipFirst else {
+            return image
+        }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue
+        guard let context = CGContext(
+            data: nil,
+            width: image.width,
+            height: image.height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            return image
+        }
+
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.makeImage() ?? image
     }
 }
