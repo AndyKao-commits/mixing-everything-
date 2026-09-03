@@ -41,8 +41,8 @@ enum ZoomPreset: Hashable {
     }
 }
 
-@MainActor
-final class CameraService: NSObject, ObservableObject {
+/// Camera hardware runs on `sessionQueue`; UI state is published on the main queue.
+final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @Published private(set) var isRunning = false
     @Published private(set) var authorizationStatus: AVAuthorizationStatus = .notDetermined
     @Published private(set) var flashMode: AVCaptureDevice.FlashMode = .off
@@ -60,12 +60,14 @@ final class CameraService: NSObject, ObservableObject {
     private var isConfigured = false
     private var captureContinuation: CheckedContinuation<Data, Error>?
     private var currentPosition: AVCaptureDevice.Position = .back
+    private var flashModeValue: AVCaptureDevice.FlashMode = .off
 
     override init() {
         super.init()
         authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     }
 
+    @MainActor
     func requestPermissionIfNeeded() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -84,9 +86,10 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     func startSession() {
-        guard authorizationStatus == .authorized else { return }
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
 
-        sessionQueue.async {
             do {
                 if !self.isConfigured {
                     try self.configureSessionLocked(position: .back)
@@ -96,53 +99,47 @@ final class CameraService: NSObject, ObservableObject {
                     self.session.startRunning()
                 }
                 self.publishDeviceState()
-                DispatchQueue.main.async {
-                    self.isRunning = true
-                }
+                self.publishOnMain { $0.isRunning = true }
             } catch {
-                DispatchQueue.main.async {
-                    self.errorMessage = error.localizedDescription
-                }
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
             }
         }
     }
 
     func stopSession() {
-        sessionQueue.async {
-            guard self.session.isRunning else { return }
+        sessionQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
             self.session.stopRunning()
-            DispatchQueue.main.async {
-                self.isRunning = false
-            }
+            self.publishOnMain { $0.isRunning = false }
         }
     }
 
     func switchCamera() {
-        sessionQueue.async {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
             let newPosition: AVCaptureDevice.Position = self.currentPosition == .back ? .front : .back
             do {
                 try self.configureSessionLocked(position: newPosition)
                 self.publishDeviceState()
             } catch {
-                DispatchQueue.main.async {
-                    self.errorMessage = error.localizedDescription
-                }
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
             }
         }
     }
 
     func toggleFlash() {
-        sessionQueue.async {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
             guard let device = self.videoInput?.device, device.hasFlash else { return }
-            let next: AVCaptureDevice.FlashMode = self.flashMode == .off ? .on : .off
-            DispatchQueue.main.async {
-                self.flashMode = next
-            }
+            let next: AVCaptureDevice.FlashMode = self.flashModeValue == .off ? .on : .off
+            self.flashModeValue = next
+            self.publishOnMain { $0.flashMode = next }
         }
     }
 
     func applyPreset(_ preset: ZoomPreset) {
-        sessionQueue.async {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
             do {
                 switch preset {
                 case .ultraWide:
@@ -163,12 +160,7 @@ final class CameraService: NSObject, ObservableObject {
                     if self.currentPosition == .back {
                         let onUltraWideOnly = self.videoInput?.device.deviceType == .builtInUltraWideCamera
                         if onUltraWideOnly {
-                            let preferredType: AVCaptureDevice.DeviceType =
-                                AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) != nil
-                                ? .builtInTripleCamera
-                                : (AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) != nil
-                                   ? .builtInDualWideCamera
-                                   : .builtInWideAngleCamera)
+                            let preferredType = self.preferredBackDeviceType()
                             try self.switchToDeviceType(
                                 preferredType,
                                 position: .back,
@@ -185,25 +177,27 @@ final class CameraService: NSObject, ObservableObject {
 
                 self.publishDeviceState()
             } catch {
-                DispatchQueue.main.async {
-                    self.errorMessage = error.localizedDescription
-                }
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
             }
         }
     }
 
     func bumpZoom(by scale: CGFloat) {
-        sessionQueue.async {
-            guard let device = self.videoInput?.device else { return }
-            let next = device.videoZoomFactor * scale
-            self.setZoomFactorLocked(next, preset: nil)
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoInput?.device else { return }
+            self.setZoomFactorLocked(device.videoZoomFactor * scale, preset: nil)
             self.publishDeviceState()
         }
     }
 
     func capturePhoto() async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
-            sessionQueue.async {
+            sessionQueue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: CameraServiceError.captureFailed)
+                    return
+                }
+
                 guard self.session.isRunning else {
                     continuation.resume(throwing: CameraServiceError.captureFailed)
                     return
@@ -214,8 +208,8 @@ final class CameraService: NSObject, ObservableObject {
                 let settings = AVCapturePhotoSettings()
                 if let device = self.videoInput?.device,
                    device.hasFlash,
-                   self.photoOutput.supportedFlashModes.contains(self.flashMode) {
-                    settings.flashMode = self.flashMode
+                   self.photoOutput.supportedFlashModes.contains(self.flashModeValue) {
+                    settings.flashMode = self.flashModeValue
                 }
 
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
@@ -223,19 +217,19 @@ final class CameraService: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Private
+    // MARK: - Session queue only
 
     private func configureSessionLocked(position: AVCaptureDevice.Position) throws {
         session.beginConfiguration()
-        session.sessionPreset = .photo
+        defer { session.commitConfiguration() }
 
+        session.sessionPreset = .photo
         session.inputs.forEach { session.removeInput($0) }
         session.outputs.forEach { session.removeOutput($0) }
 
         let device = try preferredDevice(for: position)
         let input = try AVCaptureDeviceInput(device: device)
         guard session.canAddInput(input) else {
-            session.commitConfiguration()
             throw CameraServiceError.unavailable
         }
         session.addInput(input)
@@ -247,21 +241,24 @@ final class CameraService: NSObject, ObservableObject {
             photoOutput.maxPhotoQualityPrioritization = .quality
         }
 
-        session.commitConfiguration()
-
         setZoomFactorLocked(1, preset: .oneX)
+    }
+
+    private func preferredBackDeviceType() -> AVCaptureDevice.DeviceType {
+        if AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) != nil {
+            return .builtInTripleCamera
+        }
+        if AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) != nil {
+            return .builtInDualWideCamera
+        }
+        return .builtInWideAngleCamera
     }
 
     private func preferredDevice(for position: AVCaptureDevice.Position) throws -> AVCaptureDevice {
         if position == .back {
-            if let triple = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back) {
-                return triple
-            }
-            if let dualWide = AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back) {
-                return dualWide
-            }
-            if let wide = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) {
-                return wide
+            let type = preferredBackDeviceType()
+            if let device = AVCaptureDevice.default(type, for: .video, position: .back) {
+                return device
             }
         } else if let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
             return front
@@ -307,14 +304,12 @@ final class CameraService: NSObject, ObservableObject {
             device.unlockForConfiguration()
 
             let resolvedPreset = preset ?? Self.nearestPreset(for: clamped, position: currentPosition)
-            DispatchQueue.main.async {
-                self.zoomFactor = clamped
-                self.selectedPreset = resolvedPreset
+            publishOnMain {
+                $0.zoomFactor = clamped
+                $0.selectedPreset = resolvedPreset
             }
         } catch {
-            DispatchQueue.main.async {
-                self.errorMessage = error.localizedDescription
-            }
+            publishOnMain { $0.errorMessage = error.localizedDescription }
         }
     }
 
@@ -337,10 +332,17 @@ final class CameraService: NSObject, ObservableObject {
         let flash = device.hasFlash
         let factor = device.videoZoomFactor
 
-        DispatchQueue.main.async {
-            self.availablePresets = presets
-            self.supportsFlash = flash
-            self.zoomFactor = factor
+        publishOnMain {
+            $0.availablePresets = presets
+            $0.supportsFlash = flash
+            $0.zoomFactor = factor
+        }
+    }
+
+    private func publishOnMain(_ update: @escaping (CameraService) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            update(self)
         }
     }
 
@@ -358,21 +360,24 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: Error?
     ) {
-        Task { @MainActor in
+        // Keep continuation resume on the same session queue that started capture.
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+
             if let error {
-                captureContinuation?.resume(throwing: error)
-                captureContinuation = nil
+                self.captureContinuation?.resume(throwing: error)
+                self.captureContinuation = nil
                 return
             }
 
             guard let data = photo.fileDataRepresentation() else {
-                captureContinuation?.resume(throwing: CameraServiceError.captureFailed)
-                captureContinuation = nil
+                self.captureContinuation?.resume(throwing: CameraServiceError.captureFailed)
+                self.captureContinuation = nil
                 return
             }
 
-            captureContinuation?.resume(returning: data)
-            captureContinuation = nil
+            self.captureContinuation?.resume(returning: data)
+            self.captureContinuation = nil
         }
     }
 }
