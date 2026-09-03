@@ -236,7 +236,73 @@ struct GalleryCell: View {
     }
 }
 
-struct PhotoPagerView: View {
+struct ZoomablePhotoView: View {
+    let image: UIImage
+
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(scale)
+            .offset(offset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .gesture(magnifyGesture)
+            .highPriorityGesture(panGesture, including: scale > 1.02 ? .all : .subviews)
+            .onTapGesture(count: 2, perform: toggleZoom)
+    }
+
+    private var magnifyGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let next = lastScale * value
+                scale = min(max(next, 1), 6)
+            }
+            .onEnded { _ in
+                lastScale = scale
+                if scale <= 1.02 {
+                    withAnimation(.easeOut(duration: 0.2)) { reset() }
+                }
+            }
+    }
+
+    private var panGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard scale > 1.02 else { return }
+                offset = CGSize(
+                    width: lastOffset.width + value.translation.width,
+                    height: lastOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in
+                lastOffset = offset
+            }
+    }
+
+    private func toggleZoom() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if scale > 1.02 {
+                reset()
+            } else {
+                scale = 2.5
+                lastScale = 2.5
+            }
+        }
+    }
+
+    private func reset() {
+        scale = 1
+        lastScale = 1
+        offset = .zero
+        lastOffset = .zero
+    }
+}
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var entitlements: EntitlementService
 
@@ -276,10 +342,7 @@ struct PhotoPagerView: View {
                         ForEach(records) { record in
                             Group {
                                 if let image = photoStore.loadImage(for: record) {
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    ZoomablePhotoView(image: image)
                                 } else {
                                     Color.black
                                 }

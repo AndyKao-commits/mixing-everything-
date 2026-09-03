@@ -26,6 +26,15 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("前置鏡頭鏡像", isOn: Binding(
+                        get: { AppConstants.isFrontCameraMirrored },
+                        set: { AppConstants.isFrontCameraMirrored = $0 }
+                    ))
+                } footer: {
+                    Text("開啟時，自拍預覽與存檔會左右翻轉，看起來像鏡子。關閉則與真實左右相同。")
+                }
+
+                Section {
                     Toggle("啟用上鎖", isOn: Binding(
                         get: { lockService.isEnabled },
                         set: { newValue in

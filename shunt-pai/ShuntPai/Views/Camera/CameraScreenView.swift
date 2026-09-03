@@ -107,6 +107,11 @@ struct CameraScreenView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(photoStore: photoStore)
         }
+        .onChange(of: showSettings) { _, isOpen in
+            if !isOpen {
+                cameraService.refreshMirroring()
+            }
+        }
         .task {
             let granted = await cameraService.requestPermissionIfNeeded()
             if granted {

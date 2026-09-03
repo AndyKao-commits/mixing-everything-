@@ -250,6 +250,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
+    func refreshMirroring() {
+        sessionQueue.async { [weak self] in
+            self?.applyMirroringLocked()
+        }
+    }
+
     func capturePhoto() async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [weak self] in
@@ -281,7 +287,6 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     private func configureSessionLocked(position: AVCaptureDevice.Position) throws {
         session.beginConfiguration()
-        defer { session.commitConfiguration() }
 
         session.sessionPreset = .photo
         session.inputs.forEach { session.removeInput($0) }
@@ -290,6 +295,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let device = try preferredDevice(for: position)
         let input = try AVCaptureDeviceInput(device: device)
         guard session.canAddInput(input) else {
+            session.commitConfiguration()
             throw CameraServiceError.unavailable
         }
         session.addInput(input)
@@ -301,16 +307,31 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             photoOutput.maxPhotoQualityPrioritization = .quality
         }
 
+        session.commitConfiguration()
+
         baselineZoom = Self.oneXFactor(for: device)
         setDeviceZoom(baselineZoom, animated: false)
         applyContinuousAutoFocusLocked(on: device)
         observeSubjectAreaChanges()
+        applyMirroringLocked()
         aeafLocked = false
         publishOnMain {
             $0.isAEAFLocked = false
             $0.exposureBias = 0
             $0.minExposureBias = device.minExposureTargetBias
             $0.maxExposureBias = device.maxExposureTargetBias
+        }
+    }
+
+    private func applyMirroringLocked() {
+        let shouldMirror = currentPosition == .front && AppConstants.isFrontCameraMirrored
+        for connection in session.connections where connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = shouldMirror
+        }
+        for connection in photoOutput.connections where connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = shouldMirror
         }
     }
 
