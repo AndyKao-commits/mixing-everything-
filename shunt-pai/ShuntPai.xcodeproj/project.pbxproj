@@ -23,6 +23,7 @@
 		AA0000010000000000000014 /* AppLockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000014 /* AppLockService.swift */; };
 		AA0000010000000000000015 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000015 /* LockScreenView.swift */; };
 		AA0000010000000000000016 /* EntitlementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000016 /* EntitlementService.swift */; };
+		AA0000010000000000000017 /* PhotoPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000017 /* PhotoPagerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		AA0000020000000000000014 /* AppLockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000015 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000016 /* EntitlementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementService.swift; sourceTree = "<group>"; };
+		AA0000020000000000000017 /* PhotoPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPagerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +158,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000002000000000000000E /* GalleryView.swift */,
+				AA0000020000000000000017 /* PhotoPagerView.swift */,
 			);
 			path = Gallery;
 			sourceTree = "<group>";
@@ -257,6 +260,7 @@
 				AA000001000000000000000C /* OnboardingFlowView.swift in Sources */,
 				AA000001000000000000000D /* CameraScreenView.swift in Sources */,
 				AA000001000000000000000E /* GalleryView.swift in Sources */,
+				AA0000010000000000000017 /* PhotoPagerView.swift in Sources */,
 				AA000001000000000000000F /* SettingsView.swift in Sources */,
 				AA0000010000000000000010 /* ActivityShareSheet.swift in Sources */,
 				AA0000010000000000000015 /* LockScreenView.swift in Sources */,
