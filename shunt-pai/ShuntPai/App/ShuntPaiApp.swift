@@ -5,12 +5,14 @@ import SwiftData
 struct ShuntPaiApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var lockService = AppLockService()
+    @StateObject private var entitlements = EntitlementService()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
                 .environmentObject(lockService)
+                .environmentObject(entitlements)
                 .modelContainer(for: [PhotoRecord.self])
                 .preferredColorScheme(.dark)
                 .onAppear {

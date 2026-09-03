@@ -1,13 +1,21 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct GalleryView: View {
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var entitlements: EntitlementService
     @ObservedObject var photoStore: PhotoStore
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
     @State private var selectedID: UUID?
     @State private var showSettings = false
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var showShareSheet = false
+    @State private var showDeleteConfirm = false
+    @State private var errorMessage: String?
 
     private let columns = [
         GridItem(.flexible(), spacing: 2),
@@ -32,9 +40,14 @@ struct GalleryView: View {
                                     LazyVGrid(columns: columns, spacing: 2) {
                                         ForEach(items) { record in
                                             Button {
-                                                selectedID = record.id
+                                                handleTap(record)
                                             } label: {
-                                                GalleryCell(record: record, photoStore: photoStore)
+                                                GalleryCell(
+                                                    record: record,
+                                                    photoStore: photoStore,
+                                                    isSelecting: isSelecting,
+                                                    isChosen: selectedIDs.contains(record.id)
+                                                )
                                             }
                                             .buttonStyle(.plain)
                                         }
@@ -50,16 +63,29 @@ struct GalleryView: View {
                                 }
                             }
                         }
-                        .padding(.bottom, 12)
+                        .padding(.bottom, isSelecting ? 84 : 12)
+                    }
+                    .safeAreaInset(edge: .bottom) {
+                        if isSelecting {
+                            selectionBar
+                        }
                     }
                 }
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle("分流拍相簿")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if entitlements.isPaid, !records.isEmpty {
+                        Button(isSelecting ? "取消" : "選取") {
+                            isSelecting.toggle()
+                            if !isSelecting { selectedIDs.removeAll() }
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showSettings = true
@@ -83,6 +109,96 @@ struct GalleryView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView(photoStore: photoStore)
             }
+            .sheet(isPresented: $showShareSheet) {
+                ActivityShareSheet(items: selectedImages())
+            }
+            .confirmationDialog(
+                "確定刪除 \(selectedIDs.count) 張照片？",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("刪除", role: .destructive) {
+                    deleteSelected()
+                }
+            }
+            .alert("操作失敗", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
+            .onChange(of: entitlements.isPaid) { _, isPaid in
+                if !isPaid {
+                    isSelecting = false
+                    selectedIDs.removeAll()
+                }
+            }
+        }
+    }
+
+    private var navigationTitle: String {
+        if isSelecting {
+            return selectedIDs.isEmpty ? "選取照片" : "已選 \(selectedIDs.count) 張"
+        }
+        if entitlements.isPaid {
+            return "分流拍相簿"
+        }
+        return "相簿 \(records.count)/\(AppConstants.freePhotoLimit)"
+    }
+
+    private var selectionBar: some View {
+        HStack(spacing: 16) {
+            Button {
+                showShareSheet = true
+            } label: {
+                Label("分享／下載", systemImage: "square.and.arrow.up")
+            }
+            .disabled(selectedIDs.isEmpty)
+
+            Spacer()
+
+            Button(role: .destructive) {
+                showDeleteConfirm = true
+            } label: {
+                Label("刪除", systemImage: "trash")
+            }
+            .disabled(selectedIDs.isEmpty)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
+    }
+
+    private func handleTap(_ record: PhotoRecord) {
+        if isSelecting {
+            if selectedIDs.contains(record.id) {
+                selectedIDs.remove(record.id)
+            } else {
+                selectedIDs.insert(record.id)
+            }
+        } else {
+            selectedID = record.id
+        }
+    }
+
+    private func selectedImages() -> [UIImage] {
+        records
+            .filter { selectedIDs.contains($0.id) }
+            .compactMap { photoStore.loadImage(for: $0) }
+    }
+
+    private func deleteSelected() {
+        let targets = records.filter { selectedIDs.contains($0.id) }
+        do {
+            for record in targets {
+                try photoStore.delete(record: record, modelContext: modelContext)
+            }
+            selectedIDs.removeAll()
+            isSelecting = false
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
@@ -90,6 +206,8 @@ struct GalleryView: View {
 struct GalleryCell: View {
     let record: PhotoRecord
     let photoStore: PhotoStore
+    var isSelecting: Bool = false
+    var isChosen: Bool = false
 
     var body: some View {
         Color.black
@@ -103,6 +221,16 @@ struct GalleryCell: View {
                     Color.white.opacity(0.08)
                 }
             }
+            .overlay(alignment: .topTrailing) {
+                if isSelecting {
+                    Image(systemName: isChosen ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isChosen ? Color.yellow : Color.white)
+                        .padding(6)
+                        .shadow(radius: 2)
+                }
+            }
+            .opacity(isSelecting && !isChosen ? 0.72 : 1)
             .clipped()
             .contentShape(Rectangle())
     }
@@ -110,6 +238,7 @@ struct GalleryCell: View {
 
 struct PhotoPagerView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var entitlements: EntitlementService
 
     let initialID: UUID
     let photoStore: PhotoStore
@@ -118,7 +247,8 @@ struct PhotoPagerView: View {
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
     @State private var currentID: UUID
-    @State private var showDeleteConfirm = false
+    @State private var showFirstDeleteConfirm = false
+    @State private var showSecondDeleteConfirm = false
     @State private var showShareSheet = false
     @State private var errorMessage: String?
 
@@ -170,7 +300,7 @@ struct PhotoPagerView: View {
                         }
 
                         Button(role: .destructive) {
-                            showDeleteConfirm = true
+                            showFirstDeleteConfirm = true
                         } label: {
                             Label("刪除", systemImage: "trash")
                         }
@@ -192,10 +322,22 @@ struct PhotoPagerView: View {
                     Button("關閉", action: onClose)
                 }
             }
-            .confirmationDialog("確定刪除這張照片？", isPresented: $showDeleteConfirm) {
+            .confirmationDialog("確定刪除這張照片？", isPresented: $showFirstDeleteConfirm, titleVisibility: .visible) {
                 Button("刪除", role: .destructive) {
+                    if entitlements.isPaid {
+                        deleteCurrent()
+                    } else {
+                        showSecondDeleteConfirm = true
+                    }
+                }
+            }
+            .alert("再確認一次", isPresented: $showSecondDeleteConfirm) {
+                Button("取消", role: .cancel) {}
+                Button("確定刪除", role: .destructive) {
                     deleteCurrent()
                 }
+            } message: {
+                Text("免費版刪除後無法復原，請再按一次確認。")
             }
             .sheet(isPresented: $showShareSheet) {
                 if let record = currentRecord, let image = photoStore.loadImage(for: record) {

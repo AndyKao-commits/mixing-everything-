@@ -5,6 +5,7 @@ import SwiftUI
 struct CameraScreenView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var entitlements: EntitlementService
 
     @ObservedObject var photoStore: PhotoStore
     @StateObject private var cameraService = CameraService()
@@ -42,15 +43,9 @@ struct CameraScreenView: View {
                 .ignoresSafeArea()
 
                 if let focusPoint = cameraService.focusPoint {
-                    FocusReticle(
-                        locked: cameraService.isAEAFLocked,
-                        exposureBias: cameraService.exposureBias,
-                        minBias: cameraService.minExposureBias,
-                        maxBias: cameraService.maxExposureBias
-                    ) { newBias in
-                        cameraService.setExposureBias(newBias)
-                    }
-                    .position(focusPoint)
+                    FocusReticle(locked: cameraService.isAEAFLocked)
+                        .position(focusPoint)
+                        .allowsHitTesting(false)
                 }
             } else {
                 permissionView
@@ -59,6 +54,10 @@ struct CameraScreenView: View {
             VStack(spacing: 0) {
                 topBar
                     .padding(.horizontal, 16)
+                    .padding(.top, 10)
+
+                exposureSlider
+                    .padding(.horizontal, 20)
                     .padding(.top, 10)
 
                 Spacer(minLength: 0)
@@ -99,7 +98,7 @@ struct CameraScreenView: View {
                         .padding(.vertical, 6)
                         .background(Color.black.opacity(0.55))
                         .clipShape(Capsule())
-                        .padding(.top, 58)
+                        .padding(.top, 118)
                     Spacer()
                 }
                 .allowsHitTesting(false)
@@ -162,6 +161,30 @@ struct CameraScreenView: View {
                     .cameraChromeButton()
             }
         }
+    }
+
+    private var exposureSlider: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sun.min.fill")
+                .font(.caption)
+                .foregroundStyle(.yellow)
+            Slider(
+                value: Binding(
+                    get: { Double(cameraService.exposureBias) },
+                    set: { cameraService.setExposureBias(Float($0)) }
+                ),
+                in: Double(cameraService.minExposureBias)...Double(max(cameraService.maxExposureBias, cameraService.minExposureBias + 0.1)),
+                step: 0.1
+            )
+            .tint(.yellow)
+            Image(systemName: "sun.max.fill")
+                .font(.caption)
+                .foregroundStyle(.yellow)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.35))
+        .clipShape(Capsule())
     }
 
     private var exposureLabel: String {
@@ -262,6 +285,11 @@ struct CameraScreenView: View {
     }
 
     private func capturePhoto() async {
+        guard entitlements.canCaptureMore(currentCount: records.count) else {
+            showToast("免費版最多 \(AppConstants.freePhotoLimit) 張")
+            return
+        }
+
         isCapturing = true
         defer { isCapturing = false }
 
@@ -291,44 +319,19 @@ struct CameraScreenView: View {
 
 private struct FocusReticle: View {
     let locked: Bool
-    let exposureBias: Float
-    let minBias: Float
-    let maxBias: Float
-    let onBiasChange: (Float) -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
-                    .frame(width: 78, height: 78)
-                if locked {
-                    Text("鎖定")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.yellow)
-                }
-            }
-
-            VStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
-                    .font(.caption.weight(.bold))
+        VStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
+                .frame(width: 78, height: 78)
+            if locked {
+                Text("鎖定")
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.yellow)
-                Slider(
-                    value: Binding(
-                        get: { Double(exposureBias) },
-                        set: { onBiasChange(Float($0)) }
-                    ),
-                    in: Double(minBias)...Double(max(maxBias, minBias + 0.1)),
-                    step: 0.1
-                )
-                .frame(width: 16, height: 110)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 110, height: 16)
-                .tint(.yellow)
             }
-            .frame(width: 36, height: 130)
         }
-        .offset(x: 40)
+        .shadow(color: .black.opacity(0.4), radius: 2)
     }
 }
 

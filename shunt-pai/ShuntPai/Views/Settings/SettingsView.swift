@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var lockService: AppLockService
+    @EnvironmentObject private var entitlements: EntitlementService
 
     @ObservedObject var photoStore: PhotoStore
 
@@ -38,6 +39,33 @@ struct SettingsView: View {
                     .disabled(lockBusy)
                 } footer: {
                     Text("啟用後，每次重新打開 App 需 Face ID / 密碼解鎖一次；解鎖後本次使用期間不必再解鎖。")
+                }
+
+                Section("方案") {
+                    LabeledContent("目前", value: entitlements.planName)
+                    if entitlements.isPaid {
+                        Text("可多選分享／下載／刪除；刪除只需確認一次。\(AppConstants.subscriptionPriceText)。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("最多 \(AppConstants.freePhotoLimit) 張。只能一張一張刪除，每次需確認兩次。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("測試狀態") {
+                    Button("啟動付費模式") {
+                        entitlements.setPaid(true)
+                    }
+                    .disabled(entitlements.isPaid)
+
+                    Button("免費版") {
+                        entitlements.setPaid(false)
+                    }
+                    .disabled(!entitlements.isPaid)
+                } footer: {
+                    Text("僅供測試。未來免費版限 43 張、單張雙重確認刪除；訂閱每月 NT$40 可多選分享與刪除。")
                 }
 
                 Section("容量") {
