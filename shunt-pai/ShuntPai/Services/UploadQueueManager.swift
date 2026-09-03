@@ -49,10 +49,12 @@ final class UploadQueueManager: ObservableObject {
 
         guard let context = modelContext else { return }
 
+        let pendingRaw = UploadStatus.pending.rawValue
+        let failedRaw = UploadStatus.failed.rawValue
         let descriptor = FetchDescriptor<PhotoRecord>(
             predicate: #Predicate { record in
-                record.uploadStatusRaw == UploadStatus.pending.rawValue
-                    || record.uploadStatusRaw == UploadStatus.failed.rawValue
+                record.uploadStatusRaw == pendingRaw
+                    || record.uploadStatusRaw == failedRaw
             },
             sortBy: [SortDescriptor(\.capturedAt)]
         )
@@ -79,8 +81,9 @@ final class UploadQueueManager: ObservableObject {
     }
 
     func retryFailed(modelContext: ModelContext) async {
+        let failedRaw = UploadStatus.failed.rawValue
         let descriptor = FetchDescriptor<PhotoRecord>(
-            predicate: #Predicate { $0.uploadStatusRaw == UploadStatus.failed.rawValue }
+            predicate: #Predicate { $0.uploadStatusRaw == failedRaw }
         )
         if let failed = try? modelContext.fetch(descriptor) {
             for record in failed {
