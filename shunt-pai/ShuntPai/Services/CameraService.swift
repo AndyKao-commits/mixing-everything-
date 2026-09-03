@@ -490,12 +490,12 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
         error: Error?
     ) {
         let photoData = photo.fileDataRepresentation()
-        let capturedError = error
+        let didFail = error != nil
         sessionQueue.async { [weak self] in
             guard let self else { return }
 
-            if let capturedError {
-                self.captureContinuation?.resume(throwing: capturedError)
+            if didFail {
+                self.captureContinuation?.resume(throwing: CameraServiceError.captureFailed)
                 self.captureContinuation = nil
                 return
             }

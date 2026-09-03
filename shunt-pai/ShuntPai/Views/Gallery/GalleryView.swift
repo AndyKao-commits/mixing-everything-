@@ -27,11 +27,11 @@ struct GalleryView: View {
         NavigationStack {
             Group {
                 if records.isEmpty {
-                    ContentUnavailableView(
-                        "尚無照片",
-                        systemImage: "photo.on.rectangle.angled",
-                        description: Text("在相機頁拍的照片會保存在這裡。")
-                    )
+                    ContentUnavailableView {
+                        Label("尚無照片", systemImage: "photo.on.rectangle.angled")
+                    } description: {
+                        Text("在相機頁拍的照片會保存在這裡。")
+                    }
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 20, pinnedViews: [.sectionHeaders]) {
