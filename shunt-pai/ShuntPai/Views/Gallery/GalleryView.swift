@@ -110,7 +110,7 @@ struct GalleryView: View {
                 SettingsView(photoStore: photoStore)
             }
             .sheet(isPresented: $showShareSheet) {
-                ActivityShareSheet(items: selectedImages())
+                ActivityShareSheet(items: selectedShareItems())
             }
             .confirmationDialog(
                 "確定刪除 \(selectedIDs.count) 張照片？",
@@ -183,10 +183,8 @@ struct GalleryView: View {
         }
     }
 
-    private func selectedImages() -> [UIImage] {
-        records
-            .filter { selectedIDs.contains($0.id) }
-            .compactMap { photoStore.loadImage(for: $0) }
+    private func selectedShareItems() -> [URL] {
+        photoStore.shareableURLs(for: records.filter { selectedIDs.contains($0.id) })
     }
 
     private func deleteSelected() {
@@ -208,12 +206,13 @@ struct GalleryCell: View {
     let photoStore: PhotoStore
     var isSelecting: Bool = false
     var isChosen: Bool = false
+    @State private var image: UIImage?
 
     var body: some View {
         Color.black
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                if let image = photoStore.loadThumbnail(for: record) {
+                if let image {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -233,5 +232,8 @@ struct GalleryCell: View {
             .opacity(isSelecting && !isChosen ? 0.72 : 1)
             .clipped()
             .contentShape(Rectangle())
+            .task(id: record.id) {
+                image = await photoStore.loadThumbnail(for: record)
+            }
     }
 }

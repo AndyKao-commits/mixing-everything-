@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var lockService: AppLockService
 
@@ -12,6 +13,11 @@ struct RootView: View {
                 LockScreenView()
             } else {
                 MainTabView()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                lockService.relockIfNeededOnLaunch()
             }
         }
     }

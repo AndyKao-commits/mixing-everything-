@@ -16,7 +16,7 @@ struct LockScreenView: View {
                 Text("分流拍已上鎖")
                     .font(.title2.weight(.semibold))
 
-                Text("解鎖一次後，本次使用期間不用再解鎖。")
+                Text("切到背景後會再上鎖。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

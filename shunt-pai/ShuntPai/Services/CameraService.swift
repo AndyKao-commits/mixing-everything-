@@ -83,11 +83,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 if !self.isConfigured {
                     try self.configureSessionLocked(position: .back)
                     self.isConfigured = true
+                    self.refreshZoomMetadata()
                 }
                 if !self.session.isRunning {
                     self.session.startRunning()
                 }
-                self.refreshZoomMetadata()
                 self.publishOnMain { $0.isRunning = true }
             } catch {
                 self.publishOnMain { $0.errorMessage = error.localizedDescription }
@@ -97,7 +97,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
     func stopSession() {
         sessionQueue.async { [weak self] in
-            guard let self, self.session.isRunning else { return }
+            guard let self else { return }
+            if let pending = self.captureContinuation {
+                pending.resume(throwing: CameraServiceError.captureFailed)
+                self.captureContinuation = nil
+            }
+            guard self.session.isRunning else { return }
             self.session.stopRunning()
             self.publishOnMain { $0.isRunning = false }
         }
@@ -269,9 +274,19 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                     return
                 }
 
+                if self.captureContinuation != nil {
+                    continuation.resume(throwing: CameraServiceError.captureFailed)
+                    return
+                }
+
                 self.captureContinuation = continuation
 
-                let settings = AVCapturePhotoSettings()
+                let settings: AVCapturePhotoSettings
+                if self.photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
+                    settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+                } else {
+                    settings = AVCapturePhotoSettings()
+                }
                 if let device = self.videoInput?.device,
                    device.hasFlash,
                    self.photoOutput.supportedFlashModes.contains(self.flashModeValue) {
@@ -485,9 +500,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             self.subjectAreaObserver = nil
         }
 
+        guard let device = videoInput?.device else { return }
         subjectAreaObserver = NotificationCenter.default.addObserver(
             forName: .AVCaptureDeviceSubjectAreaDidChange,
-            object: nil,
+            object: device,
             queue: nil
         ) { [weak self] _ in
             self?.sessionQueue.async {

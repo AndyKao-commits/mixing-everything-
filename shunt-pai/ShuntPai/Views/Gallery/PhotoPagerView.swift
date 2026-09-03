@@ -108,14 +108,8 @@ struct PhotoPagerView: View {
                 } else {
                     TabView(selection: $currentID) {
                         ForEach(records) { record in
-                            Group {
-                                if let image = photoStore.loadImage(for: record) {
-                                    ZoomablePhotoView(image: image)
-                                } else {
-                                    Color.black
-                                }
-                            }
-                            .tag(record.id)
+                            LazyPhotoPage(record: record, photoStore: photoStore)
+                                .tag(record.id)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .automatic))
@@ -171,8 +165,8 @@ struct PhotoPagerView: View {
                 Text("免費版刪除後無法復原，請再按一次確認。")
             }
             .sheet(isPresented: $showShareSheet) {
-                if let record = currentRecord, let image = photoStore.loadImage(for: record) {
-                    ActivityShareSheet(items: [image])
+                if let record = currentRecord {
+                    ActivityShareSheet(items: photoStore.shareableURLs(for: [record]))
                 }
             }
             .alert("刪除失敗", isPresented: Binding(
@@ -214,6 +208,27 @@ struct PhotoPagerView: View {
             }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct LazyPhotoPage: View {
+    let record: PhotoRecord
+    let photoStore: PhotoStore
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                ZoomablePhotoView(image: image)
+            } else {
+                ProgressView()
+                    .tint(.yellow)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: record.id) {
+            image = await photoStore.loadImage(for: record)
         }
     }
 }

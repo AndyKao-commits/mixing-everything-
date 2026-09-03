@@ -47,7 +47,7 @@ struct SettingsView: View {
                     ))
                     .disabled(lockBusy)
                 } footer: {
-                    Text("啟用後，每次重新打開 App 需 Face ID / 密碼解鎖一次；解鎖後本次使用期間不必再解鎖。")
+                    Text("啟用後，打開 App 或從背景回來時需 Face ID / 密碼解鎖。")
                 }
 
                 Section {

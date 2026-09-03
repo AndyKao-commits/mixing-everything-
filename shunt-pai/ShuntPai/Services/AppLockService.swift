@@ -43,7 +43,7 @@ final class AppLockService: ObservableObject {
         return ok
     }
 
-    /// One unlock lasts for the whole app process lifetime.
+    /// Relock when the app is freshly launched or sent to the background.
     func relockIfNeededOnLaunch() {
         if isEnabled {
             isUnlocked = false

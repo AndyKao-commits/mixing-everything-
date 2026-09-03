@@ -1,9 +1,8 @@
 import Foundation
 import Photos
-import UIKit
 
 enum PhotoLibrarySaver {
-    static func saveIfNeeded(_ image: UIImage, enabled: Bool) async {
+    static func saveIfNeeded(data: Data, enabled: Bool) async {
         guard enabled else { return }
 
         await withCheckedContinuation { continuation in
@@ -14,7 +13,8 @@ enum PhotoLibrarySaver {
                 }
 
                 PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    let request = PHAssetCreationRequest.forAsset()
+                    request.addResource(with: .photo, data: data, options: nil)
                 } completionHandler: { _, _ in
                     continuation.resume()
                 }

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct CameraScreenView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var entitlements: EntitlementService
 
@@ -15,11 +16,7 @@ struct CameraScreenView: View {
     @State private var showSettings = false
     @State private var isCapturing = false
     @State private var toast: String?
-
-    private var latestThumbnail: UIImage? {
-        guard let latest = records.first else { return nil }
-        return photoStore.loadThumbnail(for: latest)
-    }
+    @State private var latestThumbnail: UIImage?
 
     var body: some View {
         ZStack {
@@ -65,7 +62,14 @@ struct CameraScreenView: View {
 
                 if cameraService.authorizationStatus == .authorized {
                     zoomControls
-                        .padding(.bottom, 14)
+                        .padding(.bottom, 8)
+
+                    if !entitlements.isPaid {
+                        Text("免費 \(records.count)/\(AppConstants.freePhotoLimit)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .padding(.bottom, 8)
+                    }
 
                     shutterRow
                         .padding(.horizontal, 28)
@@ -114,12 +118,34 @@ struct CameraScreenView: View {
         }
         .task {
             let granted = await cameraService.requestPermissionIfNeeded()
-            if granted {
-                cameraService.startSession()
+            if granted, appState.selectedTab == .camera {
+                setCameraActive(true)
+            }
+        }
+        .task(id: records.first?.id) {
+            if let latest = records.first {
+                latestThumbnail = await photoStore.loadThumbnail(for: latest)
+            } else {
+                latestThumbnail = nil
+            }
+        }
+        .onAppear {
+            if appState.selectedTab == .camera {
+                setCameraActive(true)
             }
         }
         .onDisappear {
-            cameraService.stopSession()
+            setCameraActive(false)
+        }
+        .onChange(of: appState.selectedTab) { _, tab in
+            setCameraActive(tab == .camera)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, appState.selectedTab == .camera {
+                setCameraActive(true)
+            } else if phase == .background {
+                setCameraActive(false)
+            }
         }
     }
 
@@ -201,15 +227,6 @@ struct CameraScreenView: View {
         return String(format: "%@%.1f EV", sign, ev)
     }
 
-    private var zoomLabel: String {
-        let value = cameraService.displayZoom
-        if abs(value - 0.5) < 0.05 { return "0.5x" }
-        if abs(value - value.rounded()) < 0.05 {
-            return "\(Int(value.rounded()))x"
-        }
-        return String(format: "%.1fx", value)
-    }
-
     private var zoomControls: some View {
         HStack(spacing: 10) {
             ForEach(cameraService.zoomOptions) { option in
@@ -263,6 +280,7 @@ struct CameraScreenView: View {
             Spacer()
 
             Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 Task { await capturePhoto() }
             } label: {
                 ZStack {
@@ -300,16 +318,25 @@ struct CameraScreenView: View {
 
         do {
             let data = try await cameraService.capturePhoto()
-            let record = try photoStore.saveCapturedPhoto(data: data, modelContext: modelContext)
+            _ = try photoStore.saveCapturedPhoto(data: data, modelContext: modelContext)
 
             let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
-            if let image = photoStore.loadImage(for: record) {
-                await PhotoLibrarySaver.saveIfNeeded(image, enabled: saveToLibrary)
-            }
+            await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: saveToLibrary)
 
             showToast("已儲存")
         } catch {
             showToast(error.localizedDescription)
+        }
+    }
+
+    private func setCameraActive(_ active: Bool) {
+        UIApplication.shared.isIdleTimerDisabled = active
+        if active {
+            if cameraService.authorizationStatus == .authorized {
+                cameraService.startSession()
+            }
+        } else {
+            cameraService.stopSession()
         }
     }
 

@@ -5,29 +5,35 @@ import UIKit
 @MainActor
 final class PhotoStore: ObservableObject {
     private let fileManager = FileManager.default
+    private let thumbnailCache = NSCache<NSString, UIImage>()
+    private let sectionFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_TW")
+        formatter.dateFormat = "yyyy年M月d日"
+        return formatter
+    }()
+    private let filenameFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return formatter
+    }()
+
+    init() {
+        thumbnailCache.countLimit = 200
+        thumbnailCache.totalCostLimit = 40 * 1024 * 1024
+    }
 
     var photosDirectory: URL {
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let directory = base.appendingPathComponent(AppConstants.photosDirectoryName, isDirectory: true)
-        if !fileManager.fileExists(atPath: directory.path) {
-            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
-        return directory
+        directory(named: AppConstants.photosDirectoryName)
     }
 
     var thumbnailsDirectory: URL {
-        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let directory = base.appendingPathComponent(AppConstants.thumbnailsDirectoryName, isDirectory: true)
-        if !fileManager.fileExists(atPath: directory.path) {
-            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
-        return directory
+        directory(named: AppConstants.thumbnailsDirectoryName)
     }
 
     func makeFilename(for date: Date = .now) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let stamp = formatter.string(from: date)
+        let stamp = filenameFormatter.string(from: date)
         return "ShuntPai_\(stamp)_\(Int.random(in: 100...999)).jpg"
     }
 
@@ -40,6 +46,7 @@ final class PhotoStore: ObservableObject {
            let thumbnailData = thumbnail.jpegData(compressionQuality: 0.75) {
             let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
             try? thumbnailData.write(to: thumbURL, options: .atomic)
+            cacheThumbnail(thumbnail, key: filename as NSString)
         }
 
         let record = PhotoRecord(localFileName: filename)
@@ -56,18 +63,57 @@ final class PhotoStore: ObservableObject {
         thumbnailsDirectory.appendingPathComponent(record.localFileName)
     }
 
-    func loadImage(for record: PhotoRecord) -> UIImage? {
-        UIImage(contentsOfFile: localURL(for: record).path)
+    func loadImage(for record: PhotoRecord) async -> UIImage? {
+        let path = localURL(for: record).path
+        guard let data = await Self.readFile(at: path) else { return nil }
+        return UIImage(data: data)
     }
 
-    func loadThumbnail(for record: PhotoRecord) -> UIImage? {
-        if let image = UIImage(contentsOfFile: thumbnailURL(for: record).path) {
+    func loadThumbnail(for record: PhotoRecord) async -> UIImage? {
+        let key = record.localFileName as NSString
+        if let cached = thumbnailCache.object(forKey: key) {
+            return cached
+        }
+
+        let thumbPath = thumbnailURL(for: record).path
+        if let data = await Self.readFile(at: thumbPath), let image = UIImage(data: data) {
+            cacheThumbnail(image, key: key)
             return image
         }
-        return loadImage(for: record)
+
+        let fullPath = localURL(for: record).path
+        if let data = await Self.readFile(at: fullPath),
+           let full = UIImage(data: data) {
+            let thumb = full.preparingThumbnail(of: CGSize(width: 300, height: 300)) ?? full
+            cacheThumbnail(thumb, key: key)
+            if let jpeg = thumb.jpegData(compressionQuality: 0.75) {
+                try? jpeg.write(to: thumbnailURL(for: record), options: .atomic)
+            }
+            return thumb
+        }
+
+        return nil
+    }
+
+    func shareableURLs(for records: [PhotoRecord]) -> [URL] {
+        records.compactMap { record in
+            let source = localURL(for: record)
+            guard fileManager.fileExists(atPath: source.path) else { return nil }
+            let destination = fileManager.temporaryDirectory.appendingPathComponent(record.localFileName)
+            if fileManager.fileExists(atPath: destination.path) {
+                try? fileManager.removeItem(at: destination)
+            }
+            do {
+                try fileManager.copyItem(at: source, to: destination)
+                return destination
+            } catch {
+                return source
+            }
+        }
     }
 
     func delete(record: PhotoRecord, modelContext: ModelContext) throws {
+        thumbnailCache.removeObject(forKey: record.localFileName as NSString)
         try? fileManager.removeItem(at: localURL(for: record))
         try? fileManager.removeItem(at: thumbnailURL(for: record))
         modelContext.delete(record)
@@ -75,16 +121,12 @@ final class PhotoStore: ObservableObject {
     }
 
     func groupedRecords(_ records: [PhotoRecord]) -> [(String, [PhotoRecord])] {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_TW")
-        formatter.dateFormat = "yyyy年M月d日"
+        let calendar = Calendar.current
+        let sorted = records.sorted { $0.capturedAt > $1.capturedAt }
+        let grouped = Dictionary(grouping: sorted) { calendar.startOfDay(for: $0.capturedAt) }
 
-        let grouped = Dictionary(grouping: records.sorted { $0.capturedAt > $1.capturedAt }) {
-            formatter.string(from: $0.capturedAt)
-        }
-
-        return grouped.keys.sorted(by: >).map { key in
-            (key, grouped[key] ?? [])
+        return grouped.keys.sorted(by: >).map { day in
+            (sectionFormatter.string(from: day), grouped[day] ?? [])
         }
     }
 
@@ -103,6 +145,20 @@ final class PhotoStore: ObservableObject {
         return ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
     }
 
+    private func directory(named name: String) -> URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let directory = base.appendingPathComponent(name, isDirectory: true)
+        if !fileManager.fileExists(atPath: directory.path) {
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        return directory
+    }
+
+    private func cacheThumbnail(_ image: UIImage, key: NSString) {
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        thumbnailCache.setObject(image, forKey: key, cost: max(cost, 1))
+    }
+
     private func directorySize(_ url: URL) -> Int64 {
         guard let enumerator = fileManager.enumerator(
             at: url,
@@ -119,5 +175,11 @@ final class PhotoStore: ObservableObject {
             total += Int64(values.fileSize ?? 0)
         }
         return total
+    }
+
+    private static func readFile(at path: String) async -> Data? {
+        await Task.detached(priority: .userInitiated) {
+            FileManager.default.contents(atPath: path)
+        }.value
     }
 }
