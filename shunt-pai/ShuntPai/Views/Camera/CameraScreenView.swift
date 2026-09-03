@@ -29,7 +29,11 @@ struct CameraScreenView: View {
                     session: cameraService.session,
                     onTapToFocus: { viewPoint, devicePoint in
                         cameraService.focusAndExpose(at: devicePoint)
-                        cameraService.showFocusIndicator(at: viewPoint)
+                        cameraService.showFocusIndicator(at: viewPoint, locked: false)
+                    },
+                    onLongPressLock: { viewPoint, devicePoint in
+                        cameraService.lockFocusAndExposure(at: devicePoint)
+                        cameraService.showFocusIndicator(at: viewPoint, locked: true)
                     },
                     onPinch: { scale in
                         cameraService.bumpZoom(by: scale)
@@ -38,9 +42,15 @@ struct CameraScreenView: View {
                 .ignoresSafeArea()
 
                 if let focusPoint = cameraService.focusPoint {
-                    FocusSquare()
-                        .position(focusPoint)
-                        .allowsHitTesting(false)
+                    FocusReticle(
+                        locked: cameraService.isAEAFLocked,
+                        exposureBias: cameraService.exposureBias,
+                        minBias: cameraService.minExposureBias,
+                        maxBias: cameraService.maxExposureBias
+                    ) { newBias in
+                        cameraService.setExposureBias(newBias)
+                    }
+                    .position(focusPoint)
                 }
             } else {
                 permissionView
@@ -76,6 +86,21 @@ struct CameraScreenView: View {
                         .background(Color.black.opacity(0.72))
                         .clipShape(Capsule())
                         .padding(.bottom, 140)
+                }
+                .allowsHitTesting(false)
+            }
+
+            if cameraService.isAEAFLocked {
+                VStack {
+                    Text("AE/AF 鎖定")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.yellow)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                        .padding(.top, 58)
+                    Spacer()
                 }
                 .allowsHitTesting(false)
             }
@@ -120,7 +145,7 @@ struct CameraScreenView: View {
 
             Spacer()
 
-            Text(zoomLabel)
+            Text(exposureLabel)
                 .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.yellow)
                 .padding(.horizontal, 10)
@@ -137,6 +162,15 @@ struct CameraScreenView: View {
                     .cameraChromeButton()
             }
         }
+    }
+
+    private var exposureLabel: String {
+        if cameraService.isAEAFLocked {
+            return "AE/AF 鎖定"
+        }
+        let ev = cameraService.exposureBias
+        let sign = ev > 0.05 ? "+" : ""
+        return String(format: "%@%.1f EV", sign, ev)
     }
 
     private var zoomLabel: String {
@@ -255,12 +289,46 @@ struct CameraScreenView: View {
     }
 }
 
-private struct FocusSquare: View {
+private struct FocusReticle: View {
+    let locked: Bool
+    let exposureBias: Float
+    let minBias: Float
+    let maxBias: Float
+    let onBiasChange: (Float) -> Void
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .stroke(Color.yellow, lineWidth: 2)
-            .frame(width: 72, height: 72)
-            .shadow(color: .black.opacity(0.4), radius: 2)
+        HStack(alignment: .center, spacing: 10) {
+            VStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
+                    .frame(width: 78, height: 78)
+                if locked {
+                    Text("鎖定")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.yellow)
+                }
+            }
+
+            VStack(spacing: 8) {
+                Image(systemName: "sun.max.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.yellow)
+                Slider(
+                    value: Binding(
+                        get: { Double(exposureBias) },
+                        set: { onBiasChange(Float($0)) }
+                    ),
+                    in: Double(minBias)...Double(max(maxBias, minBias + 0.1)),
+                    step: 0.1
+                )
+                .frame(width: 16, height: 110)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 110, height: 16)
+                .tint(.yellow)
+            }
+            .frame(width: 36, height: 130)
+        }
+        .offset(x: 40)
     }
 }
 
@@ -278,10 +346,11 @@ private extension View {
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
     let onTapToFocus: (CGPoint, CGPoint) -> Void
+    let onLongPressLock: (CGPoint, CGPoint) -> Void
     let onPinch: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onTapToFocus: onTapToFocus, onPinch: onPinch)
+        Coordinator(onTapToFocus: onTapToFocus, onLongPressLock: onLongPressLock, onPinch: onPinch)
     }
 
     func makeUIView(context: Context) -> PreviewView {
@@ -295,17 +364,24 @@ struct CameraPreviewView: UIViewRepresentable {
     func updateUIView(_ uiView: PreviewView, context: Context) {
         uiView.videoPreviewLayer.session = session
         context.coordinator.onTapToFocus = onTapToFocus
+        context.coordinator.onLongPressLock = onLongPressLock
         context.coordinator.onPinch = onPinch
     }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var onTapToFocus: (CGPoint, CGPoint) -> Void
+        var onLongPressLock: (CGPoint, CGPoint) -> Void
         var onPinch: (CGFloat) -> Void
         private var lastPinch: CGFloat = 1
         private weak var previewView: PreviewView?
 
-        init(onTapToFocus: @escaping (CGPoint, CGPoint) -> Void, onPinch: @escaping (CGFloat) -> Void) {
+        init(
+            onTapToFocus: @escaping (CGPoint, CGPoint) -> Void,
+            onLongPressLock: @escaping (CGPoint, CGPoint) -> Void,
+            onPinch: @escaping (CGFloat) -> Void
+        ) {
             self.onTapToFocus = onTapToFocus
+            self.onLongPressLock = onLongPressLock
             self.onPinch = onPinch
         }
 
@@ -314,9 +390,16 @@ struct CameraPreviewView: UIViewRepresentable {
             view.isUserInteractionEnabled = true
 
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+            tap.delegate = self
             view.addGestureRecognizer(tap)
 
+            let press = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+            press.minimumPressDuration = 0.45
+            press.delegate = self
+            view.addGestureRecognizer(press)
+
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+            pinch.delegate = self
             view.addGestureRecognizer(pinch)
         }
 
@@ -325,6 +408,14 @@ struct CameraPreviewView: UIViewRepresentable {
             let point = gesture.location(in: view)
             let devicePoint = view.videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: point)
             onTapToFocus(point, devicePoint)
+        }
+
+        @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began, let view = previewView else { return }
+            let point = gesture.location(in: view)
+            let devicePoint = view.videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: point)
+            onLongPressLock(point, devicePoint)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
 
         @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
@@ -338,6 +429,13 @@ struct CameraPreviewView: UIViewRepresentable {
             default:
                 lastPinch = 1
             }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
     }
 }

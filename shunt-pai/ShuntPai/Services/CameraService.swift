@@ -32,6 +32,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @Published private(set) var zoomOptions: [ZoomOption] = [ZoomOption(id: "1x", label: "1x", deviceFactor: 1)]
     @Published private(set) var supportsFlash = false
     @Published private(set) var focusPoint: CGPoint?
+    @Published private(set) var isAEAFLocked = false
+    @Published private(set) var exposureBias: Float = 0
+    @Published private(set) var minExposureBias: Float = -2
+    @Published private(set) var maxExposureBias: Float = 2
     @Published var errorMessage: String?
 
     let session = AVCaptureSession()
@@ -44,6 +48,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var currentPosition: AVCaptureDevice.Position = .back
     private var flashModeValue: AVCaptureDevice.FlashMode = .off
     private var baselineZoom: CGFloat = 1
+    private var aeafLocked = false
+    private var subjectAreaObserver: NSObjectProtocol?
 
     override init() {
         super.init()
@@ -142,34 +148,101 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     func focusAndExpose(at devicePoint: CGPoint) {
         sessionQueue.async { [weak self] in
             guard let self, let device = self.videoInput?.device else { return }
-
+            self.aeafLocked = false
             do {
                 try device.lockForConfiguration()
                 if device.isFocusPointOfInterestSupported {
                     device.focusPointOfInterest = devicePoint
-                    device.focusMode = .autoFocus
+                    if device.isFocusModeSupported(.autoFocus) {
+                        device.focusMode = .autoFocus
+                    }
                 }
                 if device.isExposurePointOfInterestSupported {
                     device.exposurePointOfInterest = devicePoint
-                    device.exposureMode = .autoExpose
+                    if device.isExposureModeSupported(.autoExpose) {
+                        device.exposureMode = .autoExpose
+                    }
                 }
-                if device.isSubjectAreaChangeMonitoringEnabled == false {
-                    device.isSubjectAreaChangeMonitoringEnabled = true
-                }
+                device.isSubjectAreaChangeMonitoringEnabled = true
                 device.unlockForConfiguration()
+                self.publishOnMain {
+                    $0.isAEAFLocked = false
+                    $0.exposureBias = device.exposureTargetBias
+                }
             } catch {
                 self.publishOnMain { $0.errorMessage = error.localizedDescription }
             }
         }
     }
 
-    func showFocusIndicator(at viewPoint: CGPoint) {
+    func lockFocusAndExposure(at devicePoint: CGPoint) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoInput?.device else { return }
+            do {
+                try device.lockForConfiguration()
+                if device.isFocusPointOfInterestSupported {
+                    device.focusPointOfInterest = devicePoint
+                    if device.isFocusModeSupported(.autoFocus) {
+                        device.focusMode = .autoFocus
+                    }
+                }
+                if device.isExposurePointOfInterestSupported {
+                    device.exposurePointOfInterest = devicePoint
+                    if device.isExposureModeSupported(.autoExpose) {
+                        device.exposureMode = .autoExpose
+                    }
+                }
+                device.isSubjectAreaChangeMonitoringEnabled = false
+                device.unlockForConfiguration()
+
+                // After AF settles, lock both.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                    self?.sessionQueue.async {
+                        self?.finishAEAFLock()
+                    }
+                }
+            } catch {
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    func setExposureBias(_ value: Float) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoInput?.device else { return }
+            let clamped = min(max(value, device.minExposureTargetBias), device.maxExposureTargetBias)
+            do {
+                try device.lockForConfiguration()
+                device.setExposureTargetBias(clamped, completionHandler: nil)
+                device.unlockForConfiguration()
+                self.publishOnMain { $0.exposureBias = clamped }
+            } catch {
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    func unlockFocusToContinuous() {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoInput?.device else { return }
+            self.aeafLocked = false
+            self.applyContinuousAutoFocusLocked(on: device)
+            self.publishOnMain {
+                $0.isAEAFLocked = false
+                $0.focusPoint = nil
+            }
+        }
+    }
+
+    func showFocusIndicator(at viewPoint: CGPoint, locked: Bool) {
         publishOnMain { service in
             service.focusPoint = viewPoint
+            service.isAEAFLocked = locked
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+        guard !locked else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in
             self?.publishOnMain { service in
-                if service.focusPoint == viewPoint {
+                if service.focusPoint == viewPoint, !service.isAEAFLocked {
                     service.focusPoint = nil
                 }
             }
@@ -229,6 +302,15 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         baselineZoom = Self.oneXFactor(for: device)
         setDeviceZoom(baselineZoom, animated: false)
+        applyContinuousAutoFocusLocked(on: device)
+        observeSubjectAreaChanges()
+        aeafLocked = false
+        publishOnMain {
+            $0.isAEAFLocked = false
+            $0.exposureBias = 0
+            $0.minExposureBias = device.minExposureTargetBias
+            $0.maxExposureBias = device.maxExposureTargetBias
+        }
     }
 
     private func preferredDevice(for position: AVCaptureDevice.Position) throws -> AVCaptureDevice {
@@ -336,6 +418,65 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
 
         return options
+    }
+
+    private func applyContinuousAutoFocusLocked(on device: AVCaptureDevice) {
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            device.isSubjectAreaChangeMonitoringEnabled = true
+            device.unlockForConfiguration()
+        } catch {
+            publishOnMain { $0.errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func finishAEAFLock() {
+        guard let device = videoInput?.device else { return }
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusModeSupported(.locked) {
+                device.focusMode = .locked
+            }
+            if device.isExposureModeSupported(.locked) {
+                device.exposureMode = .locked
+            }
+            device.isSubjectAreaChangeMonitoringEnabled = false
+            device.unlockForConfiguration()
+            aeafLocked = true
+            publishOnMain { $0.isAEAFLocked = true }
+        } catch {
+            publishOnMain { $0.errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func observeSubjectAreaChanges() {
+        if let subjectAreaObserver {
+            NotificationCenter.default.removeObserver(subjectAreaObserver)
+            self.subjectAreaObserver = nil
+        }
+
+        subjectAreaObserver = NotificationCenter.default.addObserver(
+            forName: .AVCaptureDeviceSubjectAreaDidChange,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.sessionQueue.async {
+                guard let self, !self.aeafLocked, let device = self.videoInput?.device else { return }
+                self.applyContinuousAutoFocusLocked(on: device)
+            }
+        }
+    }
+
+    deinit {
+        if let subjectAreaObserver {
+            NotificationCenter.default.removeObserver(subjectAreaObserver)
+        }
     }
 }
 
