@@ -11,19 +11,22 @@ struct ZoomablePhotoView: View {
     @State private var lastOffset: CGSize = .zero
 
     var body: some View {
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFit()
-            .scaleEffect(scale)
-            .offset(offset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .gesture(magnifyGesture)
-            .highPriorityGesture(panGesture, including: scale > 1.02 ? .all : .subviews)
-            .onTapGesture(count: 2, perform: toggleZoom)
+        GeometryReader { geo in
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+                .contentShape(Rectangle())
+                .gesture(magnifyGesture(in: geo.size))
+                .highPriorityGesture(panGesture(in: geo.size), including: scale > 1.02 ? .all : .subviews)
+                .onTapGesture(count: 2, perform: toggleZoom)
+        }
     }
 
-    private var magnifyGesture: some Gesture {
+    private func magnifyGesture(in size: CGSize) -> some Gesture {
         MagnificationGesture()
             .onChanged { value in
                 let next = lastScale * value
@@ -33,17 +36,25 @@ struct ZoomablePhotoView: View {
                 lastScale = scale
                 if scale <= 1.02 {
                     withAnimation(.easeOut(duration: 0.2)) { reset() }
+                } else {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        offset = clamped(offset, in: size)
+                        lastOffset = offset
+                    }
                 }
             }
     }
 
-    private var panGesture: some Gesture {
+    private func panGesture(in size: CGSize) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 guard scale > 1.02 else { return }
-                offset = CGSize(
-                    width: lastOffset.width + value.translation.width,
-                    height: lastOffset.height + value.translation.height
+                offset = clamped(
+                    CGSize(
+                        width: lastOffset.width + value.translation.width,
+                        height: lastOffset.height + value.translation.height
+                    ),
+                    in: size
                 )
             }
             .onEnded { _ in
@@ -67,6 +78,15 @@ struct ZoomablePhotoView: View {
         lastScale = 1
         offset = .zero
         lastOffset = .zero
+    }
+
+    private func clamped(_ value: CGSize, in size: CGSize) -> CGSize {
+        let maxX = max((size.width * (scale - 1)) / 2, 0)
+        let maxY = max((size.height * (scale - 1)) / 2, 0)
+        return CGSize(
+            width: min(max(value.width, -maxX), maxX),
+            height: min(max(value.height, -maxY), maxY)
+        )
     }
 }
 
@@ -97,6 +117,10 @@ struct PhotoPagerView: View {
         records.first { $0.id == currentID } ?? records.first
     }
 
+    private var currentIndex: Int {
+        records.firstIndex(where: { $0.id == currentID }) ?? 0
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -107,9 +131,13 @@ struct PhotoPagerView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     TabView(selection: $currentID) {
-                        ForEach(records) { record in
-                            LazyPhotoPage(record: record, photoStore: photoStore)
-                                .tag(record.id)
+                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                            LazyPhotoPage(
+                                record: record,
+                                photoStore: photoStore,
+                                shouldLoad: abs(index - currentIndex) <= 1
+                            )
+                            .tag(record.id)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .automatic))
@@ -166,7 +194,13 @@ struct PhotoPagerView: View {
             }
             .sheet(isPresented: $showShareSheet) {
                 if let record = currentRecord {
-                    ActivityShareSheet(items: photoStore.shareableURLs(for: [record]))
+                    let items = photoStore.shareableURLs(for: [record])
+                    if items.isEmpty {
+                        Text("找不到檔案")
+                            .padding()
+                    } else {
+                        ActivityShareSheet(items: items)
+                    }
                 }
             }
             .alert("刪除失敗", isPresented: Binding(
@@ -215,6 +249,7 @@ struct PhotoPagerView: View {
 private struct LazyPhotoPage: View {
     let record: PhotoRecord
     let photoStore: PhotoStore
+    let shouldLoad: Bool
     @State private var image: UIImage?
 
     var body: some View {
@@ -227,8 +262,12 @@ private struct LazyPhotoPage: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: record.id) {
-            image = await photoStore.loadImage(for: record)
+        .task(id: "\(record.id)-\(shouldLoad)") {
+            if shouldLoad {
+                image = await photoStore.loadDisplayImage(for: record)
+            } else {
+                image = nil
+            }
         }
     }
 }
