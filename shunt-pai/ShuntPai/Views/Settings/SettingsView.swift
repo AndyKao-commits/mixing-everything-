@@ -41,7 +41,7 @@ struct SettingsView: View {
                     Text("啟用後，每次重新打開 App 需 Face ID / 密碼解鎖一次；解鎖後本次使用期間不必再解鎖。")
                 }
 
-                Section("方案") {
+                Section {
                     LabeledContent("目前", value: entitlements.planName)
                     if entitlements.isPaid {
                         Text("可多選分享／下載／刪除；刪除只需確認一次。\(AppConstants.subscriptionPriceText)。")
@@ -52,9 +52,11 @@ struct SettingsView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text("方案")
                 }
 
-                Section("測試狀態") {
+                Section {
                     Button("啟動付費模式") {
                         entitlements.setPaid(true)
                     }
@@ -64,18 +66,24 @@ struct SettingsView: View {
                         entitlements.setPaid(false)
                     }
                     .disabled(!entitlements.isPaid)
+                } header: {
+                    Text("測試狀態")
                 } footer: {
                     Text("僅供測試。未來免費版限 43 張、單張雙重確認刪除；訂閱每月 NT$40 可多選分享與刪除。")
                 }
 
-                Section("容量") {
+                Section {
                     LabeledContent("分流拍已用", value: appStorageText)
                     LabeledContent("裝置可用空間", value: freeSpaceText)
+                } header: {
+                    Text("容量")
                 }
 
-                Section("關於") {
+                Section {
                     LabeledContent("App", value: AppConstants.appName)
                     LabeledContent("儲存位置", value: "本機 App 內")
+                } header: {
+                    Text("關於")
                 }
 
                 Section {
