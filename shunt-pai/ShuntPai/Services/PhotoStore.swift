@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftData
 import UIKit
 
@@ -37,16 +38,19 @@ final class PhotoStore: ObservableObject {
         return "ShuntPai_\(stamp)_\(Int.random(in: 100...999)).jpg"
     }
 
-    func saveCapturedPhoto(data: Data, modelContext: ModelContext) throws -> PhotoRecord {
+    func saveCapturedPhoto(data: Data, modelContext: ModelContext) async throws -> PhotoRecord {
         let filename = makeFilename()
-        let localURL = photosDirectory.appendingPathComponent(filename)
-        try data.write(to: localURL, options: .atomic)
+        let photoURL = photosDirectory.appendingPathComponent(filename)
+        let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
+        let payload = data
 
-        if let thumbnail = UIImage(data: data)?.preparingThumbnail(of: CGSize(width: 300, height: 300)),
-           let thumbnailData = thumbnail.jpegData(compressionQuality: 0.75) {
-            let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
-            try? thumbnailData.write(to: thumbURL, options: .atomic)
-            cacheThumbnail(thumbnail, key: filename as NSString)
+        try await Task.detached(priority: .userInitiated) {
+            try payload.write(to: photoURL, options: .atomic)
+            ImageProcessing.writeJPEGThumbnail(from: payload, to: thumbURL, maxPixelSize: 300)
+        }.value
+
+        if let thumb = UIImage(contentsOfFile: thumbURL.path) {
+            cacheThumbnail(thumb, key: filename as NSString)
         }
 
         let record = PhotoRecord(localFileName: filename)
@@ -63,12 +67,6 @@ final class PhotoStore: ObservableObject {
         thumbnailsDirectory.appendingPathComponent(record.localFileName)
     }
 
-    func loadImage(for record: PhotoRecord) async -> UIImage? {
-        let path = localURL(for: record).path
-        guard let data = await Self.readFile(at: path) else { return nil }
-        return UIImage(data: data)
-    }
-
     func loadThumbnail(for record: PhotoRecord) async -> UIImage? {
         let key = record.localFileName as NSString
         if let cached = thumbnailCache.object(forKey: key) {
@@ -76,23 +74,27 @@ final class PhotoStore: ObservableObject {
         }
 
         let thumbPath = thumbnailURL(for: record).path
-        if let data = await Self.readFile(at: thumbPath), let image = UIImage(data: data) {
+        if let image = await downsample(path: thumbPath, maxPixelSize: 300) {
             cacheThumbnail(image, key: key)
             return image
         }
 
         let fullPath = localURL(for: record).path
-        if let data = await Self.readFile(at: fullPath),
-           let full = UIImage(data: data) {
-            let thumb = full.preparingThumbnail(of: CGSize(width: 300, height: 300)) ?? full
-            cacheThumbnail(thumb, key: key)
-            if let jpeg = thumb.jpegData(compressionQuality: 0.75) {
+        if let image = await downsample(path: fullPath, maxPixelSize: 300) {
+            cacheThumbnail(image, key: key)
+            if let jpeg = image.jpegData(compressionQuality: 0.75) {
                 try? jpeg.write(to: thumbnailURL(for: record), options: .atomic)
             }
-            return thumb
+            return image
         }
 
         return nil
+    }
+
+    func loadDisplayImage(for record: PhotoRecord) async -> UIImage? {
+        let path = localURL(for: record).path
+        let maxPixel = Int(max(UIScreen.main.bounds.width, UIScreen.main.bounds.height) * UIScreen.main.scale)
+        return await downsample(path: path, maxPixelSize: max(maxPixel, 1200))
     }
 
     func shareableURLs(for records: [PhotoRecord]) -> [URL] {
@@ -130,12 +132,13 @@ final class PhotoStore: ObservableObject {
         }
     }
 
-    func storageUsageBytes() -> Int64 {
-        directorySize(photosDirectory) + directorySize(thumbnailsDirectory)
-    }
-
-    func formattedStorageUsage() -> String {
-        ByteCountFormatter.string(fromByteCount: storageUsageBytes(), countStyle: .file)
+    func formattedStorageUsage() async -> String {
+        let photos = photosDirectory
+        let thumbs = thumbnailsDirectory
+        let bytes = await Task.detached(priority: .utility) {
+            ImageProcessing.directorySize(photos) + ImageProcessing.directorySize(thumbs)
+        }.value
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     func deviceFreeSpaceFormatted() -> String {
@@ -159,8 +162,52 @@ final class PhotoStore: ObservableObject {
         thumbnailCache.setObject(image, forKey: key, cost: max(cost, 1))
     }
 
-    private func directorySize(_ url: URL) -> Int64 {
-        guard let enumerator = fileManager.enumerator(
+    private func downsample(path: String, maxPixelSize: Int) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let image = ImageProcessing.downsampledImage(atPath: path, maxPixelSize: maxPixelSize)
+                DispatchQueue.main.async {
+                    continuation.resume(returning: image)
+                }
+            }
+        }
+    }
+}
+
+private enum ImageProcessing {
+    static func writeJPEGThumbnail(from data: Data, to url: URL, maxPixelSize: Int) {
+        guard let source = CGImageSourceCreateWithData(
+            data as CFData,
+            [kCGImageSourceShouldCache: false] as CFDictionary
+        ) else { return }
+        guard let image = makeThumbnail(from: source, maxPixelSize: maxPixelSize) else { return }
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL,
+            "public.jpeg" as CFString,
+            1,
+            nil
+        ) else { return }
+        CGImageDestinationAddImage(
+            destination,
+            image,
+            [kCGImageDestinationLossyCompressionQuality: 0.75] as CFDictionary
+        )
+        CGImageDestinationFinalize(destination)
+    }
+
+    static func downsampledImage(atPath path: String, maxPixelSize: Int) -> UIImage? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        let url = URL(fileURLWithPath: path) as CFURL
+        guard let source = CGImageSourceCreateWithURL(
+            url,
+            [kCGImageSourceShouldCache: false] as CFDictionary
+        ) else { return nil }
+        guard let image = makeThumbnail(from: source, maxPixelSize: maxPixelSize) else { return nil }
+        return UIImage(cgImage: image)
+    }
+
+    static func directorySize(_ url: URL) -> Int64 {
+        guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
@@ -177,9 +224,14 @@ final class PhotoStore: ObservableObject {
         return total
     }
 
-    private static func readFile(at path: String) async -> Data? {
-        await Task.detached(priority: .userInitiated) {
-            FileManager.default.contents(atPath: path)
-        }.value
+    private static func makeThumbnail(from source: CGImageSource, maxPixelSize: Int) -> CGImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 }
