@@ -32,6 +32,7 @@ struct GalleryView: View {
                     } description: {
                         Text("在相機頁拍的照片會保存在這裡。")
                     }
+                    .foregroundStyle(.white)
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 20, pinnedViews: [.sectionHeaders]) {
@@ -110,7 +111,13 @@ struct GalleryView: View {
                 SettingsView(photoStore: photoStore)
             }
             .sheet(isPresented: $showShareSheet) {
-                ActivityShareSheet(items: selectedShareItems())
+                let items = selectedShareItems()
+                if items.isEmpty {
+                    Text("找不到檔案")
+                        .padding()
+                } else {
+                    ActivityShareSheet(items: items)
+                }
             }
             .confirmationDialog(
                 "確定刪除 \(selectedIDs.count) 張照片？",

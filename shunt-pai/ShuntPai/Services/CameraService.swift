@@ -74,6 +74,11 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
+    @MainActor
+    func refreshAuthorizationStatus() {
+        authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+    }
+
     func startSession() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -217,6 +222,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         sessionQueue.async { [weak self] in
             guard let self, let device = self.videoInput?.device else { return }
             let clamped = min(max(value, device.minExposureTargetBias), device.maxExposureTargetBias)
+            if abs(device.exposureTargetBias - clamped) < 0.01 { return }
             do {
                 try device.lockForConfiguration()
                 device.setExposureTargetBias(clamped, completionHandler: nil)
@@ -292,6 +298,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                    self.photoOutput.supportedFlashModes.contains(self.flashModeValue) {
                     settings.flashMode = self.flashModeValue
                 }
+                settings.photoQualityPrioritization = self.photoOutput.maxPhotoQualityPrioritization
 
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }

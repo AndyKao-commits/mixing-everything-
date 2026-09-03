@@ -110,7 +110,7 @@ struct SettingsView: View {
                 }
             }
             .task {
-                appStorageText = photoStore.formattedStorageUsage()
+                appStorageText = await photoStore.formattedStorageUsage()
                 freeSpaceText = photoStore.deviceFreeSpaceFormatted()
             }
             .alert("無法變更上鎖", isPresented: Binding(

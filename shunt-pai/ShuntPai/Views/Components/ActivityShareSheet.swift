@@ -5,7 +5,8 @@ struct ActivityShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let activityItems = items.isEmpty ? ["沒有可分享的檔案"] : items
+        return UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}

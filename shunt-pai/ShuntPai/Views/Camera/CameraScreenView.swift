@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct CameraScreenView: View {
     @Environment(\.modelContext) private var modelContext
@@ -16,6 +17,7 @@ struct CameraScreenView: View {
     @State private var showSettings = false
     @State private var isCapturing = false
     @State private var toast: String?
+    @State private var toastToken = UUID()
     @State private var latestThumbnail: UIImage?
 
     var body: some View {
@@ -46,6 +48,7 @@ struct CameraScreenView: View {
                 }
             } else {
                 permissionView
+                    .padding(.horizontal, 32)
             }
 
             VStack(spacing: 0) {
@@ -114,7 +117,15 @@ struct CameraScreenView: View {
         .onChange(of: showSettings) { _, isOpen in
             if !isOpen {
                 cameraService.refreshMirroring()
+                if appState.selectedTab == .camera {
+                    setCameraActive(true)
+                }
             }
+        }
+        .onChange(of: cameraService.errorMessage) { _, message in
+            guard let message else { return }
+            showToast(message)
+            cameraService.errorMessage = nil
         }
         .task {
             let granted = await cameraService.requestPermissionIfNeeded()
@@ -135,18 +146,25 @@ struct CameraScreenView: View {
             }
         }
         .onDisappear {
-            setCameraActive(false)
+            if !showSettings {
+                setCameraActive(false)
+            }
         }
         .onChange(of: appState.selectedTab) { _, tab in
             setCameraActive(tab == .camera)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, appState.selectedTab == .camera {
-                setCameraActive(true)
+            if phase == .active {
+                cameraService.refreshAuthorizationStatus()
+                if appState.selectedTab == .camera {
+                    setCameraActive(true)
+                }
             } else if phase == .background {
                 setCameraActive(false)
             }
         }
+        .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
     }
 
     private var permissionView: some View {
@@ -156,9 +174,23 @@ struct CameraScreenView: View {
                 .foregroundStyle(.yellow)
             Text("需要相機權限才能拍照")
                 .font(.headline)
+                .foregroundStyle(.white)
             Text("請到「設定 > 分流拍」開啟相機。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            if cameraService.authorizationStatus == .denied || cameraService.authorizationStatus == .restricted {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text("開啟設定")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
         }
     }
 
@@ -318,12 +350,18 @@ struct CameraScreenView: View {
 
         do {
             let data = try await cameraService.capturePhoto()
-            _ = try photoStore.saveCapturedPhoto(data: data, modelContext: modelContext)
+            _ = try await photoStore.saveCapturedPhoto(data: data, modelContext: modelContext)
+            showToast("已儲存")
 
             let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
-            await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: saveToLibrary)
-
-            showToast("已儲存")
+            if saveToLibrary {
+                Task {
+                    let outcome = await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: true)
+                    if outcome == .denied {
+                        showToast("系統相簿權限未開啟")
+                    }
+                }
+            }
         } catch {
             showToast(error.localizedDescription)
         }
@@ -341,10 +379,14 @@ struct CameraScreenView: View {
     }
 
     private func showToast(_ message: String) {
+        let token = UUID()
+        toastToken = token
         withAnimation { toast = message }
         Task {
             try? await Task.sleep(for: .seconds(1.2))
-            withAnimation { toast = nil }
+            if toastToken == token {
+                withAnimation { toast = nil }
+            }
         }
     }
 }
@@ -482,5 +524,15 @@ final class PreviewView: UIView {
 
     var videoPreviewLayer: AVCaptureVideoPreviewLayer {
         layer as! AVCaptureVideoPreviewLayer
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Portrait-only app: 90° is the iOS 17 replacement for `.portrait`.
+        let portraitAngle: CGFloat = 90
+        if let connection = videoPreviewLayer.connection,
+           connection.isVideoRotationAngleSupported(portraitAngle) {
+            connection.videoRotationAngle = portraitAngle
+        }
     }
 }
