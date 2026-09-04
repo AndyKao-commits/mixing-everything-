@@ -18,7 +18,13 @@ enum OrientationLock {
         else { return }
 
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
-        UIViewController.attemptRotationToDeviceOrientation()
+
+        // iOS 16+: ask visible controllers to re-query supported orientations.
+        for window in scene.windows {
+            window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            window.rootViewController?.presentedViewController?
+                .setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
     }
 }
 
