@@ -1,3 +1,4 @@
+import AVKit
 import SwiftData
 import SwiftUI
 import UIKit
@@ -20,6 +21,12 @@ struct GalleryView: View {
     @State private var errorMessage: String?
     /// `nil` = all, `untaggedFilterID` = no tags, otherwise a tag id.
     @State private var filterTagID: UUID?
+
+    /// Cell frames in global coordinates for drag-select.
+    @State private var cellFrames: [UUID: CGRect] = [:]
+    @State private var dragAnchorID: UUID?
+    @State private var dragSelects = true
+    @State private var dragVisited: Set<UUID> = []
 
     private static let untaggedFilterID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
 
@@ -61,17 +68,24 @@ struct GalleryView: View {
                                 Section {
                                     LazyVGrid(columns: columns, spacing: 3) {
                                         ForEach(items) { record in
-                                            Button {
+                                            GalleryCell(
+                                                record: record,
+                                                photoStore: photoStore,
+                                                isSelecting: isSelecting,
+                                                isChosen: selectedIDs.contains(record.id)
+                                            )
+                                            .contentShape(Rectangle())
+                                            .background(
+                                                GeometryReader { geo in
+                                                    Color.clear.preference(
+                                                        key: GalleryCellFrameKey.self,
+                                                        value: [record.id: geo.frame(in: .named("galleryScroll"))]
+                                                    )
+                                                }
+                                            )
+                                            .onTapGesture {
                                                 handleTap(record)
-                                            } label: {
-                                                GalleryCell(
-                                                    record: record,
-                                                    photoStore: photoStore,
-                                                    isSelecting: isSelecting,
-                                                    isChosen: selectedIDs.contains(record.id)
-                                                )
                                             }
-                                            .buttonStyle(.plain)
                                         }
                                     }
                                     .padding(.horizontal, 2)
@@ -92,6 +106,9 @@ struct GalleryView: View {
                         }
                         .padding(.bottom, isSelecting ? 88 : 96)
                     }
+                    .coordinateSpace(name: "galleryScroll")
+                    .onPreferenceChange(GalleryCellFrameKey.self) { cellFrames = $0 }
+                    .simultaneousGesture(isSelecting ? dragSelectGesture : nil)
                     .safeAreaInset(edge: .bottom) {
                         if isSelecting {
                             selectionBar
@@ -147,7 +164,7 @@ struct GalleryView: View {
                 }
             }
             .confirmationDialog(
-                "確定刪除 \(selectedIDs.count) 張照片？",
+                "確定刪除 \(selectedIDs.count) 項？",
                 isPresented: $showDeleteConfirm,
                 titleVisibility: .visible
             ) {
@@ -171,12 +188,32 @@ struct GalleryView: View {
             }
             .onChange(of: isSelecting) { _, selecting in
                 appState.isGallerySelecting = selecting
-                if !selecting { selectedIDs.removeAll() }
+                if !selecting {
+                    selectedIDs.removeAll()
+                    resetDragState()
+                }
             }
             .onDisappear {
                 appState.isGallerySelecting = false
             }
         }
+    }
+
+    private var dragSelectGesture: some Gesture {
+        // Press briefly then drag across cells — like Photos range select.
+        LongPressGesture(minimumDuration: 0.15)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("galleryScroll")))
+            .onChanged { value in
+                switch value {
+                case .second(true, let drag?):
+                    handleDragChanged(at: drag.location)
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                resetDragState()
+            }
     }
 
     private var tagsSection: some View {
@@ -272,6 +309,50 @@ struct GalleryView: View {
         }
     }
 
+    private func handleDragChanged(at point: CGPoint) {
+        guard let hitID = cellFrames.first(where: { $0.value.contains(point) })?.key else { return }
+        let ordered = filteredRecords.map(\.id)
+
+        if dragAnchorID == nil {
+            dragAnchorID = hitID
+            dragSelects = !selectedIDs.contains(hitID)
+            dragVisited = [hitID]
+            applyDragSelection(to: hitID)
+            return
+        }
+
+        guard let anchor = dragAnchorID,
+              let start = ordered.firstIndex(of: anchor),
+              let end = ordered.firstIndex(of: hitID) else { return }
+
+        let range = Set(ordered[min(start, end)...max(start, end)])
+        // Clear previous drag range side-effects by re-applying from anchor state.
+        for id in dragVisited where !range.contains(id) && id != anchor {
+            if dragSelects {
+                selectedIDs.remove(id)
+            } else {
+                selectedIDs.insert(id)
+            }
+        }
+        for id in range {
+            applyDragSelection(to: id)
+        }
+        dragVisited = range
+    }
+
+    private func applyDragSelection(to id: UUID) {
+        if dragSelects {
+            selectedIDs.insert(id)
+        } else {
+            selectedIDs.remove(id)
+        }
+    }
+
+    private func resetDragState() {
+        dragAnchorID = nil
+        dragVisited = []
+    }
+
     private func selectedShareItems() -> [URL] {
         photoStore.shareableURLs(for: records.filter { selectedIDs.contains($0.id) })
     }
@@ -287,6 +368,13 @@ struct GalleryView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+private struct GalleryCellFrameKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 
@@ -315,11 +403,17 @@ struct GalleryCell: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-                Text(Self.timeFormatter.string(from: record.capturedAt))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
-                    .padding(6)
+                HStack(spacing: 4) {
+                    if record.isVideo {
+                        Image(systemName: "video.fill")
+                            .font(.caption2.weight(.bold))
+                    }
+                    Text(Self.timeFormatter.string(from: record.capturedAt))
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                .padding(6)
             }
             .overlay(alignment: .topTrailing) {
                 if isSelecting {

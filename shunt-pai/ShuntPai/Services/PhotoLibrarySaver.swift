@@ -27,4 +27,24 @@ enum PhotoLibrarySaver {
             }
         }
     }
+
+    static func saveVideoIfNeeded(fileURL: URL, enabled: Bool) async -> SaveOutcome {
+        guard enabled else { return .skipped }
+
+        return await withCheckedContinuation { continuation in
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                guard status == .authorized || status == .limited else {
+                    continuation.resume(returning: .denied)
+                    return
+                }
+
+                PHPhotoLibrary.shared().performChanges {
+                    let request = PHAssetCreationRequest.forAsset()
+                    request.addResource(with: .video, fileURL: fileURL, options: nil)
+                } completionHandler: { success, _ in
+                    continuation.resume(returning: success ? .saved : .denied)
+                }
+            }
+        }
+    }
 }

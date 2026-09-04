@@ -7,6 +7,8 @@ final class PhotoRecord {
     var capturedAt: Date
     var localFileName: String
     var note: String = ""
+    /// `true` for movie clips (`.mov`); photos remain the default.
+    var isVideo: Bool = false
 
     @Relationship(deleteRule: .nullify, inverse: \TagRecord.photos)
     var tags: [TagRecord] = []
@@ -15,12 +17,14 @@ final class PhotoRecord {
         id: UUID = UUID(),
         capturedAt: Date = .now,
         localFileName: String,
-        note: String = ""
+        note: String = "",
+        isVideo: Bool = false
     ) {
         self.id = id
         self.capturedAt = capturedAt
         self.localFileName = localFileName
         self.note = note
+        self.isVideo = isVideo
     }
 }
 

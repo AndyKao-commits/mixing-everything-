@@ -295,9 +295,16 @@ struct CameraScreenView: View {
     private var bottomChrome: some View {
         VStack(spacing: 16) {
             if cameraService.authorizationStatus == .authorized {
+                if cameraService.isRecording {
+                    Text(Self.formatDuration(cameraService.recordingDuration))
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.red)
+                        .chromeUpright(chromeAngle)
+                }
+
                 zoomControls
 
-                if !entitlements.isPaid {
+                if !entitlements.isPaid, !cameraService.isRecording {
                     Text("免費 \(records.count)/\(AppConstants.freePhotoLimit)")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.7))
@@ -322,20 +329,31 @@ struct CameraScreenView: View {
                         .chromeUpright(chromeAngle)
                     }
                     .buttonStyle(.plain)
+                    .disabled(cameraService.isRecording)
 
                     Spacer()
 
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        Task { await capturePhoto() }
+                        Task { await handleShutter() }
                     } label: {
                         ZStack {
                             Circle()
                                 .stroke(Color.white, lineWidth: 4)
                                 .frame(width: 78, height: 78)
-                            Circle()
-                                .fill(Color.white.opacity(isCapturing ? 0.4 : 1))
-                                .frame(width: 64, height: 64)
+                            if cameraService.captureMode == .video {
+                                RoundedRectangle(cornerRadius: cameraService.isRecording ? 6 : 32)
+                                    .fill(Color.red)
+                                    .frame(
+                                        width: cameraService.isRecording ? 28 : 64,
+                                        height: cameraService.isRecording ? 28 : 64
+                                    )
+                                    .animation(.easeInOut(duration: 0.15), value: cameraService.isRecording)
+                            } else {
+                                Circle()
+                                    .fill(Color.white.opacity(isCapturing ? 0.4 : 1))
+                                    .frame(width: 64, height: 64)
+                            }
                         }
                     }
                     .buttonStyle(.plain)
@@ -354,19 +372,48 @@ struct CameraScreenView: View {
                             .chromeUpright(chromeAngle)
                     }
                     .buttonStyle(.plain)
+                    .disabled(cameraService.isRecording)
                 }
                 .padding(.horizontal, 28)
 
-                Text("照片")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.yellow)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.yellow.opacity(0.18)))
-                    .chromeUpright(chromeAngle)
+                modeSwitcher
                     .padding(.top, 4)
             }
         }
+    }
+
+    private var modeSwitcher: some View {
+        HStack(spacing: 18) {
+            ForEach(CameraCaptureMode.allCases) { mode in
+                Button {
+                    guard !cameraService.isRecording else { return }
+                    cameraService.setCaptureMode(mode)
+                } label: {
+                    Text(mode.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(cameraService.captureMode == mode ? .yellow : .white.opacity(0.55))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule().fill(
+                                cameraService.captureMode == mode
+                                ? Color.yellow.opacity(0.18)
+                                : Color.clear
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(cameraService.isRecording)
+            }
+        }
+        .chromeUpright(chromeAngle)
+    }
+
+    private static func formatDuration(_ value: TimeInterval) -> String {
+        let total = Int(value.rounded(.down))
+        let minutes = total / 60
+        let seconds = total % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     private var zoomControls: some View {
@@ -442,6 +489,61 @@ struct CameraScreenView: View {
             }
         }
         .padding()
+    }
+
+    private func handleShutter() async {
+        if cameraService.captureMode == .video {
+            await toggleRecording()
+        } else {
+            await capturePhoto()
+        }
+    }
+
+    private func toggleRecording() async {
+        if cameraService.isRecording {
+            do {
+                let url = try await cameraService.stopRecording()
+                let tagID = selectedTagID
+                Task {
+                    do {
+                        let record = try await photoStore.saveRecordedVideo(
+                            from: url,
+                            modelContext: modelContext
+                        )
+                        if let tagID, let tag = tags.first(where: { $0.id == tagID }) {
+                            if !record.tags.contains(where: { $0.id == tag.id }) {
+                                record.tags.append(tag)
+                                try modelContext.save()
+                            }
+                        }
+                        let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
+                        if saveToLibrary {
+                            let fileURL = photoStore.localURL(for: record)
+                            let outcome = await PhotoLibrarySaver.saveVideoIfNeeded(fileURL: fileURL, enabled: true)
+                            if outcome == .denied {
+                                showToast("系統相簿權限未開啟")
+                            }
+                        }
+                    } catch {
+                        showToast(error.localizedDescription)
+                    }
+                }
+            } catch {
+                showToast(error.localizedDescription)
+            }
+            return
+        }
+
+        guard entitlements.canCaptureMore(currentCount: records.count + pendingSaves) else {
+            showToast("免費版最多 \(AppConstants.freePhotoLimit) 張")
+            return
+        }
+
+        do {
+            try await cameraService.startRecording()
+        } catch {
+            showToast(error.localizedDescription)
+        }
     }
 
     private func capturePhoto() async {

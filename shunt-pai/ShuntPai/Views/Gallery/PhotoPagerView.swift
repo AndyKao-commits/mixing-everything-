@@ -1,3 +1,4 @@
+import AVKit
 import SwiftData
 import SwiftUI
 import UIKit
@@ -318,11 +319,16 @@ struct PhotoPagerView: View {
     private func saveToLibrary() async {
         guard let record = currentRecord else { return }
         let url = photoStore.localURL(for: record)
-        guard let data = try? Data(contentsOf: url) else {
-            exportMessage = "找不到檔案"
-            return
+        let outcome: PhotoLibrarySaver.SaveOutcome
+        if record.isVideo {
+            outcome = await PhotoLibrarySaver.saveVideoIfNeeded(fileURL: url, enabled: true)
+        } else {
+            guard let data = try? Data(contentsOf: url) else {
+                exportMessage = "找不到檔案"
+                return
+            }
+            outcome = await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: true)
         }
-        let outcome = await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: true)
         exportMessage = outcome == .saved ? "已儲存到 iPhone 相簿" : "無法儲存，請檢查相簿權限"
     }
 }
@@ -332,10 +338,18 @@ private struct LazyPhotoPage: View {
     let photoStore: PhotoStore
     let shouldLoad: Bool
     @State private var image: UIImage?
+    @State private var player: AVPlayer?
 
     var body: some View {
         Group {
-            if let image {
+            if record.isVideo {
+                if let player {
+                    VideoPlayer(player: player)
+                } else {
+                    ProgressView()
+                        .tint(.yellow)
+                }
+            } else if let image {
                 ZoomablePhotoView(image: image)
             } else {
                 ProgressView()
@@ -344,11 +358,18 @@ private struct LazyPhotoPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: "\(record.id)-\(shouldLoad)") {
-            if shouldLoad {
-                image = await photoStore.loadDisplayImage(for: record)
+            player?.pause()
+            player = nil
+            image = nil
+            guard shouldLoad else { return }
+            if record.isVideo {
+                player = AVPlayer(url: photoStore.localURL(for: record))
             } else {
-                image = nil
+                image = await photoStore.loadDisplayImage(for: record)
             }
+        }
+        .onDisappear {
+            player?.pause()
         }
     }
 }

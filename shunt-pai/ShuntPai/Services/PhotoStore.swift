@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImageIO
 import SwiftData
@@ -33,9 +34,9 @@ final class PhotoStore: ObservableObject {
         directory(named: AppConstants.thumbnailsDirectoryName)
     }
 
-    func makeFilename(for date: Date = .now) -> String {
+    func makeFilename(extension ext: String = "jpg", for date: Date = .now) -> String {
         let stamp = filenameFormatter.string(from: date)
-        return "ShuntPai_\(stamp)_\(Int.random(in: 100...999)).jpg"
+        return "ShuntPai_\(stamp)_\(Int.random(in: 100...999)).\(ext)"
     }
 
     func saveCapturedPhoto(
@@ -44,9 +45,9 @@ final class PhotoStore: ObservableObject {
         isLandscape: Bool = false,
         modelContext: ModelContext
     ) async throws -> PhotoRecord {
-        let filename = makeFilename()
+        let filename = makeFilename(extension: "jpg")
         let photoURL = photosDirectory.appendingPathComponent(filename)
-        let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
+        let thumbURL = thumbnailURL(forFileName: filename)
         let payload = data
         let uprightWH = aspectRatio.uprightWidthOverHeight(isLandscape: isLandscape)
 
@@ -63,7 +64,34 @@ final class PhotoStore: ObservableObject {
             cacheThumbnail(thumb, key: filename as NSString)
         }
 
-        let record = PhotoRecord(localFileName: filename)
+        let record = PhotoRecord(localFileName: filename, isVideo: false)
+        modelContext.insert(record)
+        try modelContext.save()
+        return record
+    }
+
+    func saveRecordedVideo(
+        from temporaryURL: URL,
+        modelContext: ModelContext
+    ) async throws -> PhotoRecord {
+        let filename = makeFilename(extension: "mov")
+        let destination = photosDirectory.appendingPathComponent(filename)
+        let thumbURL = thumbnailURL(forFileName: filename)
+
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: temporaryURL, to: destination)
+
+        let thumb = await Task.detached(priority: .userInitiated) {
+            ImageProcessing.videoThumbnail(at: destination, maxPixelSize: 300)
+        }.value
+        if let thumb, let cg = thumb.cgImage {
+            ImageProcessing.writeOpaqueJPEG(cg, to: thumbURL)
+            cacheThumbnail(thumb, key: filename as NSString)
+        }
+
+        let record = PhotoRecord(localFileName: filename, isVideo: true)
         modelContext.insert(record)
         try modelContext.save()
         return record
@@ -74,7 +102,12 @@ final class PhotoStore: ObservableObject {
     }
 
     func thumbnailURL(for record: PhotoRecord) -> URL {
-        thumbnailsDirectory.appendingPathComponent(record.localFileName)
+        thumbnailURL(forFileName: record.localFileName)
+    }
+
+    private func thumbnailURL(forFileName fileName: String) -> URL {
+        let base = (fileName as NSString).deletingPathExtension
+        return thumbnailsDirectory.appendingPathComponent("\(base).jpg")
     }
 
     func loadThumbnail(for record: PhotoRecord) async -> UIImage? {
@@ -87,6 +120,20 @@ final class PhotoStore: ObservableObject {
         if let image = await downsample(path: thumbPath, maxPixelSize: 300) {
             cacheThumbnail(image, key: key)
             return image
+        }
+
+        if record.isVideo {
+            let url = localURL(for: record)
+            let thumb = await Task.detached(priority: .userInitiated) {
+                ImageProcessing.videoThumbnail(at: url, maxPixelSize: 300)
+            }.value
+            if let thumb {
+                cacheThumbnail(thumb, key: key)
+                if let cg = thumb.cgImage {
+                    ImageProcessing.writeOpaqueJPEG(cg, to: thumbnailURL(for: record))
+                }
+            }
+            return thumb
         }
 
         let fullPath = localURL(for: record).path
@@ -102,6 +149,9 @@ final class PhotoStore: ObservableObject {
     }
 
     func loadDisplayImage(for record: PhotoRecord) async -> UIImage? {
+        if record.isVideo {
+            return await loadThumbnail(for: record)
+        }
         let path = localURL(for: record).path
         let maxPixel = Int(max(UIScreen.main.bounds.width, UIScreen.main.bounds.height) * UIScreen.main.scale)
         return await downsample(path: path, maxPixelSize: max(maxPixel, 1200))
@@ -332,6 +382,19 @@ private enum ImageProcessing {
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return context.makeImage() ?? image
+    }
+
+    static func videoThumbnail(at url: URL, maxPixelSize: Int) -> UIImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
+        do {
+            let cgImage = try generator.copyCGImage(at: .zero, actualTime: nil)
+            return UIImage(cgImage: opaqueRGBImage(cgImage))
+        } catch {
+            return nil
+        }
     }
 }
 
