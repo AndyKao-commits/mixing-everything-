@@ -97,6 +97,62 @@ final class PhotoStore: ObservableObject {
         return record
     }
 
+    /// Import a still from the system Photos picker into local storage (no forced crop).
+    func importImage(
+        data: Data,
+        capturedAt: Date = .now,
+        modelContext: ModelContext
+    ) async throws -> PhotoRecord {
+        let filename = makeFilename(extension: "jpg", for: capturedAt)
+        let photoURL = photosDirectory.appendingPathComponent(filename)
+        let thumbURL = thumbnailURL(forFileName: filename)
+
+        try await Task.detached(priority: .userInitiated) {
+            let jpeg = ImageProcessing.importedJPEG(from: data) ?? data
+            try jpeg.write(to: photoURL, options: .atomic)
+            ImageProcessing.writeJPEGThumbnail(from: jpeg, to: thumbURL, maxPixelSize: 300)
+        }.value
+
+        if let thumb = UIImage(contentsOfFile: thumbURL.path) {
+            cacheThumbnail(thumb, key: filename as NSString)
+        }
+
+        let record = PhotoRecord(capturedAt: capturedAt, localFileName: filename, isVideo: false)
+        modelContext.insert(record)
+        try modelContext.save()
+        return record
+    }
+
+    /// Import a movie file picked from the system library.
+    func importVideo(
+        from temporaryURL: URL,
+        capturedAt: Date = .now,
+        modelContext: ModelContext
+    ) async throws -> PhotoRecord {
+        let filename = makeFilename(extension: "mov", for: capturedAt)
+        let destination = photosDirectory.appendingPathComponent(filename)
+        let thumbURL = thumbnailURL(forFileName: filename)
+
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.copyItem(at: temporaryURL, to: destination)
+        try? fileManager.removeItem(at: temporaryURL)
+
+        let thumb = await Task.detached(priority: .userInitiated) {
+            ImageProcessing.videoThumbnail(at: destination, maxPixelSize: 300)
+        }.value
+        if let thumb, let cg = thumb.cgImage {
+            ImageProcessing.writeOpaqueJPEG(cg, to: thumbURL)
+            cacheThumbnail(thumb, key: filename as NSString)
+        }
+
+        let record = PhotoRecord(capturedAt: capturedAt, localFileName: filename, isVideo: true)
+        modelContext.insert(record)
+        try modelContext.save()
+        return record
+    }
+
     func localURL(for record: PhotoRecord) -> URL {
         photosDirectory.appendingPathComponent(record.localFileName)
     }
@@ -395,6 +451,13 @@ private enum ImageProcessing {
         } catch {
             return nil
         }
+    }
+
+    /// Bake orientation and encode JPEG for library imports (keep original framing).
+    static func importedJPEG(from data: Data) -> Data? {
+        guard let uiImage = UIImage(data: data) else { return nil }
+        let upright = uiImage.normalizedUpOrientation()
+        return upright.jpegData(compressionQuality: 0.92)
     }
 }
 

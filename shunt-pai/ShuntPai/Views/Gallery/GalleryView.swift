@@ -1,7 +1,9 @@
 import AVKit
+import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct GalleryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -19,6 +21,9 @@ struct GalleryView: View {
     @State private var showShareSheet = false
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
+    @State private var importMessage: String?
+    @State private var isImporting = false
+    @State private var pickerItems: [PhotosPickerItem] = []
     /// `nil` = all, `untaggedFilterID` = no tags, otherwise a tag id.
     @State private var filterTagID: UUID?
 
@@ -50,6 +55,11 @@ struct GalleryView: View {
         records.filter(\.tags.isEmpty).count
     }
 
+    private var importSelectionLimit: Int {
+        if entitlements.isPaid { return 100 }
+        return max(entitlements.remainingFreeSlots(currentCount: records.count), 0)
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -57,7 +67,13 @@ struct GalleryView: View {
                     ContentUnavailableView {
                         Label("尚無照片", systemImage: "photo.on.rectangle.angled")
                     } description: {
-                        Text("點右下角相機開始拍攝。")
+                        Text("點右下角相機拍攝，或從 iPhone 相簿匯入。")
+                    } actions: {
+                        importPickerButton
+                            .buttonStyle(.borderedProminent)
+                            .tint(.yellow)
+                            .foregroundStyle(.black)
+                            .disabled(importSelectionLimit == 0 || isImporting)
                     }
                 } else {
                     ScrollView {
@@ -116,6 +132,16 @@ struct GalleryView: View {
                     }
                 }
             }
+            .overlay {
+                if isImporting {
+                    ZStack {
+                        Color.black.opacity(0.35).ignoresSafeArea()
+                        ProgressView("匯入中…")
+                            .padding(20)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                }
+            }
             .background(Color(.systemBackground).ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -130,7 +156,11 @@ struct GalleryView: View {
                         Image(systemName: "gearshape")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if !isSelecting {
+                        importPickerButton
+                            .disabled(importSelectionLimit == 0 || isImporting)
+                    }
                     if !records.isEmpty {
                         Button(isSelecting ? "取消" : "選取") {
                             isSelecting.toggle()
@@ -139,6 +169,10 @@ struct GalleryView: View {
                         .fontWeight(.semibold)
                     }
                 }
+            }
+            .onChange(of: pickerItems) { _, items in
+                guard !items.isEmpty else { return }
+                Task { await importPickedItems(items) }
             }
             .fullScreenCover(isPresented: Binding(
                 get: { selectedID != nil },
@@ -180,6 +214,14 @@ struct GalleryView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .alert("匯入完成", isPresented: Binding(
+                get: { importMessage != nil },
+                set: { if !$0 { importMessage = nil } }
+            )) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(importMessage ?? "")
+            }
             .onChange(of: entitlements.isPaid) { _, isPaid in
                 if !isPaid {
                     isSelecting = false
@@ -199,8 +241,17 @@ struct GalleryView: View {
         }
     }
 
+    private var importPickerButton: some View {
+        PhotosPicker(
+            selection: $pickerItems,
+            maxSelectionCount: max(importSelectionLimit, 1),
+            matching: .any(of: [.images, .videos])
+        ) {
+            Label("匯入", systemImage: "square.and.arrow.down")
+        }
+    }
+
     private var dragSelectGesture: some Gesture {
-        // Press briefly then drag across cells — like Photos range select.
         LongPressGesture(minimumDuration: 0.15)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("galleryScroll")))
             .onChanged { value in
@@ -326,7 +377,6 @@ struct GalleryView: View {
               let end = ordered.firstIndex(of: hitID) else { return }
 
         let range = Set(ordered[min(start, end)...max(start, end)])
-        // Clear previous drag range side-effects by re-applying from anchor state.
         for id in dragVisited where !range.contains(id) && id != anchor {
             if dragSelects {
                 selectedIDs.remove(id)
@@ -367,6 +417,62 @@ struct GalleryView: View {
             isSelecting = false
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func importPickedItems(_ items: [PhotosPickerItem]) async {
+        defer {
+            pickerItems = []
+            isImporting = false
+        }
+
+        let limit = importSelectionLimit
+        guard limit > 0 else {
+            errorMessage = "免費版已達 \(AppConstants.freePhotoLimit) 張上限"
+            return
+        }
+
+        isImporting = true
+        let capped = Array(items.prefix(limit))
+        var imported = 0
+        var failed = 0
+
+        for item in capped {
+            do {
+                if item.supportedContentTypes.contains(where: {
+                    $0.conforms(to: .movie) || $0.conforms(to: .audiovisualContent)
+                }) {
+                    if let movie = try await item.loadTransferable(type: ImportedMovie.self) {
+                        _ = try await photoStore.importVideo(from: movie.url, modelContext: modelContext)
+                        imported += 1
+                        continue
+                    }
+                }
+
+                if let data = try await item.loadTransferable(type: Data.self) {
+                    _ = try await photoStore.importImage(data: data, modelContext: modelContext)
+                    imported += 1
+                } else if let movie = try await item.loadTransferable(type: ImportedMovie.self) {
+                    _ = try await photoStore.importVideo(from: movie.url, modelContext: modelContext)
+                    imported += 1
+                } else {
+                    failed += 1
+                }
+            } catch {
+                failed += 1
+            }
+        }
+
+        let skipped = items.count - capped.count
+        var parts: [String] = []
+        if imported > 0 { parts.append("已匯入 \(imported) 項") }
+        if skipped > 0 { parts.append("因免費上限略過 \(skipped) 項") }
+        if failed > 0 { parts.append("失敗 \(failed) 項") }
+        if parts.isEmpty {
+            errorMessage = "無法匯入所選項目"
+        } else {
+            importMessage = parts.joined(separator: "，")
         }
     }
 }
