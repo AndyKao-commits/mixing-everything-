@@ -256,8 +256,12 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     func bindPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
+        // AVCaptureVideoPreviewLayer is not Sendable; hop via unchecked box so the
+        // session-queue @Sendable closure does not capture the layer directly.
+        let boxed = UncheckedSendable(layer)
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            let layer = boxed.value
             if self.boundPreviewLayer === layer, self.rotationCoordinator != nil {
                 return
             }
@@ -397,9 +401,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: preview)
         rotationCoordinator = coordinator
 
-        let apply: (CGFloat) -> Void = { [weak preview] angle in
-            guard let preview, let connection = preview.connection else { return }
+        let apply: @Sendable (CGFloat) -> Void = { [weak self] angle in
             DispatchQueue.main.async {
+                guard let connection = self?.boundPreviewLayer?.connection else { return }
                 if connection.isVideoRotationAngleSupported(angle) {
                     connection.videoRotationAngle = angle
                 }
@@ -624,4 +628,10 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
             self.captureContinuation = nil
         }
     }
+}
+
+/// Wraps a non-Sendable reference for intentional cross-queue handoff (AVFoundation layers).
+private struct UncheckedSendable<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
 }
