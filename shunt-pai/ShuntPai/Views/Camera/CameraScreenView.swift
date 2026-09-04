@@ -323,22 +323,24 @@ struct CameraScreenView: View {
     }
 
     private var zoomControls: some View {
-        let stack = HStack(spacing: 10) {
+        HStack(spacing: 10) {
             ForEach(cameraService.zoomOptions) { option in
                 Button {
                     cameraService.applyZoomOption(option)
                 } label: {
-                    Text(option.label)
+                    Text(zoomLabel(for: option))
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(cameraService.selectedZoomID == option.id ? .black : .white)
+                        .foregroundStyle(isZoomSelected(option) ? .black : .white)
                         .frame(width: 44, height: 44)
                         .background(
                             Circle().fill(
-                                cameraService.selectedZoomID == option.id
+                                isZoomSelected(option)
                                 ? Color.yellow
                                 : Color.black.opacity(0.35)
                             )
                         )
+                        // Keep pill position; only turn the glyph upright with gravity.
+                        .chromeUpright(chromeAngle)
                 }
                 .buttonStyle(.plain)
             }
@@ -346,15 +348,24 @@ struct CameraScreenView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Capsule().fill(Color.black.opacity(0.28)))
+    }
 
-        // Rotate whole bar with gravity. Reserve swapped bounds so it stays horizontal
-        // on screen when the phone is tilted (instead of a sideways vertical strip).
-        return stack
-            .rotationEffect(chromeAngle)
-            .frame(
-                width: chromeOrientation.isLandscapeHold ? 56 : nil,
-                height: chromeOrientation.isLandscapeHold ? 210 : nil
-            )
+    private func isZoomSelected(_ option: ZoomOption) -> Bool {
+        cameraService.selectedZoomID == option.id
+    }
+
+    private func zoomLabel(for option: ZoomOption) -> String {
+        guard isZoomSelected(option) else { return option.label }
+        let display = cameraService.displayZoom
+        // While pinching past a preset, show the live factor (e.g. 4.2× … up to 17×).
+        if abs(display - 1) < 0.05, option.id == "1x" { return "1×" }
+        if display >= 1.05 || display <= 0.95 {
+            if display >= 10 {
+                return String(format: "%.0f×", display)
+            }
+            return String(format: "%.1f×", display)
+        }
+        return option.label
     }
 
     private var permissionView: some View {

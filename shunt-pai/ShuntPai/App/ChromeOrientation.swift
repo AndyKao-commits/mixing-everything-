@@ -43,11 +43,11 @@ final class ChromeOrientation: ObservableObject {
         let landscape: Bool
         switch orientation {
         case .landscapeLeft:
-            // Device rotated CCW → chrome needs CW (-90°) to stay gravity-upright.
-            nextAngle = .degrees(-90)
+            // Device rotated CCW; rotate chrome CCW (+90°) so glyphs follow gravity "up".
+            nextAngle = .degrees(90)
             landscape = true
         case .landscapeRight:
-            nextAngle = .degrees(90)
+            nextAngle = .degrees(-90)
             landscape = true
         case .portraitUpsideDown:
             nextAngle = .degrees(180)
