@@ -15,6 +15,7 @@ struct CameraScreenView: View {
     @StateObject private var chromeOrientation = ChromeOrientation()
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
+    @Query(sort: \TagRecord.createdAt, order: .forward) private var tags: [TagRecord]
 
     @State private var isCapturing = false
     @State private var pendingSaves = 0
@@ -22,6 +23,8 @@ struct CameraScreenView: View {
     @State private var toastToken = UUID()
     @State private var latestThumbnail: UIImage?
     @State private var aspectRatio: AppConstants.CaptureAspectRatio = .sixteenNine
+    /// Session-only capture tag. Resets to nil on process relaunch.
+    @State private var selectedTagID: UUID?
 
     private var chromeAngle: Angle { chromeOrientation.angle }
 
@@ -110,9 +113,22 @@ struct CameraScreenView: View {
             showToast(message)
             cameraService.errorMessage = nil
         }
+        .onChange(of: tags.map(\.id)) { _, ids in
+            if let selectedTagID, !ids.contains(selectedTagID) {
+                self.selectedTagID = nil
+            }
+        }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .preferredColorScheme(.dark)
+    }
+
+    private var selectedTagName: String {
+        guard let selectedTagID,
+              let tag = tags.first(where: { $0.id == selectedTagID }) else {
+            return "無標籤"
+        }
+        return tag.name
     }
 
     private var topChrome: some View {
@@ -148,15 +164,40 @@ struct CameraScreenView: View {
 
             Spacer()
 
-            Button {
-                appState.selectedTab = .gallery
+            Menu {
+                Button {
+                    selectedTagID = nil
+                } label: {
+                    Label("無標籤", systemImage: selectedTagID == nil ? "checkmark" : "tag.slash")
+                }
+                if !tags.isEmpty {
+                    Divider()
+                    ForEach(tags) { tag in
+                        Button {
+                            selectedTagID = tag.id
+                        } label: {
+                            Label(
+                                tag.name,
+                                systemImage: selectedTagID == tag.id ? "checkmark" : "tag"
+                            )
+                        }
+                    }
+                }
             } label: {
-                Image(systemName: "xmark")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .chromeUpright(chromeAngle)
+                HStack(spacing: 4) {
+                    Image(systemName: "tag.fill")
+                        .font(.caption.weight(.semibold))
+                    Text(selectedTagName)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(selectedTagID == nil ? .white.opacity(0.85) : .yellow)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(Color.white.opacity(0.12)))
+                .chromeUpright(chromeAngle)
             }
+            .buttonStyle(.plain)
         }
     }
 
@@ -208,10 +249,14 @@ struct CameraScreenView: View {
                 .clipped()
 
                 if horizon.shouldShow {
-                    HorizonGuideLine(tiltDegrees: horizon.tiltDegrees, isLevel: horizon.isLevel)
-                        .frame(width: previewSize.width, height: previewSize.height)
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
+                    HorizonGuideLine(
+                        tiltDegrees: horizon.tiltDegrees,
+                        uprightAngle: chromeAngle,
+                        isLevel: horizon.isLevel
+                    )
+                    .frame(width: previewSize.width, height: previewSize.height)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
                 }
 
                 if let focusPoint = cameraService.focusPoint {
@@ -410,6 +455,7 @@ struct CameraScreenView: View {
         pendingSaves += 1
         let isLandscapeHold = chromeOrientation.isLandscapeHold
         let ratio = aspectRatio
+        let tagID = selectedTagID
         let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
 
         do {
@@ -426,6 +472,12 @@ struct CameraScreenView: View {
                         isLandscape: isLandscapeHold,
                         modelContext: modelContext
                     )
+                    if let tagID, let tag = tags.first(where: { $0.id == tagID }) {
+                        if !record.tags.contains(where: { $0.id == tag.id }) {
+                            record.tags.append(tag)
+                            try modelContext.save()
+                        }
+                    }
                     if saveToLibrary {
                         let url = photoStore.localURL(for: record)
                         guard let saved = try? Data(contentsOf: url) else { return }
@@ -497,13 +549,16 @@ private struct FocusReticle: View {
 
 private struct HorizonGuideLine: View {
     let tiltDegrees: Double
+    let uprightAngle: Angle
     let isLevel: Bool
 
     var body: some View {
+        // Capsule is drawn level in portrait coords; add chrome upright angle so that
+        // when the phone is tilted, the guide stays gravity-horizontal (not phone-horizontal).
         Capsule()
             .fill(isLevel ? Color.yellow : Color.white.opacity(0.85))
             .frame(width: 72, height: isLevel ? 3 : 2)
-            .rotationEffect(.degrees(tiltDegrees))
+            .rotationEffect(uprightAngle + .degrees(tiltDegrees))
             .shadow(color: .black.opacity(0.35), radius: 1)
     }
 }

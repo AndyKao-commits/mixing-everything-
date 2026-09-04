@@ -453,7 +453,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private func setDeviceZoom(_ factor: CGFloat, animated: Bool) {
         guard let device = videoInput?.device else { return }
         let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = min(device.maxAvailableVideoZoomFactor, 17)
+        let maxZoom = min(device.maxAvailableVideoZoomFactor, 20)
         let clamped = min(max(factor, minZoom), maxZoom)
 
         do {
@@ -518,7 +518,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private static func makeZoomOptions(for device: AVCaptureDevice, baseline: CGFloat) -> [ZoomOption] {
         var options: [ZoomOption] = []
         let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = min(device.maxAvailableVideoZoomFactor, baseline * 17)
+        let maxZoom = min(device.maxAvailableVideoZoomFactor, baseline * 20)
 
         if minZoom < baseline - 0.05 {
             options.append(ZoomOption(id: "0.5", label: "0.5", deviceFactor: minZoom))
