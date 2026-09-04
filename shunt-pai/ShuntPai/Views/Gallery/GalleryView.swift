@@ -242,7 +242,8 @@ struct GalleryView: View {
                     viewportHeight = height
                 }
                 .onPreferenceChange(GalleryCellFrameKey.self) { cellFrames = $0 }
-                .highPriorityGesture(isSelecting ? dragSelectGesture : nil)
+                // simultaneous so normal flicks still scroll; long-press locks scroll for range select.
+                .simultaneousGesture(isSelecting ? dragSelectGesture : nil)
                 .safeAreaInset(edge: .bottom) {
                     if isSelecting {
                         selectionBar
