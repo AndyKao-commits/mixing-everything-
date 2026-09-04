@@ -20,6 +20,7 @@ struct GalleryView: View {
     @State private var selectedIDs: Set<UUID> = []
     @State private var showShareSheet = false
     @State private var showDeleteConfirm = false
+    @State private var showBatchTagSheet = false
     @State private var errorMessage: String?
     @State private var importMessage: String?
     @State private var isImporting = false
@@ -27,11 +28,17 @@ struct GalleryView: View {
     /// `nil` = all, `untaggedFilterID` = no tags, otherwise a tag id.
     @State private var filterTagID: UUID?
 
-    /// Cell frames in global coordinates for drag-select.
+    /// Cell frames in viewport coordinates for drag-select.
     @State private var cellFrames: [UUID: CGRect] = [:]
     @State private var dragAnchorID: UUID?
+    @State private var dragLastHitID: UUID?
     @State private var dragSelects = true
     @State private var dragVisited: Set<UUID> = []
+    @State private var isDragSelecting = false
+    @State private var viewportHeight: CGFloat = 0
+    @State private var autoScrollDirection = 0
+    @State private var autoScrollTimer: Timer?
+    @State private var scrollProxy: ScrollViewProxy?
 
     private static let untaggedFilterID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
 
@@ -51,6 +58,10 @@ struct GalleryView: View {
         }
     }
 
+    private var selectedRecords: [PhotoRecord] {
+        records.filter { selectedIDs.contains($0.id) }
+    }
+
     private var untaggedCount: Int {
         records.filter(\.tags.isEmpty).count
     }
@@ -64,72 +75,9 @@ struct GalleryView: View {
         NavigationStack {
             Group {
                 if records.isEmpty {
-                    ContentUnavailableView {
-                        Label("尚無照片", systemImage: "photo.on.rectangle.angled")
-                    } description: {
-                        Text("點右下角相機拍攝，或從 iPhone 相簿匯入。")
-                    } actions: {
-                        importPickerButton
-                            .buttonStyle(.borderedProminent)
-                            .tint(.yellow)
-                            .foregroundStyle(.black)
-                            .disabled(importSelectionLimit == 0 || isImporting)
-                    }
+                    emptyState
                 } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
-                            tagsSection
-
-                            ForEach(photoStore.groupedRecords(filteredRecords), id: \.0) { section, items in
-                                Section {
-                                    LazyVGrid(columns: columns, spacing: 3) {
-                                        ForEach(items) { record in
-                                            GalleryCell(
-                                                record: record,
-                                                photoStore: photoStore,
-                                                isSelecting: isSelecting,
-                                                isChosen: selectedIDs.contains(record.id)
-                                            )
-                                            .contentShape(Rectangle())
-                                            .background(
-                                                GeometryReader { geo in
-                                                    Color.clear.preference(
-                                                        key: GalleryCellFrameKey.self,
-                                                        value: [record.id: geo.frame(in: .named("galleryScroll"))]
-                                                    )
-                                                }
-                                            )
-                                            .onTapGesture {
-                                                handleTap(record)
-                                            }
-                                        }
-                                    }
-                                    .padding(.horizontal, 2)
-                                } header: {
-                                    HStack {
-                                        Text(friendlySectionTitle(for: items, fallback: section))
-                                            .font(.title3.weight(.bold))
-                                        Spacer()
-                                        Text("\(items.count)")
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color(.systemBackground).opacity(0.94))
-                                }
-                            }
-                        }
-                        .padding(.bottom, isSelecting ? 88 : 96)
-                    }
-                    .coordinateSpace(name: "galleryScroll")
-                    .onPreferenceChange(GalleryCellFrameKey.self) { cellFrames = $0 }
-                    .simultaneousGesture(isSelecting ? dragSelectGesture : nil)
-                    .safeAreaInset(edge: .bottom) {
-                        if isSelecting {
-                            selectionBar
-                        }
-                    }
+                    galleryScroll
                 }
             }
             .overlay {
@@ -144,32 +92,7 @@ struct GalleryView: View {
             }
             .background(Color(.systemBackground).ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(AppConstants.appName)
-                        .font(.title2.weight(.heavy))
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if !isSelecting {
-                        importPickerButton
-                            .disabled(importSelectionLimit == 0 || isImporting)
-                    }
-                    if !records.isEmpty {
-                        Button(isSelecting ? "取消" : "選取") {
-                            isSelecting.toggle()
-                            if !isSelecting { selectedIDs.removeAll() }
-                        }
-                        .fontWeight(.semibold)
-                    }
-                }
-            }
+            .toolbar { toolbarContent }
             .onChange(of: pickerItems) { _, items in
                 guard !items.isEmpty else { return }
                 Task { await importPickedItems(items) }
@@ -196,6 +119,9 @@ struct GalleryView: View {
                 } else {
                     ActivityShareSheet(items: items)
                 }
+            }
+            .sheet(isPresented: $showBatchTagSheet) {
+                BatchTagSheet(records: selectedRecords, allTags: tags)
             }
             .confirmationDialog(
                 "確定刪除 \(selectedIDs.count) 項？",
@@ -237,6 +163,119 @@ struct GalleryView: View {
             }
             .onDisappear {
                 appState.isGallerySelecting = false
+                stopAutoScroll()
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("尚無照片", systemImage: "photo.on.rectangle.angled")
+        } description: {
+            Text("點右下角相機拍攝，或從 iPhone 相簿匯入。")
+        } actions: {
+            importPickerButton
+                .buttonStyle(.borderedProminent)
+                .tint(.yellow)
+                .foregroundStyle(.black)
+                .disabled(importSelectionLimit == 0 || isImporting)
+        }
+    }
+
+    private var galleryScroll: some View {
+        ScrollViewReader { proxy in
+            GeometryReader { viewport in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
+                        tagsSection
+
+                        ForEach(photoStore.groupedRecords(filteredRecords), id: \.0) { section, items in
+                            Section {
+                                LazyVGrid(columns: columns, spacing: 3) {
+                                    ForEach(items) { record in
+                                        GalleryCell(
+                                            record: record,
+                                            photoStore: photoStore,
+                                            isSelecting: isSelecting,
+                                            isChosen: selectedIDs.contains(record.id)
+                                        )
+                                        .id(record.id)
+                                        .contentShape(Rectangle())
+                                        .background(
+                                            GeometryReader { geo in
+                                                Color.clear.preference(
+                                                    key: GalleryCellFrameKey.self,
+                                                    value: [record.id: geo.frame(in: .named("galleryViewport"))]
+                                                )
+                                            }
+                                        )
+                                        .onTapGesture {
+                                            handleTap(record)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 2)
+                            } header: {
+                                HStack {
+                                    Text(friendlySectionTitle(for: items, fallback: section))
+                                        .font(.title3.weight(.bold))
+                                    Spacer()
+                                    Text("\(items.count)")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemBackground).opacity(0.94))
+                            }
+                        }
+                    }
+                    .padding(.bottom, isSelecting ? 88 : 96)
+                }
+                .coordinateSpace(name: "galleryViewport")
+                .scrollDisabled(isDragSelecting)
+                .onAppear {
+                    scrollProxy = proxy
+                    viewportHeight = viewport.size.height
+                }
+                .onChange(of: viewport.size.height) { _, height in
+                    viewportHeight = height
+                }
+                .onPreferenceChange(GalleryCellFrameKey.self) { cellFrames = $0 }
+                .highPriorityGesture(isSelecting ? dragSelectGesture : nil)
+                .safeAreaInset(edge: .bottom) {
+                    if isSelecting {
+                        selectionBar
+                    }
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Text(AppConstants.appName)
+                .font(.title2.weight(.heavy))
+        }
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+            }
+        }
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if !isSelecting {
+                importPickerButton
+                    .disabled(importSelectionLimit == 0 || isImporting)
+            }
+            if !records.isEmpty {
+                Button(isSelecting ? "取消" : "選取") {
+                    isSelecting.toggle()
+                    if !isSelecting { selectedIDs.removeAll() }
+                }
+                .fontWeight(.semibold)
             }
         }
     }
@@ -252,12 +291,20 @@ struct GalleryView: View {
     }
 
     private var dragSelectGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.15)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("galleryScroll")))
+        // Long-press then drag: locks scroll and selects a contiguous range.
+        LongPressGesture(minimumDuration: 0.12)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("galleryViewport")))
             .onChanged { value in
                 switch value {
+                case .first(true):
+                    // Armed — wait for drag.
+                    break
                 case .second(true, let drag?):
+                    if !isDragSelecting {
+                        isDragSelecting = true
+                    }
                     handleDragChanged(at: drag.location)
+                    updateAutoScroll(for: drag.location.y)
                 default:
                     break
                 }
@@ -318,11 +365,18 @@ struct GalleryView: View {
     }
 
     private var selectionBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Button {
                 showShareSheet = true
             } label: {
-                Label("分享／下載", systemImage: "square.and.arrow.up")
+                Label("分享", systemImage: "square.and.arrow.up")
+            }
+            .disabled(selectedIDs.isEmpty)
+
+            Button {
+                showBatchTagSheet = true
+            } label: {
+                Label("標籤", systemImage: "tag")
             }
             .disabled(selectedIDs.isEmpty)
 
@@ -361,13 +415,16 @@ struct GalleryView: View {
     }
 
     private func handleDragChanged(at point: CGPoint) {
-        guard let hitID = cellFrames.first(where: { $0.value.contains(point) })?.key else { return }
+        let hitID = cellFrames.first(where: { $0.value.contains(point) })?.key
+            ?? nearestCellID(to: point)
+        guard let hitID else { return }
         let ordered = filteredRecords.map(\.id)
 
         if dragAnchorID == nil {
             dragAnchorID = hitID
             dragSelects = !selectedIDs.contains(hitID)
             dragVisited = [hitID]
+            dragLastHitID = hitID
             applyDragSelection(to: hitID)
             return
         }
@@ -388,6 +445,14 @@ struct GalleryView: View {
             applyDragSelection(to: id)
         }
         dragVisited = range
+        dragLastHitID = hitID
+    }
+
+    private func nearestCellID(to point: CGPoint) -> UUID? {
+        cellFrames.min { lhs, rhs in
+            hypot(lhs.value.midX - point.x, lhs.value.midY - point.y)
+                < hypot(rhs.value.midX - point.x, rhs.value.midY - point.y)
+        }?.key
     }
 
     private func applyDragSelection(to id: UUID) {
@@ -398,17 +463,72 @@ struct GalleryView: View {
         }
     }
 
+    private func updateAutoScroll(for fingerY: CGFloat) {
+        let edge: CGFloat = 64
+        if fingerY < edge {
+            startAutoScroll(direction: -1)
+        } else if fingerY > max(viewportHeight - edge, edge + 1) {
+            startAutoScroll(direction: 1)
+        } else {
+            stopAutoScroll()
+        }
+    }
+
+    private func startAutoScroll(direction: Int) {
+        guard autoScrollDirection != direction else { return }
+        stopAutoScroll()
+        autoScrollDirection = direction
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.11, repeats: true) { _ in
+            Task { @MainActor in
+                self.performAutoScrollStep()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        autoScrollTimer = timer
+        performAutoScrollStep()
+    }
+
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+        autoScrollDirection = 0
+    }
+
+    private func performAutoScrollStep() {
+        guard isDragSelecting, autoScrollDirection != 0, let proxy = scrollProxy else { return }
+        let ordered = filteredRecords.map(\.id)
+        guard let current = dragLastHitID ?? dragAnchorID,
+              let idx = ordered.firstIndex(of: current) else { return }
+        let next = idx + autoScrollDirection
+        guard ordered.indices.contains(next) else { return }
+        let target = ordered[next]
+        withAnimation(.easeOut(duration: 0.1)) {
+            proxy.scrollTo(target, anchor: autoScrollDirection > 0 ? .bottom : .top)
+        }
+        // Extend selection toward the scrolled cell.
+        if let anchor = dragAnchorID,
+           let start = ordered.firstIndex(of: anchor) {
+            let range = Set(ordered[min(start, next)...max(start, next)])
+            for id in range { applyDragSelection(to: id) }
+            dragVisited = range
+            dragLastHitID = target
+        }
+    }
+
     private func resetDragState() {
+        stopAutoScroll()
+        isDragSelecting = false
         dragAnchorID = nil
+        dragLastHitID = nil
         dragVisited = []
     }
 
     private func selectedShareItems() -> [URL] {
-        photoStore.shareableURLs(for: records.filter { selectedIDs.contains($0.id) })
+        photoStore.shareableURLs(for: selectedRecords)
     }
 
     private func deleteSelected() {
-        let targets = records.filter { selectedIDs.contains($0.id) }
+        let targets = selectedRecords
         do {
             for record in targets {
                 try photoStore.delete(record: record, modelContext: modelContext)
@@ -536,5 +656,115 @@ struct GalleryCell: View {
             .task(id: record.id) {
                 image = await photoStore.loadThumbnail(for: record)
             }
+    }
+}
+
+/// Apply / remove one tag across every currently selected record.
+struct BatchTagSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let records: [PhotoRecord]
+    let allTags: [TagRecord]
+
+    @State private var showCreate = false
+    @State private var newTagName = ""
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if allTags.isEmpty {
+                    ContentUnavailableView {
+                        Label("尚無標籤", systemImage: "tag.slash")
+                    } description: {
+                        Text("先新增標籤，再一次套用到選取的 \(records.count) 項。")
+                    }
+                } else {
+                    List {
+                        Section {
+                            Text("已選 \(records.count) 項。點標籤可全部加上；若已全部擁有則改為全部移除。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Section {
+                            ForEach(allTags) { tag in
+                                Button {
+                                    apply(tag)
+                                } label: {
+                                    HStack {
+                                        Text(tag.name)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        statusIcon(for: tag)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("一次標籤")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("新增") { showCreate = true }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") {
+                        try? modelContext.save()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .alert("新增標籤", isPresented: $showCreate) {
+                TextField("標籤名稱", text: $newTagName)
+                Button("取消", role: .cancel) { newTagName = "" }
+                Button("新增") {
+                    let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else { return }
+                    let tag = TagRecord(name: name)
+                    modelContext.insert(tag)
+                    apply(tag)
+                    newTagName = ""
+                }
+            } message: {
+                Text("例如：施工、驗收、客戶現場")
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private func statusIcon(for tag: TagRecord) -> some View {
+        let count = records.filter { photo in
+            photo.tags.contains(where: { $0.id == tag.id })
+        }.count
+        if count == records.count, !records.isEmpty {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.yellow)
+        } else if count > 0 {
+            Image(systemName: "minus.circle.fill")
+                .foregroundStyle(.orange)
+        } else {
+            Image(systemName: "circle")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func apply(_ tag: TagRecord) {
+        let allHave = !records.isEmpty && records.allSatisfy { photo in
+            photo.tags.contains(where: { $0.id == tag.id })
+        }
+        if allHave {
+            for record in records {
+                record.tags.removeAll { $0.id == tag.id }
+            }
+        } else {
+            for record in records where !record.tags.contains(where: { $0.id == tag.id }) {
+                record.tags.append(tag)
+            }
+        }
+        try? modelContext.save()
     }
 }
