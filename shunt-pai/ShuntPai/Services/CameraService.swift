@@ -396,9 +396,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: preview)
         rotationCoordinator = coordinator
 
-        let apply: (CGFloat) -> Void = { [weak self, weak preview] angle in
-            guard let self, let preview, let connection = preview.connection else { return }
-            self.sessionQueue.async {
+        let apply: (CGFloat) -> Void = { [weak preview] angle in
+            guard let preview, let connection = preview.connection else { return }
+            DispatchQueue.main.async {
                 if connection.isVideoRotationAngleSupported(angle) {
                     connection.videoRotationAngle = angle
                 }

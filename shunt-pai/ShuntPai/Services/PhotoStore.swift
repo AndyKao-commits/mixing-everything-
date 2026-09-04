@@ -40,7 +40,7 @@ final class PhotoStore: ObservableObject {
 
     func saveCapturedPhoto(
         data: Data,
-        aspectRatio: AppConstants.CaptureAspectRatio = .fourThree,
+        aspectRatio: AppConstants.CaptureAspectRatio = .sixteenNine,
         isLandscape: Bool = false,
         modelContext: ModelContext
     ) async throws -> PhotoRecord {
@@ -51,7 +51,10 @@ final class PhotoStore: ObservableObject {
         let uprightWH = aspectRatio.uprightWidthOverHeight(isLandscape: isLandscape)
 
         try await Task.detached(priority: .userInitiated) {
-            let finalData = ImageProcessing.croppedJPEG(from: payload, uprightWidthOverHeight: uprightWH) ?? payload
+            let finalData = ImageProcessing.uprightCroppedJPEG(
+                from: payload,
+                uprightWidthOverHeight: uprightWH
+            ) ?? payload
             try finalData.write(to: photoURL, options: .atomic)
             ImageProcessing.writeJPEGThumbnail(from: finalData, to: thumbURL, maxPixelSize: 300)
         }.value
@@ -182,60 +185,33 @@ final class PhotoStore: ObservableObject {
 }
 
 private enum ImageProcessing {
-    static func croppedJPEG(from data: Data, uprightWidthOverHeight: CGFloat) -> Data? {
-        guard let source = CGImageSourceCreateWithData(
-            data as CFData,
-            [kCGImageSourceShouldCache: false] as CFDictionary
-        ) else { return nil }
-        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+    /// Bake EXIF orientation into pixels, then center-crop to the target upright aspect.
+    /// Portrait hold → tall image; landscape hold → wide image.
+    static func uprightCroppedJPEG(from data: Data, uprightWidthOverHeight: CGFloat) -> Data? {
+        guard let uiImage = UIImage(data: data) else { return nil }
+        let upright = uiImage.normalizedUpOrientation()
+        guard let cgImage = upright.cgImage else { return nil }
 
-        let width = CGFloat(image.width)
-        let height = CGFloat(image.height)
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
         guard width > 0, height > 0 else { return nil }
 
-        var orientation = CGImagePropertyOrientation.up
-        if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-           let raw = props[kCGImagePropertyOrientation] as? UInt32,
-           let value = CGImagePropertyOrientation(rawValue: raw) {
-            orientation = value
-        }
-
-        let pixelsMatchUprightPortrait: Bool = {
-            switch orientation {
-            case .left, .leftMirrored, .right, .rightMirrored:
-                return true
-            default:
-                return height >= width
-            }
-        }()
-
-        let cropRect: CGRect
-        if pixelsMatchUprightPortrait {
-            let desiredHeightOverWidth = 1.0 / max(uprightWidthOverHeight, 0.01)
-            let current = height / width
-            if abs(current - desiredHeightOverWidth) < 0.02 { return data }
-            if current > desiredHeightOverWidth {
-                let newHeight = width * desiredHeightOverWidth
-                cropRect = CGRect(x: 0, y: (height - newHeight) / 2, width: width, height: newHeight)
-            } else {
-                let newWidth = height / desiredHeightOverWidth
-                cropRect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height)
-            }
+        let desired = max(uprightWidthOverHeight, 0.01) // width / height
+        let current = width / height
+        let cropped: CGImage
+        if abs(current - desired) < 0.02 {
+            cropped = cgImage
+        } else if current > desired {
+            let newWidth = height * desired
+            let rect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height).integral
+            guard let slice = cgImage.cropping(to: rect) else { return nil }
+            cropped = slice
         } else {
-            let desired = uprightWidthOverHeight
-            let current = width / height
-            if abs(current - desired) < 0.02 { return data }
-            if current > desired {
-                let newWidth = height * desired
-                cropRect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height)
-            } else {
-                let newHeight = width / desired
-                cropRect = CGRect(x: 0, y: (height - newHeight) / 2, width: width, height: newHeight)
-            }
+            let newHeight = width / desired
+            let rect = CGRect(x: 0, y: (height - newHeight) / 2, width: width, height: newHeight).integral
+            guard let slice = cgImage.cropping(to: rect) else { return nil }
+            cropped = slice
         }
-
-        let integral = cropRect.integral
-        guard let cropped = image.cropping(to: integral) else { return nil }
 
         let opaque = opaqueRGBImage(cropped)
         let mutable = NSMutableData()
@@ -246,14 +222,20 @@ private enum ImageProcessing {
             nil
         ) else { return nil }
 
-        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.92]
-        if let original = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-            props[kCGImagePropertyOrientation] = original[kCGImagePropertyOrientation] as Any
-            if let exif = original[kCGImagePropertyExifDictionary] {
+        // Pixels are already upright — do not write a conflicting orientation tag.
+        var props: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: 0.92,
+            kCGImagePropertyOrientation: CGImagePropertyOrientation.up.rawValue
+        ]
+        if let original = CGImageSourceCreateWithData(data as CFData, nil),
+           let sourceProps = CGImageSourceCopyPropertiesAtIndex(original, 0, nil) as? [CFString: Any] {
+            if let exif = sourceProps[kCGImagePropertyExifDictionary] {
                 props[kCGImagePropertyExifDictionary] = exif
             }
-            if let tiff = original[kCGImagePropertyTIFFDictionary] {
-                props[kCGImagePropertyTIFFDictionary] = tiff
+            if let tiff = sourceProps[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+                var cleaned = tiff
+                cleaned[kCGImagePropertyTIFFOrientation] = CGImagePropertyOrientation.up.rawValue
+                props[kCGImagePropertyTIFFDictionary] = cleaned
             }
         }
         CGImageDestinationAddImage(destination, opaque, props as CFDictionary)
@@ -350,5 +332,19 @@ private enum ImageProcessing {
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return context.makeImage() ?? image
+    }
+}
+
+private extension UIImage {
+    /// Bake `imageOrientation` into pixel data so width/height match what the user saw.
+    func normalizedUpOrientation() -> UIImage {
+        guard imageOrientation != .up else { return self }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = scale
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 }

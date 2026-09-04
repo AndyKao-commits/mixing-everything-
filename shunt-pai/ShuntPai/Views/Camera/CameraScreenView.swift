@@ -19,28 +19,33 @@ struct CameraScreenView: View {
     @State private var toast: String?
     @State private var toastToken = UUID()
     @State private var latestThumbnail: UIImage?
-    @State private var aspectRatio: AppConstants.CaptureAspectRatio = .fourThree
+    @State private var aspectRatio: AppConstants.CaptureAspectRatio = .sixteenNine
+    @State private var interfaceIsLandscape = false
 
     var body: some View {
         GeometryReader { geo in
             let isLandscape = geo.size.width > geo.size.height
+            let previewArea = previewContentSize(isLandscape: isLandscape, in: geo.size)
+
             ZStack {
                 Color.black.ignoresSafeArea()
 
+                // Preview centered; chrome floats over it (native Camera style).
+                previewStage(isLandscape: isLandscape, previewSize: previewArea)
+                    .frame(width: previewArea.width, height: previewArea.height)
+
                 VStack(spacing: 0) {
                     topChrome
-                        .padding(.horizontal, 18)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
+                        .padding(.horizontal, isLandscape ? 24 : 18)
+                        .padding(.top, isLandscape ? 6 : 8)
 
-                    previewStage(isLandscape: isLandscape, available: geo.size)
-                        .frame(maxWidth: .infinity)
-                        .layoutPriority(1)
+                    Spacer(minLength: 0)
 
-                    bottomChrome
-                        .padding(.top, 14)
-                        .padding(.bottom, 8)
+                    bottomChrome(isLandscape: isLandscape)
+                        .padding(.top, isLandscape ? 6 : 10)
+                        .padding(.bottom, isLandscape ? 6 : 8)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if let toast {
                     Text(toast)
@@ -56,9 +61,15 @@ struct CameraScreenView: View {
                 }
             }
             .onAppear {
+                interfaceIsLandscape = isLandscape
                 horizon.setInterfaceLandscape(isLandscape)
+                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            }
+            .onDisappear {
+                UIDevice.current.endGeneratingDeviceOrientationNotifications()
             }
             .onChange(of: isLandscape) { _, landscape in
+                interfaceIsLandscape = landscape
                 horizon.setInterfaceLandscape(landscape)
             }
         }
@@ -148,24 +159,36 @@ struct CameraScreenView: View {
         }
     }
 
-    private func previewStage(isLandscape: Bool, available: CGSize) -> some View {
-        let uprightWH = aspectRatio.uprightWidthOverHeight(isLandscape: isLandscape)
-        let maxW = available.width
-        // Leave room for top/bottom chrome roughly.
-        let maxH = max(available.height * 0.62, 220)
-        let previewSize: CGSize = {
-            if isLandscape {
-                let height = min(maxH, maxW / max(uprightWH, 0.01))
-                let width = min(maxW, height * uprightWH)
-                return CGSize(width: width, height: height)
-            } else {
-                let width = maxW
-                let height = min(maxH, width / max(uprightWH, 0.01))
-                return CGSize(width: width, height: height)
-            }
-        }()
+    /// Native-style fit:
+    /// - Portrait 16:9 → full width, letterbox above/below (tall 9:16 frame)
+    /// - Landscape 16:9 → fill screen height, thin pillar boxes if needed (wide 16:9)
+    private func previewContentSize(isLandscape: Bool, in size: CGSize) -> CGSize {
+        let available: CGSize
+        if isLandscape {
+            // Use the full short edge so landscape feels edge-to-edge like native Camera.
+            available = size
+        } else {
+            let topReserve: CGFloat = 52
+            let bottomReserve: CGFloat = 176
+            available = CGSize(
+                width: size.width,
+                height: max(size.height - topReserve - bottomReserve, 160)
+            )
+        }
+        let targetWH = aspectRatio.uprightWidthOverHeight(isLandscape: isLandscape)
+        let availableWH = available.width / max(available.height, 1)
 
-        return ZStack {
+        if availableWH > targetWH {
+            let height = available.height
+            return CGSize(width: height * targetWH, height: height)
+        } else {
+            let width = available.width
+            return CGSize(width: width, height: width / max(targetWH, 0.01))
+        }
+    }
+
+    private func previewStage(isLandscape: Bool, previewSize: CGSize) -> some View {
+        ZStack {
             if cameraService.authorizationStatus == .authorized {
                 CameraPreviewView(
                     session: cameraService.session,
@@ -184,7 +207,6 @@ struct CameraScreenView: View {
                         cameraService.bumpZoom(by: scale)
                     },
                     onExposureDrag: cameraService.focusPoint == nil ? nil : { deltaY in
-                        // Native-like fine control: ~140pt ≈ 1 EV
                         cameraService.adjustExposure(by: Float(-deltaY / 140))
                     }
                 )
@@ -225,17 +247,20 @@ struct CameraScreenView: View {
             }
         }
         .frame(width: previewSize.width, height: previewSize.height)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.2), value: aspectRatio)
         .animation(.easeInOut(duration: 0.15), value: horizon.shouldShow)
     }
 
-    private var bottomChrome: some View {
-        VStack(spacing: 16) {
+    private func bottomChrome(isLandscape: Bool) -> some View {
+        let shutterOuter: CGFloat = isLandscape ? 64 : 78
+        let shutterInner: CGFloat = isLandscape ? 52 : 64
+        let sideButton: CGFloat = isLandscape ? 48 : 56
+
+        return VStack(spacing: isLandscape ? 10 : 16) {
             if cameraService.authorizationStatus == .authorized {
                 zoomControls
 
-                if !entitlements.isPaid {
+                if !entitlements.isPaid && !isLandscape {
                     Text("免費 \(records.count)/\(AppConstants.freePhotoLimit)")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.7))
@@ -253,7 +278,7 @@ struct CameraScreenView: View {
                                     .scaledToFill()
                             }
                         }
-                        .frame(width: 56, height: 56)
+                        .frame(width: sideButton, height: sideButton)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.5))
                     }
@@ -268,10 +293,10 @@ struct CameraScreenView: View {
                         ZStack {
                             Circle()
                                 .stroke(Color.white, lineWidth: 4)
-                                .frame(width: 78, height: 78)
+                                .frame(width: shutterOuter, height: shutterOuter)
                             Circle()
                                 .fill(Color.white.opacity(isCapturing ? 0.4 : 1))
-                                .frame(width: 64, height: 64)
+                                .frame(width: shutterInner, height: shutterInner)
                         }
                     }
                     .buttonStyle(.plain)
@@ -285,20 +310,22 @@ struct CameraScreenView: View {
                         Image(systemName: "arrow.triangle.2.circlepath.camera")
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 56, height: 56)
+                            .frame(width: sideButton, height: sideButton)
                             .background(Circle().fill(Color.white.opacity(0.14)))
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, isLandscape ? 36 : 28)
 
-                Text("照片")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.yellow)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.yellow.opacity(0.18)))
-                    .padding(.top, 4)
+                if !isLandscape {
+                    Text("照片")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.yellow)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.yellow.opacity(0.18)))
+                        .padding(.top, 4)
+                }
             }
         }
     }
@@ -369,7 +396,8 @@ struct CameraScreenView: View {
 
         do {
             let data = try await cameraService.capturePhoto()
-            let isLandscape = UIScreen.main.bounds.width > UIScreen.main.bounds.height
+            // Match the live preview: portrait UI → tall crop; landscape UI → wide crop.
+            let isLandscape = Self.isCaptureLandscape(interfaceIsLandscape: interfaceIsLandscape)
             let record = try await photoStore.saveCapturedPhoto(
                 data: data,
                 aspectRatio: aspectRatio,
@@ -415,6 +443,30 @@ struct CameraScreenView: View {
             if toastToken == token {
                 withAnimation { toast = nil }
             }
+        }
+    }
+
+    /// Prefer the interface layout (what the user sees); fall back to device / screen.
+    private static func isCaptureLandscape(interfaceIsLandscape: Bool) -> Bool {
+        switch UIDevice.current.orientation {
+        case .landscapeLeft, .landscapeRight:
+            return true
+        case .portrait, .portraitUpsideDown:
+            return false
+        default:
+            if let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }) {
+                switch scene.interfaceOrientation {
+                case .landscapeLeft, .landscapeRight:
+                    return true
+                case .portrait, .portraitUpsideDown:
+                    return false
+                default:
+                    break
+                }
+            }
+            return interfaceIsLandscape
         }
     }
 }

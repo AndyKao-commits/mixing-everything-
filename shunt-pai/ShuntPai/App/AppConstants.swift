@@ -15,8 +15,8 @@ enum AppConstants {
     static let subscriptionPriceText = "每月 NT$40"
 
     enum CaptureAspectRatio: String, CaseIterable, Identifiable {
-        case fourThree = "4:3"
         case sixteenNine = "16:9"
+        case fourThree = "4:3"
         case square = "1:1"
 
         var id: String { rawValue }
