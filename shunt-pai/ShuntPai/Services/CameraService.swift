@@ -536,11 +536,6 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             options.append(ZoomOption(id: "3", label: "3", deviceFactor: three))
         }
 
-        let five = baseline * 5
-        if maxZoom >= five {
-            options.append(ZoomOption(id: "5", label: "5", deviceFactor: five))
-        }
-
         return options
     }
 

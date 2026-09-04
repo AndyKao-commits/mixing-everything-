@@ -198,9 +198,11 @@ struct CameraScreenView: View {
                     onPinch: { scale in
                         cameraService.bumpZoom(by: scale)
                     },
-                    onExposureDrag: cameraService.focusPoint == nil ? nil : { deltaY in
-                        cameraService.adjustExposure(by: Float(-deltaY / 140))
-                    }
+                    onExposureDrag: cameraService.focusPoint == nil ? nil : { deltaUp in
+                        // deltaUp is gravity-upward pixels (landscape → true vertical).
+                        cameraService.adjustExposure(by: Float(deltaUp / 140))
+                    },
+                    exposureUprightDegrees: chromeAngle.degrees
                 )
                 .frame(width: previewSize.width, height: previewSize.height)
                 .clipped()
@@ -513,6 +515,8 @@ struct CameraPreviewView: UIViewRepresentable {
     let onLongPressLock: (CGPoint, CGPoint) -> Void
     let onPinch: (CGFloat) -> Void
     var onExposureDrag: ((CGFloat) -> Void)?
+    /// Chrome upright angle in degrees (0 portrait, ±90 landscape). Maps pan to gravity-up.
+    var exposureUprightDegrees: Double = 0
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -539,6 +543,7 @@ struct CameraPreviewView: UIViewRepresentable {
         context.coordinator.onPinch = onPinch
         context.coordinator.onExposureDrag = onExposureDrag
         context.coordinator.exposureEnabled = onExposureDrag != nil
+        context.coordinator.exposureUprightDegrees = exposureUprightDegrees
         onPreviewReady?(uiView.videoPreviewLayer)
     }
 
@@ -548,8 +553,9 @@ struct CameraPreviewView: UIViewRepresentable {
         var onPinch: (CGFloat) -> Void
         var onExposureDrag: ((CGFloat) -> Void)?
         var exposureEnabled = false
+        var exposureUprightDegrees: Double = 0
         private var lastPinch: CGFloat = 1
-        private var lastExposureY: CGFloat?
+        private var lastUpward: CGFloat?
         private weak var previewView: PreviewView?
 
         init(
@@ -619,21 +625,28 @@ struct CameraPreviewView: UIViewRepresentable {
         @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
             guard exposureEnabled, let onExposureDrag else { return }
             let translation = gesture.translation(in: gesture.view)
-            if abs(translation.y) < abs(translation.x) * 0.6 {
+            let radians = exposureUprightDegrees * .pi / 180
+            // Gravity-up component in portrait-locked view coords (UIKit y grows down).
+            let upward = translation.x * sin(radians) - translation.y * cos(radians)
+
+            // Prefer motion along the upright axis (reject mostly sideways swipes).
+            let sideways = translation.x * cos(radians) + translation.y * sin(radians)
+            if abs(upward) < abs(sideways) * 0.6 {
                 return
             }
+
             switch gesture.state {
             case .began:
-                lastExposureY = 0
+                lastUpward = 0
             case .changed:
-                let previous = lastExposureY ?? 0
-                let delta = translation.y - previous
-                lastExposureY = translation.y
+                let previous = lastUpward ?? 0
+                let delta = upward - previous
+                lastUpward = upward
                 if abs(delta) > 0.2 {
                     onExposureDrag(delta)
                 }
             default:
-                lastExposureY = nil
+                lastUpward = nil
             }
         }
 
