@@ -38,15 +38,21 @@ final class PhotoStore: ObservableObject {
         return "ShuntPai_\(stamp)_\(Int.random(in: 100...999)).jpg"
     }
 
-    func saveCapturedPhoto(data: Data, modelContext: ModelContext) async throws -> PhotoRecord {
+    func saveCapturedPhoto(
+        data: Data,
+        aspectRatio: AppConstants.CaptureAspectRatio = .fourThree,
+        modelContext: ModelContext
+    ) async throws -> PhotoRecord {
         let filename = makeFilename()
         let photoURL = photosDirectory.appendingPathComponent(filename)
         let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
         let payload = data
+        let aspect = aspectRatio.heightOverWidth
 
         try await Task.detached(priority: .userInitiated) {
-            try payload.write(to: photoURL, options: .atomic)
-            ImageProcessing.writeJPEGThumbnail(from: payload, to: thumbURL, maxPixelSize: 300)
+            let finalData = ImageProcessing.croppedJPEG(from: payload, portraitHeightOverWidth: aspect) ?? payload
+            try finalData.write(to: photoURL, options: .atomic)
+            ImageProcessing.writeJPEGThumbnail(from: finalData, to: thumbURL, maxPixelSize: 300)
         }.value
 
         if let thumb = UIImage(contentsOfFile: thumbURL.path) {
@@ -175,6 +181,81 @@ final class PhotoStore: ObservableObject {
 }
 
 private enum ImageProcessing {
+    static func croppedJPEG(from data: Data, portraitHeightOverWidth: CGFloat) -> Data? {
+        guard let source = CGImageSourceCreateWithData(
+            data as CFData,
+            [kCGImageSourceShouldCache: false] as CFDictionary
+        ) else { return nil }
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+
+        let width = CGFloat(image.width)
+        let height = CGFloat(image.height)
+        guard width > 0, height > 0 else { return nil }
+
+        // Saved JPEGs from the camera are typically landscape pixel buffers with EXIF orientation.
+        // Crop in pixel space toward the centered portrait framing the preview shows.
+        let targetAspect = portraitHeightOverWidth // height/width in portrait UI terms
+        // In sensor landscape pixels, portrait crop means cropWidth/cropHeight ≈ 1/targetAspect
+        // when the image is displayed upright. Prefer matching displayed upright aspect.
+        let uprightIsPortrait = height >= width
+        let desired: CGFloat
+        let cropRect: CGRect
+        if uprightIsPortrait {
+            desired = targetAspect
+            let current = height / width
+            if abs(current - desired) < 0.02 {
+                return data
+            }
+            if current > desired {
+                let newHeight = width * desired
+                cropRect = CGRect(x: 0, y: (height - newHeight) / 2, width: width, height: newHeight)
+            } else {
+                let newWidth = height / desired
+                cropRect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height)
+            }
+        } else {
+            // Landscape buffer: upright portrait aspect corresponds to width/height = 1/targetAspect
+            desired = 1.0 / targetAspect
+            let current = width / height
+            if abs(current - desired) < 0.02 {
+                return data
+            }
+            if current > desired {
+                let newWidth = height * desired
+                cropRect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height)
+            } else {
+                let newHeight = width / desired
+                cropRect = CGRect(x: 0, y: (height - newHeight) / 2, width: width, height: newHeight)
+            }
+        }
+
+        let integral = cropRect.integral
+        guard let cropped = image.cropping(to: integral) else { return nil }
+
+        let opaque = opaqueRGBImage(cropped)
+        let mutable = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            mutable,
+            "public.jpeg" as CFString,
+            1,
+            nil
+        ) else { return nil }
+
+        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.92]
+        if let original = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            props[kCGImagePropertyOrientation] = original[kCGImagePropertyOrientation] as Any
+            if let exif = original[kCGImagePropertyExifDictionary] {
+                props[kCGImagePropertyExifDictionary] = exif
+            }
+            if let tiff = original[kCGImagePropertyTIFFDictionary] {
+                props[kCGImagePropertyTIFFDictionary] = tiff
+            }
+        }
+        CGImageDestinationAddImage(destination, opaque, props as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return mutable as Data
+    }
+
     static func writeJPEGThumbnail(from data: Data, to url: URL, maxPixelSize: Int) {
         guard let source = CGImageSourceCreateWithData(
             data as CFData,

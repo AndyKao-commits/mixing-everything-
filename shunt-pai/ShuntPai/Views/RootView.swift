@@ -39,7 +39,7 @@ struct MainTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if appState.selectedTab == .gallery {
+            if appState.selectedTab == .gallery, !appState.isGallerySelecting {
                 FloatingNavBar(selectedTab: $appState.selectedTab)
                     .padding(.bottom, 10)
             }

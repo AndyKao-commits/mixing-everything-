@@ -24,6 +24,7 @@ struct ShuntPaiApp: App {
 final class AppState: ObservableObject {
     @Published var isOnboarded: Bool
     @Published var selectedTab: MainTab = .camera
+    @Published var isGallerySelecting = false
 
     init() {
         isOnboarded = UserDefaults.standard.bool(forKey: AppConstants.onboardingCompleteKey)

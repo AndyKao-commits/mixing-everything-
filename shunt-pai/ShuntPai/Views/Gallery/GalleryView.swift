@@ -4,6 +4,7 @@ import UIKit
 
 struct GalleryView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var entitlements: EntitlementService
     @ObservedObject var photoStore: PhotoStore
 
@@ -89,7 +90,7 @@ struct GalleryView: View {
                                 }
                             }
                         }
-                        .padding(.bottom, isSelecting ? 100 : 96)
+                        .padding(.bottom, isSelecting ? 88 : 96)
                     }
                     .safeAreaInset(edge: .bottom) {
                         if isSelecting {
@@ -167,6 +168,13 @@ struct GalleryView: View {
                     isSelecting = false
                     selectedIDs.removeAll()
                 }
+            }
+            .onChange(of: isSelecting) { _, selecting in
+                appState.isGallerySelecting = selecting
+                if !selecting { selectedIDs.removeAll() }
+            }
+            .onDisappear {
+                appState.isGallerySelecting = false
             }
         }
     }

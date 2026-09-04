@@ -251,8 +251,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             service.focusPoint = viewPoint
             service.isAEAFLocked = locked
         }
+        // Locked AF/AE stays until the user taps again. Unlocked only fades after a pause.
         guard !locked else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
             self?.publishOnMain { service in
                 if service.focusPoint == viewPoint, !service.isAEAFLocked {
                     service.focusPoint = nil

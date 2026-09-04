@@ -14,6 +14,30 @@ enum AppConstants {
     static let freePhotoLimit = 43
     static let subscriptionPriceText = "每月 NT$40"
 
+    enum CaptureAspectRatio: String, CaseIterable, Identifiable {
+        case fourThree = "4:3"
+        case sixteenNine = "16:9"
+        case square = "1:1"
+
+        var id: String { rawValue }
+
+        /// Portrait preview height / width.
+        var heightOverWidth: CGFloat {
+            switch self {
+            case .fourThree: return 4.0 / 3.0
+            case .sixteenNine: return 16.0 / 9.0
+            case .square: return 1.0
+            }
+        }
+
+        var next: CaptureAspectRatio {
+            let all = Self.allCases
+            let index = all.firstIndex(of: self) ?? 0
+            return all[(index + 1) % all.count]
+        }
+    }
+
+
     static var isFrontCameraMirrored: Bool {
         get {
             if UserDefaults.standard.object(forKey: frontCameraMirroredKey) == nil {

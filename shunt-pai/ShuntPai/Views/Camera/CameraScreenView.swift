@@ -11,6 +11,7 @@ struct CameraScreenView: View {
 
     @ObservedObject var photoStore: PhotoStore
     @StateObject private var cameraService = CameraService()
+    @StateObject private var horizon = HorizonLevelService()
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
@@ -18,6 +19,7 @@ struct CameraScreenView: View {
     @State private var toast: String?
     @State private var toastToken = UUID()
     @State private var latestThumbnail: UIImage?
+    @State private var aspectRatio: AppConstants.CaptureAspectRatio = .fourThree
 
     var body: some View {
         ZStack {
@@ -112,9 +114,17 @@ struct CameraScreenView: View {
 
             Spacer()
 
-            Text("4:3")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.9))
+            Button {
+                aspectRatio = aspectRatio.next
+            } label: {
+                Text(aspectRatio.rawValue)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
 
             Spacer()
 
@@ -132,7 +142,9 @@ struct CameraScreenView: View {
     private var previewStage: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let height = min(geo.size.height, width * 4 / 3)
+            let maxHeight = geo.size.height
+            let targetHeight = width * aspectRatio.heightOverWidth
+            let height = min(maxHeight, targetHeight)
             ZStack {
                 if cameraService.authorizationStatus == .authorized {
                     CameraPreviewView(
@@ -152,11 +164,9 @@ struct CameraScreenView: View {
                     .frame(width: width, height: height)
                     .clipped()
 
-                    // Horizon guide
-                    Rectangle()
-                        .fill(Color.white.opacity(0.35))
-                        .frame(height: 1)
-                        .frame(maxWidth: .infinity)
+                    // Motion-linked horizon (like system Camera).
+                    HorizonGuideLine(rollDegrees: horizon.rollDegrees, isLevel: horizon.isLevel)
+                        .frame(width: width, height: height)
                         .allowsHitTesting(false)
 
                     if let focusPoint = cameraService.focusPoint {
@@ -171,7 +181,10 @@ struct CameraScreenView: View {
                             ),
                             range: Double(cameraService.minExposureBias)...Double(max(cameraService.maxExposureBias, cameraService.minExposureBias + 0.1))
                         )
-                        .position(x: min(focusPoint.x + 52, width - 24), y: focusPoint.y)
+                        .position(
+                            x: min(max(focusPoint.x + 56, 40), width - 40),
+                            y: focusPoint.y
+                        )
                     }
 
                     if cameraService.isAEAFLocked {
@@ -193,6 +206,7 @@ struct CameraScreenView: View {
             }
             .frame(width: width, height: height)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.2), value: aspectRatio)
         }
     }
 
@@ -335,13 +349,18 @@ struct CameraScreenView: View {
 
         do {
             let data = try await cameraService.capturePhoto()
-            _ = try await photoStore.saveCapturedPhoto(data: data, modelContext: modelContext)
-            showToast("已儲存")
+            let record = try await photoStore.saveCapturedPhoto(
+                data: data,
+                aspectRatio: aspectRatio,
+                modelContext: modelContext
+            )
 
             let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
             if saveToLibrary {
+                let url = photoStore.localURL(for: record)
                 Task {
-                    let outcome = await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: true)
+                    guard let saved = try? Data(contentsOf: url) else { return }
+                    let outcome = await PhotoLibrarySaver.saveIfNeeded(data: saved, enabled: true)
                     if outcome == .denied {
                         showToast("系統相簿權限未開啟")
                     }
@@ -355,10 +374,12 @@ struct CameraScreenView: View {
     private func setCameraActive(_ active: Bool) {
         UIApplication.shared.isIdleTimerDisabled = active
         if active {
+            horizon.start()
             if cameraService.authorizationStatus == .authorized {
                 cameraService.startSession()
             }
         } else {
+            horizon.stop()
             cameraService.stopSession()
         }
     }
@@ -380,10 +401,43 @@ private struct FocusReticle: View {
     let locked: Bool
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
-            .frame(width: 72, height: 72)
-            .shadow(color: .black.opacity(0.35), radius: 2)
+        VStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
+                .frame(width: 72, height: 72)
+            if locked {
+                Text("鎖定")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.yellow)
+            }
+        }
+        .shadow(color: .black.opacity(0.35), radius: 2)
+    }
+}
+
+private struct HorizonGuideLine: View {
+    let rollDegrees: Double
+    let isLevel: Bool
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(isLevel ? Color.yellow.opacity(0.95) : Color.white.opacity(0.55))
+                .frame(height: isLevel ? 2 : 1)
+                .frame(maxWidth: .infinity)
+                .rotationEffect(.degrees(rollDegrees))
+
+            // Short center reference ticks
+            HStack(spacing: 72) {
+                Capsule()
+                    .fill(isLevel ? Color.yellow : Color.white.opacity(0.7))
+                    .frame(width: 18, height: 2)
+                Capsule()
+                    .fill(isLevel ? Color.yellow : Color.white.opacity(0.7))
+                    .frame(width: 18, height: 2)
+            }
+            .rotationEffect(.degrees(rollDegrees))
+        }
     }
 }
 
@@ -394,36 +448,42 @@ private struct VerticalExposureSlider: View {
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "sun.max.fill")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.yellow)
             GeometryReader { geo in
                 let height = geo.size.height
-                let progress = (value - range.lowerBound) / max(range.upperBound - range.lowerBound, 0.001)
+                let span = max(range.upperBound - range.lowerBound, 0.001)
+                let progress = (value - range.lowerBound) / span
                 ZStack(alignment: .bottom) {
                     Capsule()
-                        .fill(Color.white.opacity(0.25))
-                        .frame(width: 2)
+                        .fill(Color.white.opacity(0.28))
+                        .frame(width: 3)
                     Capsule()
                         .fill(Color.yellow)
-                        .frame(width: 2, height: max(height * progress, 2))
+                        .frame(width: 3, height: max(height * progress, 3))
                     Circle()
                         .fill(Color.yellow)
-                        .frame(width: 14, height: 14)
-                        .offset(y: -(height * progress) + 7)
+                        .frame(width: 18, height: 18)
+                        .offset(y: -(height * progress) + 9)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { drag in
-                            let y = min(max(0, height - drag.location.y), height)
-                            let ratio = y / max(height, 1)
-                            value = range.lowerBound + (range.upperBound - range.lowerBound) * ratio
-                        }
-                )
             }
-            .frame(width: 28, height: 110)
+            .frame(width: 44, height: 130)
         }
+        // Wide invisible hit area so dragging beside the sun/slider works.
+        .frame(width: 64, height: 170)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { drag in
+                    let height: CGFloat = 130
+                    let topPad: CGFloat = 28
+                    let y = drag.location.y - topPad
+                    let clampedY = min(max(0, y), height)
+                    let ratio = 1 - (clampedY / height)
+                    value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(ratio)
+                }
+        )
     }
 }
 
