@@ -28,19 +28,36 @@ struct MainTabView: View {
     @StateObject private var photoStore = PhotoStore()
 
     var body: some View {
-        TabView(selection: $appState.selectedTab) {
-            CameraScreenView(photoStore: photoStore)
-                .tabItem {
-                    Label("相機", systemImage: "camera.fill")
+        ZStack(alignment: .bottom) {
+            Group {
+                switch appState.selectedTab {
+                case .camera:
+                    CameraScreenView(photoStore: photoStore)
+                case .gallery:
+                    GalleryView(photoStore: photoStore)
                 }
-                .tag(MainTab.camera)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            GalleryView(photoStore: photoStore)
-                .tabItem {
-                    Label("相簿", systemImage: "photo.on.rectangle")
-                }
-                .tag(MainTab.gallery)
+            if appState.selectedTab == .gallery, !appState.isGallerySelecting {
+                FloatingNavBar(selectedTab: $appState.selectedTab)
+                    .padding(.bottom, 10)
+            }
         }
-        .tint(.yellow)
+        .ignoresSafeArea(.keyboard)
+        .onAppear {
+            applyOrientationLock(for: appState.selectedTab)
+        }
+        .onChange(of: appState.selectedTab) { _, tab in
+            applyOrientationLock(for: tab)
+        }
+        .onDisappear {
+            OrientationLock.mask = .all
+        }
+    }
+
+    private func applyOrientationLock(for tab: MainTab) {
+        // Camera chrome stays portrait-fixed like native Camera (shutter on phone bottom).
+        OrientationLock.mask = tab == .camera ? .portrait : .all
     }
 }

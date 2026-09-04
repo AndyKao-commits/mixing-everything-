@@ -1,17 +1,22 @@
+import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var lockService: AppLockService
     @EnvironmentObject private var entitlements: EntitlementService
 
     @ObservedObject var photoStore: PhotoStore
+    @Query(sort: \TagRecord.createdAt, order: .forward) private var tags: [TagRecord]
 
     @State private var saveToPhotoLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
     @State private var appStorageText = "計算中…"
     @State private var freeSpaceText = "計算中…"
     @State private var lockBusy = false
+    @State private var showCreateTag = false
+    @State private var newTagName = ""
 
     var body: some View {
         NavigationStack {
@@ -48,6 +53,31 @@ struct SettingsView: View {
                     .disabled(lockBusy)
                 } footer: {
                     Text("啟用後，打開 App 或從背景回來時需 Face ID / 密碼解鎖。")
+                }
+
+                Section {
+                    if tags.isEmpty {
+                        Text("尚無標籤")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(tags) { tag in
+                            HStack {
+                                Text(tag.name)
+                                Spacer()
+                                Text("\(tag.photos.count)")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .onDelete(perform: deleteTags)
+                    }
+
+                    Button("新增標籤") {
+                        showCreateTag = true
+                    }
+                } header: {
+                    Text("標籤分類")
+                } footer: {
+                    Text("在照片詳情可把標籤指定到單張照片。")
                 }
 
                 Section {
@@ -110,7 +140,7 @@ struct SettingsView: View {
                 }
             }
             .task {
-                appStorageText = photoStore.formattedStorageUsage()
+                appStorageText = await photoStore.formattedStorageUsage()
                 freeSpaceText = photoStore.deviceFreeSpaceFormatted()
             }
             .alert("無法變更上鎖", isPresented: Binding(
@@ -121,6 +151,24 @@ struct SettingsView: View {
             } message: {
                 Text(lockService.lastError ?? "")
             }
+            .alert("新增標籤", isPresented: $showCreateTag) {
+                TextField("標籤名稱", text: $newTagName)
+                Button("取消", role: .cancel) { newTagName = "" }
+                Button("新增") {
+                    let name = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty else { return }
+                    modelContext.insert(TagRecord(name: name))
+                    try? modelContext.save()
+                    newTagName = ""
+                }
+            }
         }
+    }
+
+    private func deleteTags(at offsets: IndexSet) {
+        for index in offsets {
+            modelContext.delete(tags[index])
+        }
+        try? modelContext.save()
     }
 }

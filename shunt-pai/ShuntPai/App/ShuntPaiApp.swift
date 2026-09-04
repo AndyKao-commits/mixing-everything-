@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct ShuntPaiApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var lockService = AppLockService()
     @StateObject private var entitlements = EntitlementService()
@@ -13,8 +14,7 @@ struct ShuntPaiApp: App {
                 .environmentObject(appState)
                 .environmentObject(lockService)
                 .environmentObject(entitlements)
-                .modelContainer(for: [PhotoRecord.self])
-                .preferredColorScheme(.dark)
+                .modelContainer(for: [PhotoRecord.self, TagRecord.self])
                 .onAppear {
                     lockService.relockIfNeededOnLaunch()
                 }
@@ -25,6 +25,7 @@ struct ShuntPaiApp: App {
 final class AppState: ObservableObject {
     @Published var isOnboarded: Bool
     @Published var selectedTab: MainTab = .camera
+    @Published var isGallerySelecting = false
 
     init() {
         isOnboarded = UserDefaults.standard.bool(forKey: AppConstants.onboardingCompleteKey)

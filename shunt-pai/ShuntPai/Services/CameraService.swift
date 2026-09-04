@@ -6,12 +6,28 @@ enum CameraServiceError: LocalizedError {
     case unavailable
     case permissionDenied
     case captureFailed
+    case recordingFailed
 
     var errorDescription: String? {
         switch self {
         case .unavailable: return "此裝置無法使用相機。"
         case .permissionDenied: return "請在設定中允許分流拍使用相機。"
         case .captureFailed: return "拍照失敗，請再試一次。"
+        case .recordingFailed: return "錄影失敗，請再試一次。"
+        }
+    }
+}
+
+enum CameraCaptureMode: String, CaseIterable, Identifiable {
+    case photo
+    case video
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .photo: return "照片"
+        case .video: return "錄影"
         }
     }
 }
@@ -36,24 +52,37 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     @Published private(set) var exposureBias: Float = 0
     @Published private(set) var minExposureBias: Float = -2
     @Published private(set) var maxExposureBias: Float = 2
+    @Published private(set) var captureMode: CameraCaptureMode = .photo
+    @Published private(set) var isRecording = false
+    @Published private(set) var recordingDuration: TimeInterval = 0
+    @Published private(set) var micAuthorizationStatus: AVAuthorizationStatus = .notDetermined
     @Published var errorMessage: String?
 
     let session = AVCaptureSession()
 
     private let sessionQueue = DispatchQueue(label: "com.shuntpai.camera.session")
     private let photoOutput = AVCapturePhotoOutput()
+    private let movieOutput = AVCaptureMovieFileOutput()
     private var videoInput: AVCaptureDeviceInput?
+    private var audioInput: AVCaptureDeviceInput?
     private var isConfigured = false
     private var captureContinuation: CheckedContinuation<Data, Error>?
+    private var recordingContinuation: CheckedContinuation<URL, Error>?
     private var currentPosition: AVCaptureDevice.Position = .back
+    private var sessionCaptureMode: CameraCaptureMode = .photo
     private var flashModeValue: AVCaptureDevice.FlashMode = .off
     private var baselineZoom: CGFloat = 1
     private var aeafLocked = false
     private var subjectAreaObserver: NSObjectProtocol?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
+    private weak var boundPreviewLayer: AVCaptureVideoPreviewLayer?
+    private var recordingTimer: Timer?
 
     override init() {
         super.init()
         authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        micAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
     @MainActor
@@ -72,6 +101,141 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         @unknown default:
             return false
         }
+    }
+
+    @MainActor
+    func requestMicrophoneIfNeeded() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            micAuthorizationStatus = .authorized
+            return true
+        case .notDetermined:
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            micAuthorizationStatus = granted ? .authorized : .denied
+            return granted
+        case .denied, .restricted:
+            micAuthorizationStatus = .denied
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    func setCaptureMode(_ mode: CameraCaptureMode) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            guard self.captureMode != mode || self.movieOutput.connection(with: .video) == nil else {
+                self.publishOnMain { $0.captureMode = mode }
+                return
+            }
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            }
+            do {
+                try self.applyCaptureModeLocked(mode)
+                self.publishOnMain {
+                    $0.captureMode = mode
+                    $0.isRecording = false
+                    $0.recordingDuration = 0
+                }
+            } catch {
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    func startRecording() async throws {
+        let micOK = await requestMicrophoneIfNeeded()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            sessionQueue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: CameraServiceError.recordingFailed)
+                    return
+                }
+                guard self.session.isRunning, !self.movieOutput.isRecording else {
+                    continuation.resume(throwing: CameraServiceError.recordingFailed)
+                    return
+                }
+
+                if self.movieOutput.connection(with: .video) == nil {
+                    do {
+                        try self.applyCaptureModeLocked(.video)
+                    } catch {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                }
+
+                if micOK {
+                    self.ensureAudioInputLocked()
+                }
+
+                if let coordinator = self.rotationCoordinator,
+                   let connection = self.movieOutput.connection(with: .video) {
+                    let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+                    if connection.isVideoRotationAngleSupported(angle) {
+                        connection.videoRotationAngle = angle
+                    }
+                }
+
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("ShuntPai_\(UUID().uuidString).mov")
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try? FileManager.default.removeItem(at: url)
+                }
+                self.movieOutput.startRecording(to: url, recordingDelegate: self)
+                self.publishOnMain { service in
+                    service.isRecording = true
+                    service.recordingDuration = 0
+                    service.startRecordingTimer()
+                }
+                continuation.resume()
+            }
+        }
+    }
+
+    func stopRecording() async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                guard let self else {
+                    continuation.resume(throwing: CameraServiceError.recordingFailed)
+                    return
+                }
+                guard self.movieOutput.isRecording else {
+                    continuation.resume(throwing: CameraServiceError.recordingFailed)
+                    return
+                }
+                if self.recordingContinuation != nil {
+                    continuation.resume(throwing: CameraServiceError.recordingFailed)
+                    return
+                }
+                self.recordingContinuation = continuation
+                self.movieOutput.stopRecording()
+            }
+        }
+    }
+
+    /// Must be called on the main queue (via `publishOnMain`).
+    private func startRecordingTimer() {
+        recordingTimer?.invalidate()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.recordingDuration += 0.25
+            }
+        }
+    }
+
+    /// Must be called on the main queue (via `publishOnMain`).
+    private func stopRecordingTimer() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+    }
+
+    @MainActor
+    func refreshAuthorizationStatus() {
+        authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        micAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
     func startSession() {
@@ -102,6 +266,17 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                 pending.resume(throwing: CameraServiceError.captureFailed)
                 self.captureContinuation = nil
             }
+            if self.movieOutput.isRecording {
+                self.movieOutput.stopRecording()
+            }
+            if let pending = self.recordingContinuation {
+                pending.resume(throwing: CameraServiceError.recordingFailed)
+                self.recordingContinuation = nil
+            }
+            self.publishOnMain {
+                $0.stopRecordingTimer()
+                $0.isRecording = false
+            }
             guard self.session.isRunning else { return }
             self.session.stopRunning()
             self.publishOnMain { $0.isRunning = false }
@@ -111,9 +286,15 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     func switchCamera() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            if self.movieOutput.isRecording { return }
             let newPosition: AVCaptureDevice.Position = self.currentPosition == .back ? .front : .back
+            let mode = self.sessionCaptureMode
             do {
                 try self.configureSessionLocked(position: newPosition)
+                if mode == .video {
+                    try self.applyCaptureModeLocked(.video)
+                    self.publishOnMain { $0.captureMode = .video }
+                }
                 self.refreshZoomMetadata()
             } catch {
                 self.publishOnMain { $0.errorMessage = error.localizedDescription }
@@ -217,6 +398,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         sessionQueue.async { [weak self] in
             guard let self, let device = self.videoInput?.device else { return }
             let clamped = min(max(value, device.minExposureTargetBias), device.maxExposureTargetBias)
+            if abs(device.exposureTargetBias - clamped) < 0.01 { return }
             do {
                 try device.lockForConfiguration()
                 device.setExposureTargetBias(clamped, completionHandler: nil)
@@ -225,6 +407,39 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             } catch {
                 self.publishOnMain { $0.errorMessage = error.localizedDescription }
             }
+        }
+    }
+
+    /// Fine EV nudge used by native-style vertical drag after focus.
+    func adjustExposure(by delta: Float) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoInput?.device else { return }
+            let next = device.exposureTargetBias + delta
+            let clamped = min(max(next, device.minExposureTargetBias), device.maxExposureTargetBias)
+            if abs(device.exposureTargetBias - clamped) < 0.005 { return }
+            do {
+                try device.lockForConfiguration()
+                device.setExposureTargetBias(clamped, completionHandler: nil)
+                device.unlockForConfiguration()
+                self.publishOnMain { $0.exposureBias = clamped }
+            } catch {
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    func bindPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
+        // AVCaptureVideoPreviewLayer is not Sendable; hop via unchecked box so the
+        // session-queue @Sendable closure does not capture the layer directly.
+        let boxed = UncheckedSendable(layer)
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            let layer = boxed.value
+            if self.boundPreviewLayer === layer, self.rotationCoordinator != nil {
+                return
+            }
+            self.boundPreviewLayer = layer
+            self.installRotationCoordinatorLocked()
         }
     }
 
@@ -245,8 +460,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             service.focusPoint = viewPoint
             service.isAEAFLocked = locked
         }
+        // Locked AF/AE stays until the user taps again. Unlocked only fades after a pause.
         guard !locked else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
             self?.publishOnMain { service in
                 if service.focusPoint == viewPoint, !service.isAEAFLocked {
                     service.focusPoint = nil
@@ -281,6 +497,14 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
                 self.captureContinuation = continuation
 
+                if let coordinator = self.rotationCoordinator,
+                   let connection = self.photoOutput.connection(with: .video) {
+                    let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+                    if connection.isVideoRotationAngleSupported(angle) {
+                        connection.videoRotationAngle = angle
+                    }
+                }
+
                 let settings: AVCapturePhotoSettings
                 if self.photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
                     settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
@@ -292,6 +516,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                    self.photoOutput.supportedFlashModes.contains(self.flashModeValue) {
                     settings.flashMode = self.flashModeValue
                 }
+                // Prefer snappy shutter-to-ready over max still quality.
+                settings.photoQualityPrioritization = .speed
 
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
@@ -306,6 +532,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         session.sessionPreset = .photo
         session.inputs.forEach { session.removeInput($0) }
         session.outputs.forEach { session.removeOutput($0) }
+        audioInput = nil
 
         let device = try preferredDevice(for: position)
         let input = try AVCaptureDeviceInput(device: device)
@@ -319,22 +546,114 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         if session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
-            photoOutput.maxPhotoQualityPrioritization = .quality
+            photoOutput.maxPhotoQualityPrioritization = .speed
         }
 
         session.commitConfiguration()
 
+        sessionCaptureMode = .photo
         baselineZoom = Self.oneXFactor(for: device)
         setDeviceZoom(baselineZoom, animated: false)
         applyContinuousAutoFocusLocked(on: device)
         observeSubjectAreaChanges()
         applyMirroringLocked()
         aeafLocked = false
+        installRotationCoordinatorLocked()
         publishOnMain {
             $0.isAEAFLocked = false
             $0.exposureBias = 0
             $0.minExposureBias = device.minExposureTargetBias
             $0.maxExposureBias = device.maxExposureTargetBias
+            $0.captureMode = .photo
+            $0.isRecording = false
+            $0.recordingDuration = 0
+        }
+    }
+
+    private func applyCaptureModeLocked(_ mode: CameraCaptureMode) throws {
+        sessionCaptureMode = mode
+        session.beginConfiguration()
+        defer {
+            session.commitConfiguration()
+            applyMirroringLocked()
+        }
+
+        let preferred: AVCaptureSession.Preset = mode == .video ? .high : .photo
+        if session.canSetSessionPreset(preferred) {
+            session.sessionPreset = preferred
+        } else if mode == .video, session.canSetSessionPreset(.medium) {
+            session.sessionPreset = .medium
+        } else {
+            session.sessionPreset = .photo
+        }
+
+        if mode == .video {
+            if movieOutput.connection(with: .video) == nil {
+                guard session.canAddOutput(movieOutput) else {
+                    throw CameraServiceError.unavailable
+                }
+                session.addOutput(movieOutput)
+            }
+            if photoOutput.connection(with: .video) != nil {
+                session.removeOutput(photoOutput)
+            }
+            ensureAudioInputLocked()
+        } else {
+            if movieOutput.connection(with: .video) != nil {
+                session.removeOutput(movieOutput)
+            }
+            if let audioInput {
+                session.removeInput(audioInput)
+                self.audioInput = nil
+            }
+            if photoOutput.connection(with: .video) == nil {
+                guard session.canAddOutput(photoOutput) else {
+                    throw CameraServiceError.unavailable
+                }
+                session.addOutput(photoOutput)
+                photoOutput.maxPhotoQualityPrioritization = .speed
+            }
+        }
+    }
+
+    private func ensureAudioInputLocked() {
+        guard audioInput == nil else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return }
+        guard let mic = AVCaptureDevice.default(for: .audio) else { return }
+        do {
+            let input = try AVCaptureDeviceInput(device: mic)
+            if session.canAddInput(input) {
+                session.addInput(input)
+                audioInput = input
+            }
+        } catch {
+            publishOnMain { $0.errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func installRotationCoordinatorLocked() {
+        rotationObservation?.invalidate()
+        rotationObservation = nil
+        rotationCoordinator = nil
+
+        guard let device = videoInput?.device, let preview = boundPreviewLayer else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: preview)
+        rotationCoordinator = coordinator
+
+        let apply: @Sendable (CGFloat) -> Void = { [weak self] angle in
+            DispatchQueue.main.async {
+                guard let connection = self?.boundPreviewLayer?.connection else { return }
+                if connection.isVideoRotationAngleSupported(angle) {
+                    connection.videoRotationAngle = angle
+                }
+            }
+        }
+
+        apply(coordinator.videoRotationAngleForHorizonLevelPreview)
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { _, change in
+            if let angle = change.newValue {
+                apply(angle)
+            }
         }
     }
 
@@ -345,6 +664,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
             connection.isVideoMirrored = shouldMirror
         }
         for connection in photoOutput.connections where connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = shouldMirror
+        }
+        for connection in movieOutput.connections where connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false
             connection.isVideoMirrored = shouldMirror
         }
@@ -373,7 +696,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private func setDeviceZoom(_ factor: CGFloat, animated: Bool) {
         guard let device = videoInput?.device else { return }
         let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = min(device.maxAvailableVideoZoomFactor, 15)
+        let maxZoom = min(device.maxAvailableVideoZoomFactor, 20)
         let clamped = min(max(factor, minZoom), maxZoom)
 
         do {
@@ -438,13 +761,13 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private static func makeZoomOptions(for device: AVCaptureDevice, baseline: CGFloat) -> [ZoomOption] {
         var options: [ZoomOption] = []
         let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = device.maxAvailableVideoZoomFactor
+        let maxZoom = min(device.maxAvailableVideoZoomFactor, baseline * 20)
 
         if minZoom < baseline - 0.05 {
-            options.append(ZoomOption(id: "0.5", label: ".5", deviceFactor: minZoom))
+            options.append(ZoomOption(id: "0.5", label: "0.5", deviceFactor: minZoom))
         }
 
-        options.append(ZoomOption(id: "1x", label: "1x", deviceFactor: baseline))
+        options.append(ZoomOption(id: "1x", label: "1×", deviceFactor: baseline))
 
         let two = baseline * 2
         if maxZoom >= two {
@@ -514,6 +837,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     deinit {
+        rotationObservation?.invalidate()
         if let subjectAreaObserver {
             NotificationCenter.default.removeObserver(subjectAreaObserver)
         }
@@ -547,4 +871,37 @@ extension CameraService: AVCapturePhotoCaptureDelegate {
             self.captureContinuation = nil
         }
     }
+}
+
+extension CameraService: AVCaptureFileOutputRecordingDelegate {
+    nonisolated func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.publishOnMain {
+                $0.stopRecordingTimer()
+                $0.isRecording = false
+            }
+
+            if error != nil {
+                self.recordingContinuation?.resume(throwing: CameraServiceError.recordingFailed)
+                self.recordingContinuation = nil
+                try? FileManager.default.removeItem(at: outputFileURL)
+                return
+            }
+
+            self.recordingContinuation?.resume(returning: outputFileURL)
+            self.recordingContinuation = nil
+        }
+    }
+}
+
+/// Wraps a non-Sendable reference for intentional cross-queue handoff (AVFoundation layers).
+private struct UncheckedSendable<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
 }
