@@ -12,6 +12,7 @@ struct CameraScreenView: View {
     @ObservedObject var photoStore: PhotoStore
     @StateObject private var cameraService = CameraService()
     @StateObject private var horizon = HorizonLevelService()
+    @StateObject private var chromeOrientation = ChromeOrientation()
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
@@ -21,6 +22,8 @@ struct CameraScreenView: View {
     @State private var toastToken = UUID()
     @State private var latestThumbnail: UIImage?
     @State private var aspectRatio: AppConstants.CaptureAspectRatio = .sixteenNine
+
+    private var chromeAngle: Angle { chromeOrientation.angle }
 
     var body: some View {
         GeometryReader { geo in
@@ -54,6 +57,7 @@ struct CameraScreenView: View {
                         .padding(.vertical, 8)
                         .background(Color.black.opacity(0.72))
                         .clipShape(Capsule())
+                        .chromeUpright(chromeAngle)
                         .padding(.bottom, 180)
                         .frame(maxHeight: .infinity, alignment: .bottom)
                         .allowsHitTesting(false)
@@ -61,10 +65,10 @@ struct CameraScreenView: View {
             }
             .onAppear {
                 horizon.setInterfaceLandscape(false)
-                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+                chromeOrientation.start()
             }
             .onDisappear {
-                UIDevice.current.endGeneratingDeviceOrientationNotifications()
+                chromeOrientation.stop()
             }
         }
         .task {
@@ -121,6 +125,7 @@ struct CameraScreenView: View {
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(width: 40, height: 40)
+                        .chromeUpright(chromeAngle)
                 }
             } else {
                 Color.clear.frame(width: 40, height: 40)
@@ -137,6 +142,7 @@ struct CameraScreenView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(Capsule().fill(Color.white.opacity(0.12)))
+                    .chromeUpright(chromeAngle)
             }
             .buttonStyle(.plain)
 
@@ -149,6 +155,7 @@ struct CameraScreenView: View {
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(width: 40, height: 40)
+                    .chromeUpright(chromeAngle)
             }
         }
     }
@@ -210,6 +217,7 @@ struct CameraScreenView: View {
                         locked: cameraService.isAEAFLocked,
                         exposureBias: cameraService.exposureBias
                     )
+                    .chromeUpright(chromeAngle)
                     .position(focusPoint)
                     .allowsHitTesting(false)
                 }
@@ -222,6 +230,7 @@ struct CameraScreenView: View {
                         .padding(.vertical, 5)
                         .background(Color.black.opacity(0.45))
                         .clipShape(Capsule())
+                        .chromeUpright(chromeAngle)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 12)
                         .allowsHitTesting(false)
@@ -245,6 +254,7 @@ struct CameraScreenView: View {
                     Text("免費 \(records.count)/\(AppConstants.freePhotoLimit)")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.7))
+                        .chromeUpright(chromeAngle)
                 }
 
                 HStack {
@@ -262,6 +272,7 @@ struct CameraScreenView: View {
                         .frame(width: 56, height: 56)
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.5))
+                        .chromeUpright(chromeAngle)
                     }
                     .buttonStyle(.plain)
 
@@ -293,6 +304,7 @@ struct CameraScreenView: View {
                             .foregroundStyle(.white)
                             .frame(width: 56, height: 56)
                             .background(Circle().fill(Color.white.opacity(0.14)))
+                            .chromeUpright(chromeAngle)
                     }
                     .buttonStyle(.plain)
                 }
@@ -304,13 +316,14 @@ struct CameraScreenView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
                     .background(Capsule().fill(Color.yellow.opacity(0.18)))
+                    .chromeUpright(chromeAngle)
                     .padding(.top, 4)
             }
         }
     }
 
     private var zoomControls: some View {
-        HStack(spacing: 10) {
+        let stack = HStack(spacing: 10) {
             ForEach(cameraService.zoomOptions) { option in
                 Button {
                     cameraService.applyZoomOption(option)
@@ -333,6 +346,15 @@ struct CameraScreenView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Capsule().fill(Color.black.opacity(0.28)))
+
+        // Rotate whole bar with gravity. Reserve swapped bounds so it stays horizontal
+        // on screen when the phone is tilted (instead of a sideways vertical strip).
+        return stack
+            .rotationEffect(chromeAngle)
+            .frame(
+                width: chromeOrientation.isLandscapeHold ? 56 : nil,
+                height: chromeOrientation.isLandscapeHold ? 210 : nil
+            )
     }
 
     private var permissionView: some View {
@@ -373,7 +395,7 @@ struct CameraScreenView: View {
 
         isCapturing = true
         pendingSaves += 1
-        let isLandscapeHold = Self.isDeviceLandscapeHold()
+        let isLandscapeHold = chromeOrientation.isLandscapeHold
         let ratio = aspectRatio
         let saveToLibrary = UserDefaults.standard.bool(forKey: AppConstants.saveToPhotoLibraryKey)
 
@@ -414,11 +436,13 @@ struct CameraScreenView: View {
         UIApplication.shared.isIdleTimerDisabled = active
         if active {
             horizon.start()
+            chromeOrientation.start()
             if cameraService.authorizationStatus == .authorized {
                 cameraService.startSession()
             }
         } else {
             horizon.stop()
+            chromeOrientation.stop()
             cameraService.stopSession()
         }
     }
@@ -432,18 +456,6 @@ struct CameraScreenView: View {
             if toastToken == token {
                 withAnimation { toast = nil }
             }
-        }
-    }
-
-    /// Physical tilt decides tall vs wide crop (UI itself stays portrait-locked).
-    private static func isDeviceLandscapeHold() -> Bool {
-        switch UIDevice.current.orientation {
-        case .landscapeLeft, .landscapeRight:
-            return true
-        case .portrait, .portraitUpsideDown:
-            return false
-        default:
-            return false
         }
     }
 }

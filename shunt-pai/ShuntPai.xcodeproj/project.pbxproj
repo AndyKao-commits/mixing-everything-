@@ -29,6 +29,7 @@
 		AA000001000000000000001A /* FloatingNavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001A /* FloatingNavBar.swift */; };
 		AA000001000000000000001B /* HorizonLevelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001B /* HorizonLevelService.swift */; };
 		AA000001000000000000001C /* OrientationLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001C /* OrientationLock.swift */; };
+		AA000001000000000000001D /* ChromeOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001D /* ChromeOrientation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -56,6 +57,7 @@
 		AA000002000000000000001A /* FloatingNavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingNavBar.swift; sourceTree = "<group>"; };
 		AA000002000000000000001B /* HorizonLevelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizonLevelService.swift; sourceTree = "<group>"; };
 		AA000002000000000000001C /* OrientationLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationLock.swift; sourceTree = "<group>"; };
+		AA000002000000000000001D /* ChromeOrientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromeOrientation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +105,7 @@
 				AA0000020000000000000001 /* ShuntPaiApp.swift */,
 				AA0000020000000000000002 /* AppConstants.swift */,
 				AA000002000000000000001C /* OrientationLock.swift */,
+				AA000002000000000000001D /* ChromeOrientation.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -286,6 +289,7 @@
 				AA000001000000000000001A /* FloatingNavBar.swift in Sources */,
 				AA000001000000000000001B /* HorizonLevelService.swift in Sources */,
 				AA000001000000000000001C /* OrientationLock.swift in Sources */,
+				AA000001000000000000001D /* ChromeOrientation.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
