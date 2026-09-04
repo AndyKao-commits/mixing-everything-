@@ -184,10 +184,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                     try? FileManager.default.removeItem(at: url)
                 }
                 self.movieOutput.startRecording(to: url, recordingDelegate: self)
-                self.publishOnMain {
-                    $0.isRecording = true
-                    $0.recordingDuration = 0
-                    $0.startRecordingTimer()
+                self.publishOnMain { service in
+                    service.isRecording = true
+                    service.recordingDuration = 0
+                    service.startRecordingTimer()
                 }
                 continuation.resume()
             }
@@ -215,18 +215,18 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
-    @MainActor
+    /// Must be called on the main queue (via `publishOnMain`).
     private func startRecordingTimer() {
         recordingTimer?.invalidate()
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             guard let self else { return }
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 self.recordingDuration += 0.25
             }
         }
     }
 
-    @MainActor
+    /// Must be called on the main queue (via `publishOnMain`).
     private func stopRecordingTimer() {
         recordingTimer?.invalidate()
         recordingTimer = nil
