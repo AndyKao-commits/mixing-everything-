@@ -99,12 +99,17 @@ struct PhotoPagerView: View {
     let onClose: () -> Void
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
+    @Query(sort: \TagRecord.createdAt, order: .forward) private var allTags: [TagRecord]
 
     @State private var currentID: UUID
     @State private var showFirstDeleteConfirm = false
     @State private var showSecondDeleteConfirm = false
     @State private var showShareSheet = false
+    @State private var showNoteSheet = false
+    @State private var showTagSheet = false
+    @State private var showInfoSheet = false
     @State private var errorMessage: String?
+    @State private var exportMessage: String?
 
     init(initialID: UUID, photoStore: PhotoStore, onClose: @escaping () -> Void) {
         self.initialID = initialID
@@ -122,110 +127,175 @@ struct PhotoPagerView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black.ignoresSafeArea()
 
-                if records.isEmpty {
-                    Text("沒有照片")
-                        .foregroundStyle(.secondary)
-                } else {
-                    TabView(selection: $currentID) {
-                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
-                            LazyPhotoPage(
-                                record: record,
-                                photoStore: photoStore,
-                                shouldLoad: abs(index - currentIndex) <= 1
-                            )
-                            .tag(record.id)
-                        }
+            if records.isEmpty {
+                Text("沒有照片")
+                    .foregroundStyle(.secondary)
+            } else {
+                TabView(selection: $currentID) {
+                    ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                        LazyPhotoPage(
+                            record: record,
+                            photoStore: photoStore,
+                            shouldLoad: abs(index - currentIndex) <= 1
+                        )
+                        .tag(record.id)
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .automatic))
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
 
-                VStack {
+            VStack {
+                topChrome
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
+                Spacer()
+
+                HStack {
                     Spacer()
-                    HStack(spacing: 28) {
-                        Button {
-                            showShareSheet = true
-                        } label: {
-                            Label("分享", systemImage: "square.and.arrow.up")
-                        }
-
-                        Button(role: .destructive) {
-                            showFirstDeleteConfirm = true
-                        } label: {
-                            Label("刪除", systemImage: "trash")
-                        }
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(Capsule())
-                    .padding(.bottom, 28)
+                    bottomChrome
                 }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 28)
             }
-            .navigationTitle(titleText)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("關閉", action: onClose)
-                }
-            }
-            .confirmationDialog("確定刪除這張照片？", isPresented: $showFirstDeleteConfirm, titleVisibility: .visible) {
-                Button("刪除", role: .destructive) {
-                    if entitlements.isPaid {
-                        deleteCurrent()
-                    } else {
-                        showSecondDeleteConfirm = true
-                    }
-                }
-            }
-            .alert("再確認一次", isPresented: $showSecondDeleteConfirm) {
-                Button("取消", role: .cancel) {}
-                Button("確定刪除", role: .destructive) {
+        }
+        .statusBarHidden(true)
+        .confirmationDialog("確定刪除這張照片？", isPresented: $showFirstDeleteConfirm, titleVisibility: .visible) {
+            Button("刪除", role: .destructive) {
+                if entitlements.isPaid {
                     deleteCurrent()
-                }
-            } message: {
-                Text("免費版刪除後無法復原，請再按一次確認。")
-            }
-            .sheet(isPresented: $showShareSheet) {
-                if let record = currentRecord {
-                    let items = photoStore.shareableURLs(for: [record])
-                    if items.isEmpty {
-                        Text("找不到檔案")
-                            .padding()
-                    } else {
-                        ActivityShareSheet(items: items)
-                    }
+                } else {
+                    showSecondDeleteConfirm = true
                 }
             }
-            .alert("刪除失敗", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )) {
-                Button("好", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "")
+        }
+        .alert("再確認一次", isPresented: $showSecondDeleteConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("確定刪除", role: .destructive) {
+                deleteCurrent()
             }
-            .onChange(of: records.map(\.id)) { _, ids in
-                if records.isEmpty {
-                    onClose()
-                } else if !ids.contains(currentID), let first = records.first {
-                    currentID = first.id
+        } message: {
+            Text("免費版刪除後無法復原，請再按一次確認。")
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let record = currentRecord {
+                let items = photoStore.shareableURLs(for: [record])
+                if items.isEmpty {
+                    Text("找不到檔案").padding()
+                } else {
+                    ActivityShareSheet(items: items)
                 }
+            }
+        }
+        .sheet(isPresented: $showNoteSheet) {
+            if let record = currentRecord {
+                PhotoNoteSheet(record: record)
+            }
+        }
+        .sheet(isPresented: $showTagSheet) {
+            if let record = currentRecord {
+                PhotoTagSheet(record: record, allTags: allTags)
+            }
+        }
+        .sheet(isPresented: $showInfoSheet) {
+            if let record = currentRecord {
+                PhotoInfoSheet(record: record, photoStore: photoStore)
+            }
+        }
+        .alert("刪除失敗", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .alert("提示", isPresented: Binding(
+            get: { exportMessage != nil },
+            set: { if !$0 { exportMessage = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(exportMessage ?? "")
+        }
+        .onChange(of: records.map(\.id)) { _, ids in
+            if records.isEmpty {
+                onClose()
+            } else if !ids.contains(currentID), let first = records.first {
+                currentID = first.id
             }
         }
     }
 
-    private var titleText: String {
-        guard let index = records.firstIndex(where: { $0.id == currentID }) else {
-            return "照片"
+    private var topChrome: some View {
+        HStack {
+            Button("關閉", action: onClose)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+
+            Spacer()
+
+            HStack(spacing: 2) {
+                iconButton("note.text", active: !(currentRecord?.note.isEmpty ?? true)) {
+                    showNoteSheet = true
+                }
+                iconButton("tag", active: !(currentRecord?.tags.isEmpty ?? true)) {
+                    showTagSheet = true
+                }
+                iconButton("info.circle") {
+                    showInfoSheet = true
+                }
+                Button {
+                    showFirstDeleteConfirm = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .frame(width: 40, height: 36)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(4)
+            .background(.ultraThinMaterial, in: Capsule())
         }
-        return "\(index + 1) / \(records.count)"
+    }
+
+    private var bottomChrome: some View {
+        HStack(spacing: 12) {
+            roundIconButton("square.and.arrow.up") {
+                showShareSheet = true
+            }
+            roundIconButton("square.and.arrow.down") {
+                Task { await saveToLibrary() }
+            }
+        }
+    }
+
+    private func iconButton(_ systemName: String, active: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(active ? Color.yellow : Color.primary)
+                .frame(width: 40, height: 36)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func roundIconButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 48, height: 48)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func deleteCurrent() {
@@ -243,6 +313,17 @@ struct PhotoPagerView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func saveToLibrary() async {
+        guard let record = currentRecord else { return }
+        let url = photoStore.localURL(for: record)
+        guard let data = try? Data(contentsOf: url) else {
+            exportMessage = "找不到檔案"
+            return
+        }
+        let outcome = await PhotoLibrarySaver.saveIfNeeded(data: data, enabled: true)
+        exportMessage = outcome == .saved ? "已儲存到 iPhone 相簿" : "無法儲存，請檢查相簿權限"
     }
 }
 

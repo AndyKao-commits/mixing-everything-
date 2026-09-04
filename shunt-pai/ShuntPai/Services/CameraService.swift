@@ -448,10 +448,10 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         let maxZoom = device.maxAvailableVideoZoomFactor
 
         if minZoom < baseline - 0.05 {
-            options.append(ZoomOption(id: "0.5", label: ".5", deviceFactor: minZoom))
+            options.append(ZoomOption(id: "0.5", label: "0.5", deviceFactor: minZoom))
         }
 
-        options.append(ZoomOption(id: "1x", label: "1x", deviceFactor: baseline))
+        options.append(ZoomOption(id: "1x", label: "1×", deviceFactor: baseline))
 
         let two = baseline * 2
         if maxZoom >= two {

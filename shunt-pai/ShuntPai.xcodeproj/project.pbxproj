@@ -24,6 +24,9 @@
 		AA0000010000000000000015 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000015 /* LockScreenView.swift */; };
 		AA0000010000000000000016 /* EntitlementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000016 /* EntitlementService.swift */; };
 		AA0000010000000000000017 /* PhotoPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000017 /* PhotoPagerView.swift */; };
+		AA0000010000000000000018 /* PhotoMetadataReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000018 /* PhotoMetadataReader.swift */; };
+		AA0000010000000000000019 /* PhotoDetailSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000019 /* PhotoDetailSheets.swift */; };
+		AA000001000000000000001A /* FloatingNavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001A /* FloatingNavBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +49,9 @@
 		AA0000020000000000000015 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000016 /* EntitlementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000017 /* PhotoPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPagerView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000018 /* PhotoMetadataReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMetadataReader.swift; sourceTree = "<group>"; };
+		AA0000020000000000000019 /* PhotoDetailSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDetailSheets.swift; sourceTree = "<group>"; };
+		AA000002000000000000001A /* FloatingNavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingNavBar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -112,6 +118,7 @@
 				AA0000020000000000000013 /* PhotoLibrarySaver.swift */,
 				AA0000020000000000000014 /* AppLockService.swift */,
 				AA0000020000000000000016 /* EntitlementService.swift */,
+				AA0000020000000000000018 /* PhotoMetadataReader.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -159,6 +166,7 @@
 			children = (
 				AA000002000000000000000E /* GalleryView.swift */,
 				AA0000020000000000000017 /* PhotoPagerView.swift */,
+				AA0000020000000000000019 /* PhotoDetailSheets.swift */,
 			);
 			path = Gallery;
 			sourceTree = "<group>";
@@ -176,6 +184,7 @@
 			children = (
 				AA0000020000000000000010 /* ActivityShareSheet.swift */,
 				AA0000020000000000000015 /* LockScreenView.swift */,
+				AA000002000000000000001A /* FloatingNavBar.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -266,6 +275,9 @@
 				AA0000010000000000000015 /* LockScreenView.swift in Sources */,
 				AA0000010000000000000016 /* EntitlementService.swift in Sources */,
 				AA0000010000000000000014 /* AppLockService.swift in Sources */,
+				AA0000010000000000000018 /* PhotoMetadataReader.swift in Sources */,
+				AA0000010000000000000019 /* PhotoDetailSheets.swift in Sources */,
+				AA000001000000000000001A /* FloatingNavBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

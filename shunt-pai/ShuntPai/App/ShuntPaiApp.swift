@@ -13,8 +13,7 @@ struct ShuntPaiApp: App {
                 .environmentObject(appState)
                 .environmentObject(lockService)
                 .environmentObject(entitlements)
-                .modelContainer(for: [PhotoRecord.self])
-                .preferredColorScheme(.dark)
+                .modelContainer(for: [PhotoRecord.self, TagRecord.self])
                 .onAppear {
                     lockService.relockIfNeededOnLaunch()
                 }

@@ -8,6 +8,7 @@ struct GalleryView: View {
     @ObservedObject var photoStore: PhotoStore
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
+    @Query(sort: \TagRecord.createdAt, order: .forward) private var tags: [TagRecord]
 
     @State private var selectedID: UUID?
     @State private var showSettings = false
@@ -16,12 +17,30 @@ struct GalleryView: View {
     @State private var showShareSheet = false
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
+    /// `nil` = all, `untaggedFilterID` = no tags, otherwise a tag id.
+    @State private var filterTagID: UUID?
+
+    private static let untaggedFilterID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
 
     private let columns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
+        GridItem(.flexible(), spacing: 3),
+        GridItem(.flexible(), spacing: 3),
+        GridItem(.flexible(), spacing: 3)
     ]
+
+    private var filteredRecords: [PhotoRecord] {
+        if filterTagID == Self.untaggedFilterID {
+            return records.filter(\.tags.isEmpty)
+        }
+        guard let filterTagID else { return records }
+        return records.filter { photo in
+            photo.tags.contains(where: { $0.id == filterTagID })
+        }
+    }
+
+    private var untaggedCount: Int {
+        records.filter(\.tags.isEmpty).count
+    }
 
     var body: some View {
         NavigationStack {
@@ -30,15 +49,16 @@ struct GalleryView: View {
                     ContentUnavailableView {
                         Label("尚無照片", systemImage: "photo.on.rectangle.angled")
                     } description: {
-                        Text("在相機頁拍的照片會保存在這裡。")
+                        Text("點右下角相機開始拍攝。")
                     }
-                    .foregroundStyle(.white)
                 } else {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 20, pinnedViews: [.sectionHeaders]) {
-                            ForEach(photoStore.groupedRecords(records), id: \.0) { section, items in
+                        LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
+                            tagsSection
+
+                            ForEach(photoStore.groupedRecords(filteredRecords), id: \.0) { section, items in
                                 Section {
-                                    LazyVGrid(columns: columns, spacing: 2) {
+                                    LazyVGrid(columns: columns, spacing: 3) {
                                         ForEach(items) { record in
                                             Button {
                                                 handleTap(record)
@@ -53,18 +73,23 @@ struct GalleryView: View {
                                             .buttonStyle(.plain)
                                         }
                                     }
+                                    .padding(.horizontal, 2)
                                 } header: {
-                                    Text(section)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.white)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(Color.black.opacity(0.92))
+                                    HStack {
+                                        Text(friendlySectionTitle(for: items, fallback: section))
+                                            .font(.title3.weight(.bold))
+                                        Spacer()
+                                        Text("\(items.count)")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color(.systemBackground).opacity(0.94))
                                 }
                             }
                         }
-                        .padding(.bottom, isSelecting ? 84 : 12)
+                        .padding(.bottom, isSelecting ? 100 : 96)
                     }
                     .safeAreaInset(edge: .bottom) {
                         if isSelecting {
@@ -73,25 +98,27 @@ struct GalleryView: View {
                     }
                 }
             }
-            .background(Color.black.ignoresSafeArea())
-            .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.black, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if entitlements.isPaid, !records.isEmpty {
-                        Button(isSelecting ? "取消" : "選取") {
-                            isSelecting.toggle()
-                            if !isSelecting { selectedIDs.removeAll() }
-                        }
-                    }
+                ToolbarItem(placement: .principal) {
+                    Text(AppConstants.appName)
+                        .font(.title2.weight(.heavy))
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !records.isEmpty {
+                        Button(isSelecting ? "取消" : "選取") {
+                            isSelecting.toggle()
+                            if !isSelecting { selectedIDs.removeAll() }
+                        }
+                        .fontWeight(.semibold)
                     }
                 }
             }
@@ -113,8 +140,7 @@ struct GalleryView: View {
             .sheet(isPresented: $showShareSheet) {
                 let items = selectedShareItems()
                 if items.isEmpty {
-                    Text("找不到檔案")
-                        .padding()
+                    Text("找不到檔案").padding()
                 } else {
                     ActivityShareSheet(items: items)
                 }
@@ -145,14 +171,54 @@ struct GalleryView: View {
         }
     }
 
-    private var navigationTitle: String {
-        if isSelecting {
-            return selectedIDs.isEmpty ? "選取照片" : "已選 \(selectedIDs.count) 張"
+    private var tagsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("標籤")
+                .font(.title3.weight(.bold))
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    tagChip(title: "全部 \(records.count)", selected: filterTagID == nil) {
+                        filterTagID = nil
+                    }
+
+                    if untaggedCount > 0 {
+                        tagChip(
+                            title: "無標籤 \(untaggedCount)",
+                            selected: filterTagID == Self.untaggedFilterID
+                        ) {
+                            filterTagID = Self.untaggedFilterID
+                        }
+                    }
+
+                    ForEach(tags) { tag in
+                        tagChip(
+                            title: "\(tag.name) \(tag.photos.count)",
+                            selected: filterTagID == tag.id
+                        ) {
+                            filterTagID = tag.id
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
-        if entitlements.isPaid {
-            return "分流拍相簿"
+        .padding(.top, 8)
+    }
+
+    private func tagChip(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule().fill(selected ? Color.primary : Color(.secondarySystemBackground))
+                )
         }
-        return "相簿 \(records.count)/\(AppConstants.freePhotoLimit)"
+        .buttonStyle(.plain)
     }
 
     private var selectionBar: some View {
@@ -171,11 +237,19 @@ struct GalleryView: View {
             } label: {
                 Label("刪除", systemImage: "trash")
             }
-            .disabled(selectedIDs.isEmpty)
+            .disabled(selectedIDs.isEmpty || (!entitlements.isPaid && selectedIDs.count > 1))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(.ultraThinMaterial)
+    }
+
+    private func friendlySectionTitle(for items: [PhotoRecord], fallback: String) -> String {
+        guard let first = items.first else { return fallback }
+        let calendar = Calendar.current
+        if calendar.isDateInToday(first.capturedAt) { return "今天" }
+        if calendar.isDateInYesterday(first.capturedAt) { return "昨天" }
+        return fallback
     }
 
     private func handleTap(_ record: PhotoRecord) {
@@ -215,17 +289,29 @@ struct GalleryCell: View {
     var isChosen: Bool = false
     @State private var image: UIImage?
 
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_TW")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     var body: some View {
-        Color.black
+        Color(.secondarySystemBackground)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 if let image {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
-                } else {
-                    Color.white.opacity(0.08)
                 }
+            }
+            .overlay(alignment: .bottomLeading) {
+                Text(Self.timeFormatter.string(from: record.capturedAt))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                    .padding(6)
             }
             .overlay(alignment: .topTrailing) {
                 if isSelecting {

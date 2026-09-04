@@ -14,7 +14,6 @@ struct CameraScreenView: View {
 
     @Query(sort: \PhotoRecord.capturedAt, order: .reverse) private var records: [PhotoRecord]
 
-    @State private var showSettings = false
     @State private var isCapturing = false
     @State private var toast: String?
     @State private var toastToken = UUID()
@@ -24,108 +23,33 @@ struct CameraScreenView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if cameraService.authorizationStatus == .authorized {
-                CameraPreviewView(
-                    session: cameraService.session,
-                    onTapToFocus: { viewPoint, devicePoint in
-                        cameraService.focusAndExpose(at: devicePoint)
-                        cameraService.showFocusIndicator(at: viewPoint, locked: false)
-                    },
-                    onLongPressLock: { viewPoint, devicePoint in
-                        cameraService.lockFocusAndExposure(at: devicePoint)
-                        cameraService.showFocusIndicator(at: viewPoint, locked: true)
-                    },
-                    onPinch: { scale in
-                        cameraService.bumpZoom(by: scale)
-                    }
-                )
-                .ignoresSafeArea()
-
-                if let focusPoint = cameraService.focusPoint {
-                    FocusReticle(locked: cameraService.isAEAFLocked)
-                        .position(focusPoint)
-                        .allowsHitTesting(false)
-                }
-            } else {
-                permissionView
-                    .padding(.horizontal, 32)
-            }
-
             VStack(spacing: 0) {
-                topBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
+                topChrome
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
 
-                exposureSlider
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
+                previewStage
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
 
-                Spacer(minLength: 0)
-                    .allowsHitTesting(false)
-
-                if cameraService.authorizationStatus == .authorized {
-                    zoomControls
-                        .padding(.bottom, 8)
-
-                    if !entitlements.isPaid {
-                        Text("免費 \(records.count)/\(AppConstants.freePhotoLimit)")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                            .padding(.bottom, 8)
-                    }
-
-                    shutterRow
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 18)
-                }
+                bottomChrome
+                    .padding(.top, 14)
+                    .padding(.bottom, 8)
             }
-            .safeAreaPadding(.bottom, 8)
 
             if let toast {
-                VStack {
-                    Spacer()
-                    Text(toast)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.72))
-                        .clipShape(Capsule())
-                        .padding(.bottom, 140)
-                }
-                .allowsHitTesting(false)
+                Text(toast)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.72))
+                    .clipShape(Capsule())
+                    .padding(.bottom, 180)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .allowsHitTesting(false)
             }
-
-            if cameraService.isAEAFLocked {
-                VStack {
-                    Text("AE/AF 鎖定")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.yellow)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.55))
-                        .clipShape(Capsule())
-                        .padding(.top, 118)
-                    Spacer()
-                }
-                .allowsHitTesting(false)
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(photoStore: photoStore)
-        }
-        .onChange(of: showSettings) { _, isOpen in
-            if !isOpen {
-                cameraService.refreshMirroring()
-                if appState.selectedTab == .camera {
-                    setCameraActive(true)
-                }
-            }
-        }
-        .onChange(of: cameraService.errorMessage) { _, message in
-            guard let message else { return }
-            showToast(message)
-            cameraService.errorMessage = nil
         }
         .task {
             let granted = await cameraService.requestPermissionIfNeeded()
@@ -146,9 +70,7 @@ struct CameraScreenView: View {
             }
         }
         .onDisappear {
-            if !showSettings {
-                setCameraActive(false)
-            }
+            setCameraActive(false)
         }
         .onChange(of: appState.selectedTab) { _, tab in
             setCameraActive(tab == .camera)
@@ -163,8 +85,214 @@ struct CameraScreenView: View {
                 setCameraActive(false)
             }
         }
+        .onChange(of: cameraService.errorMessage) { _, message in
+            guard let message else { return }
+            showToast(message)
+            cameraService.errorMessage = nil
+        }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        .preferredColorScheme(.dark)
+    }
+
+    private var topChrome: some View {
+        HStack {
+            if cameraService.supportsFlash {
+                Button {
+                    cameraService.toggleFlash()
+                } label: {
+                    Image(systemName: cameraService.flashMode == .on ? "bolt.fill" : "bolt.slash.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                }
+            } else {
+                Color.clear.frame(width: 40, height: 40)
+            }
+
+            Spacer()
+
+            Text("4:3")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.9))
+
+            Spacer()
+
+            Button {
+                appState.selectedTab = .gallery
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+            }
+        }
+    }
+
+    private var previewStage: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = min(geo.size.height, width * 4 / 3)
+            ZStack {
+                if cameraService.authorizationStatus == .authorized {
+                    CameraPreviewView(
+                        session: cameraService.session,
+                        onTapToFocus: { viewPoint, devicePoint in
+                            cameraService.focusAndExpose(at: devicePoint)
+                            cameraService.showFocusIndicator(at: viewPoint, locked: false)
+                        },
+                        onLongPressLock: { viewPoint, devicePoint in
+                            cameraService.lockFocusAndExposure(at: devicePoint)
+                            cameraService.showFocusIndicator(at: viewPoint, locked: true)
+                        },
+                        onPinch: { scale in
+                            cameraService.bumpZoom(by: scale)
+                        }
+                    )
+                    .frame(width: width, height: height)
+                    .clipped()
+
+                    // Horizon guide
+                    Rectangle()
+                        .fill(Color.white.opacity(0.35))
+                        .frame(height: 1)
+                        .frame(maxWidth: .infinity)
+                        .allowsHitTesting(false)
+
+                    if let focusPoint = cameraService.focusPoint {
+                        FocusReticle(locked: cameraService.isAEAFLocked)
+                            .position(focusPoint)
+                            .allowsHitTesting(false)
+
+                        VerticalExposureSlider(
+                            value: Binding(
+                                get: { Double(cameraService.exposureBias) },
+                                set: { cameraService.setExposureBias(Float($0)) }
+                            ),
+                            range: Double(cameraService.minExposureBias)...Double(max(cameraService.maxExposureBias, cameraService.minExposureBias + 0.1))
+                        )
+                        .position(x: min(focusPoint.x + 52, width - 24), y: focusPoint.y)
+                    }
+
+                    if cameraService.isAEAFLocked {
+                        Text("AE/AF 鎖定")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.yellow)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.45))
+                            .clipShape(Capsule())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .padding(.top, 12)
+                            .allowsHitTesting(false)
+                    }
+                } else {
+                    permissionView
+                        .frame(width: width, height: height)
+                }
+            }
+            .frame(width: width, height: height)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var bottomChrome: some View {
+        VStack(spacing: 16) {
+            if cameraService.authorizationStatus == .authorized {
+                zoomControls
+
+                if !entitlements.isPaid {
+                    Text("免費 \(records.count)/\(AppConstants.freePhotoLimit)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+
+                HStack {
+                    Button {
+                        appState.selectedTab = .gallery
+                    } label: {
+                        ZStack {
+                            Circle().fill(Color.white.opacity(0.12))
+                            if let latestThumbnail {
+                                Image(uiImage: latestThumbnail)
+                                    .resizable()
+                                    .scaledToFill()
+                            }
+                        }
+                        .frame(width: 56, height: 56)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Task { await capturePhoto() }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.white, lineWidth: 4)
+                                .frame(width: 78, height: 78)
+                            Circle()
+                                .fill(Color.white.opacity(isCapturing ? 0.4 : 1))
+                                .frame(width: 64, height: 64)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCapturing)
+
+                    Spacer()
+
+                    Button {
+                        cameraService.switchCamera()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath.camera")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .background(Circle().fill(Color.white.opacity(0.14)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 28)
+
+                Text("照片")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.yellow)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.yellow.opacity(0.18)))
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 10) {
+            ForEach(cameraService.zoomOptions) { option in
+                Button {
+                    cameraService.applyZoomOption(option)
+                } label: {
+                    Text(option.label)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(cameraService.selectedZoomID == option.id ? .black : .white)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Circle().fill(
+                                cameraService.selectedZoomID == option.id
+                                ? Color.yellow
+                                : Color.black.opacity(0.35)
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Color.black.opacity(0.28)))
     }
 
     private var permissionView: some View {
@@ -190,153 +318,10 @@ struct CameraScreenView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryButtonStyle())
+                .padding(.horizontal, 40)
             }
         }
-    }
-
-    private var topBar: some View {
-        HStack(spacing: 12) {
-            if cameraService.supportsFlash {
-                Button {
-                    cameraService.toggleFlash()
-                } label: {
-                    Image(systemName: cameraService.flashMode == .on ? "bolt.fill" : "bolt.slash.fill")
-                        .cameraChromeButton()
-                }
-            }
-
-            Spacer()
-
-            Text(exposureLabel)
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.yellow)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.black.opacity(0.35))
-                .clipShape(Capsule())
-
-            Spacer()
-
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .cameraChromeButton()
-            }
-        }
-    }
-
-    private var exposureSlider: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sun.min.fill")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-            Slider(
-                value: Binding(
-                    get: { Double(cameraService.exposureBias) },
-                    set: { cameraService.setExposureBias(Float($0)) }
-                ),
-                in: Double(cameraService.minExposureBias)...Double(max(cameraService.maxExposureBias, cameraService.minExposureBias + 0.1)),
-                step: 0.1
-            )
-            .tint(.yellow)
-            Image(systemName: "sun.max.fill")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.35))
-        .clipShape(Capsule())
-    }
-
-    private var exposureLabel: String {
-        if cameraService.isAEAFLocked {
-            return "AE/AF 鎖定"
-        }
-        let ev = cameraService.exposureBias
-        let sign = ev > 0.05 ? "+" : ""
-        return String(format: "%@%.1f EV", sign, ev)
-    }
-
-    private var zoomControls: some View {
-        HStack(spacing: 10) {
-            ForEach(cameraService.zoomOptions) { option in
-                Button {
-                    cameraService.applyZoomOption(option)
-                } label: {
-                    Text(option.label)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(cameraService.selectedZoomID == option.id ? .black : .white)
-                        .frame(width: 42, height: 42)
-                        .background(
-                            Circle().fill(
-                                cameraService.selectedZoomID == option.id
-                                ? Color.yellow
-                                : Color.black.opacity(0.45)
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.28))
-        .clipShape(Capsule())
-    }
-
-    private var shutterRow: some View {
-        HStack {
-            Button {
-                appState.selectedTab = .gallery
-            } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.12))
-                    if let latestThumbnail {
-                        Image(uiImage: latestThumbnail)
-                            .resizable()
-                            .scaledToFill()
-                    }
-                }
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.55), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                Task { await capturePhoto() }
-            } label: {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white, lineWidth: 5)
-                        .frame(width: 82, height: 82)
-                    Circle()
-                        .fill(Color.white.opacity(isCapturing ? 0.4 : 1))
-                        .frame(width: 68, height: 68)
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(isCapturing)
-
-            Spacer()
-
-            Button {
-                cameraService.switchCamera()
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .cameraChromeButton()
-            }
-            .buttonStyle(.plain)
-        }
+        .padding()
     }
 
     private func capturePhoto() async {
@@ -395,17 +380,50 @@ private struct FocusReticle: View {
     let locked: Bool
 
     var body: some View {
-        VStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
-                .frame(width: 78, height: 78)
-            if locked {
-                Text("鎖定")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.yellow)
+        RoundedRectangle(cornerRadius: 4)
+            .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
+            .frame(width: 72, height: 72)
+            .shadow(color: .black.opacity(0.35), radius: 2)
+    }
+}
+
+private struct VerticalExposureSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "sun.max.fill")
+                .font(.caption2)
+                .foregroundStyle(.yellow)
+            GeometryReader { geo in
+                let height = geo.size.height
+                let progress = (value - range.lowerBound) / max(range.upperBound - range.lowerBound, 0.001)
+                ZStack(alignment: .bottom) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.25))
+                        .frame(width: 2)
+                    Capsule()
+                        .fill(Color.yellow)
+                        .frame(width: 2, height: max(height * progress, 2))
+                    Circle()
+                        .fill(Color.yellow)
+                        .frame(width: 14, height: 14)
+                        .offset(y: -(height * progress) + 7)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in
+                            let y = min(max(0, height - drag.location.y), height)
+                            let ratio = y / max(height, 1)
+                            value = range.lowerBound + (range.upperBound - range.lowerBound) * ratio
+                        }
+                )
             }
+            .frame(width: 28, height: 110)
         }
-        .shadow(color: .black.opacity(0.4), radius: 2)
     }
 }
 
