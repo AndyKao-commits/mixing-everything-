@@ -50,6 +50,9 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     private var baselineZoom: CGFloat = 1
     private var aeafLocked = false
     private var subjectAreaObserver: NSObjectProtocol?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
+    private weak var boundPreviewLayer: AVCaptureVideoPreviewLayer?
 
     override init() {
         super.init()
@@ -234,6 +237,35 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Fine EV nudge used by native-style vertical drag after focus.
+    func adjustExposure(by delta: Float) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoInput?.device else { return }
+            let next = device.exposureTargetBias + delta
+            let clamped = min(max(next, device.minExposureTargetBias), device.maxExposureTargetBias)
+            if abs(device.exposureTargetBias - clamped) < 0.005 { return }
+            do {
+                try device.lockForConfiguration()
+                device.setExposureTargetBias(clamped, completionHandler: nil)
+                device.unlockForConfiguration()
+                self.publishOnMain { $0.exposureBias = clamped }
+            } catch {
+                self.publishOnMain { $0.errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    func bindPreviewLayer(_ layer: AVCaptureVideoPreviewLayer) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            if self.boundPreviewLayer === layer, self.rotationCoordinator != nil {
+                return
+            }
+            self.boundPreviewLayer = layer
+            self.installRotationCoordinatorLocked()
+        }
+    }
+
     func unlockFocusToContinuous() {
         sessionQueue.async { [weak self] in
             guard let self, let device = self.videoInput?.device else { return }
@@ -288,6 +320,14 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
                 self.captureContinuation = continuation
 
+                if let coordinator = self.rotationCoordinator,
+                   let connection = self.photoOutput.connection(with: .video) {
+                    let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+                    if connection.isVideoRotationAngleSupported(angle) {
+                        connection.videoRotationAngle = angle
+                    }
+                }
+
                 let settings: AVCapturePhotoSettings
                 if self.photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
                     settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
@@ -338,11 +378,38 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
         observeSubjectAreaChanges()
         applyMirroringLocked()
         aeafLocked = false
+        installRotationCoordinatorLocked()
         publishOnMain {
             $0.isAEAFLocked = false
             $0.exposureBias = 0
             $0.minExposureBias = device.minExposureTargetBias
             $0.maxExposureBias = device.maxExposureTargetBias
+        }
+    }
+
+    private func installRotationCoordinatorLocked() {
+        rotationObservation?.invalidate()
+        rotationObservation = nil
+        rotationCoordinator = nil
+
+        guard let device = videoInput?.device, let preview = boundPreviewLayer else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: preview)
+        rotationCoordinator = coordinator
+
+        let apply: (CGFloat) -> Void = { [weak self, weak preview] angle in
+            guard let self, let preview, let connection = preview.connection else { return }
+            self.sessionQueue.async {
+                if connection.isVideoRotationAngleSupported(angle) {
+                    connection.videoRotationAngle = angle
+                }
+            }
+        }
+
+        apply(coordinator.videoRotationAngleForHorizonLevelPreview)
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { _, change in
+            if let angle = change.newValue {
+                apply(angle)
+            }
         }
     }
 
@@ -522,6 +589,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     deinit {
+        rotationObservation?.invalidate()
         if let subjectAreaObserver {
             NotificationCenter.default.removeObserver(subjectAreaObserver)
         }

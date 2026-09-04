@@ -21,12 +21,15 @@ enum AppConstants {
 
         var id: String { rawValue }
 
-        /// Portrait preview height / width.
-        var heightOverWidth: CGFloat {
+        /// Upright image width ÷ height for the current phone orientation.
+        func uprightWidthOverHeight(isLandscape: Bool) -> CGFloat {
             switch self {
-            case .fourThree: return 4.0 / 3.0
-            case .sixteenNine: return 16.0 / 9.0
-            case .square: return 1.0
+            case .square:
+                return 1
+            case .fourThree:
+                return isLandscape ? (4.0 / 3.0) : (3.0 / 4.0)
+            case .sixteenNine:
+                return isLandscape ? (16.0 / 9.0) : (9.0 / 16.0)
             }
         }
 

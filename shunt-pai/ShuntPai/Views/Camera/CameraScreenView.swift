@@ -22,35 +22,44 @@ struct CameraScreenView: View {
     @State private var aspectRatio: AppConstants.CaptureAspectRatio = .fourThree
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+        GeometryReader { geo in
+            let isLandscape = geo.size.width > geo.size.height
+            ZStack {
+                Color.black.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                topChrome
-                    .padding(.horizontal, 18)
-                    .padding(.top, 8)
-                    .padding(.bottom, 10)
+                VStack(spacing: 0) {
+                    topChrome
+                        .padding(.horizontal, 18)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
 
-                previewStage
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(1)
+                    previewStage(isLandscape: isLandscape, available: geo.size)
+                        .frame(maxWidth: .infinity)
+                        .layoutPriority(1)
 
-                bottomChrome
-                    .padding(.top, 14)
-                    .padding(.bottom, 8)
+                    bottomChrome
+                        .padding(.top, 14)
+                        .padding(.bottom, 8)
+                }
+
+                if let toast {
+                    Text(toast)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.72))
+                        .clipShape(Capsule())
+                        .padding(.bottom, 180)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .allowsHitTesting(false)
+                }
             }
-
-            if let toast {
-                Text(toast)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.72))
-                    .clipShape(Capsule())
-                    .padding(.bottom, 180)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .allowsHitTesting(false)
+            .onAppear {
+                horizon.setInterfaceLandscape(isLandscape)
+            }
+            .onChange(of: isLandscape) { _, landscape in
+                horizon.setInterfaceLandscape(landscape)
             }
         }
         .task {
@@ -139,75 +148,86 @@ struct CameraScreenView: View {
         }
     }
 
-    private var previewStage: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            let maxHeight = geo.size.height
-            let targetHeight = width * aspectRatio.heightOverWidth
-            let height = min(maxHeight, targetHeight)
-            ZStack {
-                if cameraService.authorizationStatus == .authorized {
-                    CameraPreviewView(
-                        session: cameraService.session,
-                        onTapToFocus: { viewPoint, devicePoint in
-                            cameraService.focusAndExpose(at: devicePoint)
-                            cameraService.showFocusIndicator(at: viewPoint, locked: false)
-                        },
-                        onLongPressLock: { viewPoint, devicePoint in
-                            cameraService.lockFocusAndExposure(at: devicePoint)
-                            cameraService.showFocusIndicator(at: viewPoint, locked: true)
-                        },
-                        onPinch: { scale in
-                            cameraService.bumpZoom(by: scale)
-                        }
-                    )
-                    .frame(width: width, height: height)
-                    .clipped()
-
-                    // Motion-linked horizon (like system Camera).
-                    HorizonGuideLine(rollDegrees: horizon.rollDegrees, isLevel: horizon.isLevel)
-                        .frame(width: width, height: height)
-                        .allowsHitTesting(false)
-
-                    if let focusPoint = cameraService.focusPoint {
-                        FocusReticle(locked: cameraService.isAEAFLocked)
-                            .position(focusPoint)
-                            .allowsHitTesting(false)
-
-                        VerticalExposureSlider(
-                            value: Binding(
-                                get: { Double(cameraService.exposureBias) },
-                                set: { cameraService.setExposureBias(Float($0)) }
-                            ),
-                            range: Double(cameraService.minExposureBias)...Double(max(cameraService.maxExposureBias, cameraService.minExposureBias + 0.1))
-                        )
-                        .position(
-                            x: min(max(focusPoint.x + 56, 40), width - 40),
-                            y: focusPoint.y
-                        )
-                    }
-
-                    if cameraService.isAEAFLocked {
-                        Text("AE/AF 鎖定")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.yellow)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.black.opacity(0.45))
-                            .clipShape(Capsule())
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                            .padding(.top, 12)
-                            .allowsHitTesting(false)
-                    }
-                } else {
-                    permissionView
-                        .frame(width: width, height: height)
-                }
+    private func previewStage(isLandscape: Bool, available: CGSize) -> some View {
+        let uprightWH = aspectRatio.uprightWidthOverHeight(isLandscape: isLandscape)
+        let maxW = available.width
+        // Leave room for top/bottom chrome roughly.
+        let maxH = max(available.height * 0.62, 220)
+        let previewSize: CGSize = {
+            if isLandscape {
+                let height = min(maxH, maxW / max(uprightWH, 0.01))
+                let width = min(maxW, height * uprightWH)
+                return CGSize(width: width, height: height)
+            } else {
+                let width = maxW
+                let height = min(maxH, width / max(uprightWH, 0.01))
+                return CGSize(width: width, height: height)
             }
-            .frame(width: width, height: height)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.easeInOut(duration: 0.2), value: aspectRatio)
+        }()
+
+        return ZStack {
+            if cameraService.authorizationStatus == .authorized {
+                CameraPreviewView(
+                    session: cameraService.session,
+                    onPreviewReady: { layer in
+                        cameraService.bindPreviewLayer(layer)
+                    },
+                    onTapToFocus: { viewPoint, devicePoint in
+                        cameraService.focusAndExpose(at: devicePoint)
+                        cameraService.showFocusIndicator(at: viewPoint, locked: false)
+                    },
+                    onLongPressLock: { viewPoint, devicePoint in
+                        cameraService.lockFocusAndExposure(at: devicePoint)
+                        cameraService.showFocusIndicator(at: viewPoint, locked: true)
+                    },
+                    onPinch: { scale in
+                        cameraService.bumpZoom(by: scale)
+                    },
+                    onExposureDrag: cameraService.focusPoint == nil ? nil : { deltaY in
+                        // Native-like fine control: ~140pt ≈ 1 EV
+                        cameraService.adjustExposure(by: Float(-deltaY / 140))
+                    }
+                )
+                .frame(width: previewSize.width, height: previewSize.height)
+                .clipped()
+
+                if horizon.shouldShow {
+                    HorizonGuideLine(tiltDegrees: horizon.tiltDegrees, isLevel: horizon.isLevel)
+                        .frame(width: previewSize.width, height: previewSize.height)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+
+                if let focusPoint = cameraService.focusPoint {
+                    FocusReticle(
+                        locked: cameraService.isAEAFLocked,
+                        exposureBias: cameraService.exposureBias
+                    )
+                    .position(focusPoint)
+                    .allowsHitTesting(false)
+                }
+
+                if cameraService.isAEAFLocked {
+                    Text("AE/AF 鎖定")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.yellow)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.45))
+                        .clipShape(Capsule())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 12)
+                        .allowsHitTesting(false)
+                }
+            } else {
+                permissionView
+                    .frame(width: previewSize.width, height: previewSize.height)
+            }
         }
+        .frame(width: previewSize.width, height: previewSize.height)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.2), value: aspectRatio)
+        .animation(.easeInOut(duration: 0.15), value: horizon.shouldShow)
     }
 
     private var bottomChrome: some View {
@@ -349,9 +369,11 @@ struct CameraScreenView: View {
 
         do {
             let data = try await cameraService.capturePhoto()
+            let isLandscape = UIScreen.main.bounds.width > UIScreen.main.bounds.height
             let record = try await photoStore.saveCapturedPhoto(
                 data: data,
                 aspectRatio: aspectRatio,
+                isLandscape: isLandscape,
                 modelContext: modelContext
             )
 
@@ -399,113 +421,54 @@ struct CameraScreenView: View {
 
 private struct FocusReticle: View {
     let locked: Bool
+    let exposureBias: Float
 
     var body: some View {
-        VStack(spacing: 6) {
+        HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 4)
                 .stroke(Color.yellow, lineWidth: locked ? 3 : 2)
-                .frame(width: 72, height: 72)
-            if locked {
-                Text("鎖定")
-                    .font(.caption2.weight(.bold))
+                .frame(width: 70, height: 70)
+
+            VStack(spacing: 0) {
+                Image(systemName: "sun.max.fill")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.yellow)
+                    .offset(y: CGFloat(-exposureBias) * 10)
             }
+            .frame(width: 20, height: 70)
         }
         .shadow(color: .black.opacity(0.35), radius: 2)
     }
 }
 
 private struct HorizonGuideLine: View {
-    let rollDegrees: Double
+    let tiltDegrees: Double
     let isLevel: Bool
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(isLevel ? Color.yellow.opacity(0.95) : Color.white.opacity(0.55))
-                .frame(height: isLevel ? 2 : 1)
-                .frame(maxWidth: .infinity)
-                .rotationEffect(.degrees(rollDegrees))
-
-            // Short center reference ticks
-            HStack(spacing: 72) {
-                Capsule()
-                    .fill(isLevel ? Color.yellow : Color.white.opacity(0.7))
-                    .frame(width: 18, height: 2)
-                Capsule()
-                    .fill(isLevel ? Color.yellow : Color.white.opacity(0.7))
-                    .frame(width: 18, height: 2)
-            }
-            .rotationEffect(.degrees(rollDegrees))
-        }
-    }
-}
-
-private struct VerticalExposureSlider: View {
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sun.max.fill")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-            GeometryReader { geo in
-                let height = geo.size.height
-                let span = max(range.upperBound - range.lowerBound, 0.001)
-                let progress = (value - range.lowerBound) / span
-                ZStack(alignment: .bottom) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.28))
-                        .frame(width: 3)
-                    Capsule()
-                        .fill(Color.yellow)
-                        .frame(width: 3, height: max(height * progress, 3))
-                    Circle()
-                        .fill(Color.yellow)
-                        .frame(width: 18, height: 18)
-                        .offset(y: -(height * progress) + 9)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(width: 44, height: 130)
-        }
-        // Wide invisible hit area so dragging beside the sun/slider works.
-        .frame(width: 64, height: 170)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { drag in
-                    let height: CGFloat = 130
-                    let topPad: CGFloat = 28
-                    let y = drag.location.y - topPad
-                    let clampedY = min(max(0, y), height)
-                    let ratio = 1 - (clampedY / height)
-                    value = range.lowerBound + (range.upperBound - range.lowerBound) * Double(ratio)
-                }
-        )
-    }
-}
-
-private extension View {
-    func cameraChromeButton() -> some View {
-        self
-            .font(.title3.weight(.semibold))
-            .foregroundStyle(.white)
-            .frame(width: 42, height: 42)
-            .background(Color.black.opacity(0.4))
-            .clipShape(Circle())
+        Capsule()
+            .fill(isLevel ? Color.yellow : Color.white.opacity(0.85))
+            .frame(width: 72, height: isLevel ? 3 : 2)
+            .rotationEffect(.degrees(tiltDegrees))
+            .shadow(color: .black.opacity(0.35), radius: 1)
     }
 }
 
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
+    var onPreviewReady: ((AVCaptureVideoPreviewLayer) -> Void)?
     let onTapToFocus: (CGPoint, CGPoint) -> Void
     let onLongPressLock: (CGPoint, CGPoint) -> Void
     let onPinch: (CGFloat) -> Void
+    var onExposureDrag: ((CGFloat) -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onTapToFocus: onTapToFocus, onLongPressLock: onLongPressLock, onPinch: onPinch)
+        Coordinator(
+            onTapToFocus: onTapToFocus,
+            onLongPressLock: onLongPressLock,
+            onPinch: onPinch,
+            onExposureDrag: onExposureDrag
+        )
     }
 
     func makeUIView(context: Context) -> PreviewView {
@@ -513,6 +476,7 @@ struct CameraPreviewView: UIViewRepresentable {
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
         context.coordinator.attach(to: view)
+        onPreviewReady?(view.videoPreviewLayer)
         return view
     }
 
@@ -521,23 +485,32 @@ struct CameraPreviewView: UIViewRepresentable {
         context.coordinator.onTapToFocus = onTapToFocus
         context.coordinator.onLongPressLock = onLongPressLock
         context.coordinator.onPinch = onPinch
+        context.coordinator.onExposureDrag = onExposureDrag
+        context.coordinator.exposureEnabled = onExposureDrag != nil
+        onPreviewReady?(uiView.videoPreviewLayer)
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var onTapToFocus: (CGPoint, CGPoint) -> Void
         var onLongPressLock: (CGPoint, CGPoint) -> Void
         var onPinch: (CGFloat) -> Void
+        var onExposureDrag: ((CGFloat) -> Void)?
+        var exposureEnabled = false
         private var lastPinch: CGFloat = 1
+        private var lastExposureY: CGFloat?
         private weak var previewView: PreviewView?
 
         init(
             onTapToFocus: @escaping (CGPoint, CGPoint) -> Void,
             onLongPressLock: @escaping (CGPoint, CGPoint) -> Void,
-            onPinch: @escaping (CGFloat) -> Void
+            onPinch: @escaping (CGFloat) -> Void,
+            onExposureDrag: ((CGFloat) -> Void)?
         ) {
             self.onTapToFocus = onTapToFocus
             self.onLongPressLock = onLongPressLock
             self.onPinch = onPinch
+            self.onExposureDrag = onExposureDrag
+            self.exposureEnabled = onExposureDrag != nil
         }
 
         func attach(to view: PreviewView) {
@@ -556,6 +529,11 @@ struct CameraPreviewView: UIViewRepresentable {
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
             pinch.delegate = self
             view.addGestureRecognizer(pinch)
+
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+            pan.delegate = self
+            pan.maximumNumberOfTouches = 1
+            view.addGestureRecognizer(pan)
         }
 
         @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -586,11 +564,39 @@ struct CameraPreviewView: UIViewRepresentable {
             }
         }
 
+        @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard exposureEnabled, let onExposureDrag else { return }
+            let translation = gesture.translation(in: gesture.view)
+            if abs(translation.y) < abs(translation.x) * 0.6 {
+                return
+            }
+            switch gesture.state {
+            case .began:
+                lastExposureY = 0
+            case .changed:
+                let previous = lastExposureY ?? 0
+                let delta = translation.y - previous
+                lastExposureY = translation.y
+                if abs(delta) > 0.2 {
+                    onExposureDrag(delta)
+                }
+            default:
+                lastExposureY = nil
+            }
+        }
+
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
             true
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            if gestureRecognizer is UIPanGestureRecognizer {
+                return exposureEnabled
+            }
+            return true
         }
     }
 }
@@ -602,15 +608,5 @@ final class PreviewView: UIView {
 
     var videoPreviewLayer: AVCaptureVideoPreviewLayer {
         layer as! AVCaptureVideoPreviewLayer
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        // Portrait-only app: 90° is the iOS 17 replacement for `.portrait`.
-        let portraitAngle: CGFloat = 90
-        if let connection = videoPreviewLayer.connection,
-           connection.isVideoRotationAngleSupported(portraitAngle) {
-            connection.videoRotationAngle = portraitAngle
-        }
     }
 }

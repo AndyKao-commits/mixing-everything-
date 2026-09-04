@@ -41,16 +41,17 @@ final class PhotoStore: ObservableObject {
     func saveCapturedPhoto(
         data: Data,
         aspectRatio: AppConstants.CaptureAspectRatio = .fourThree,
+        isLandscape: Bool = false,
         modelContext: ModelContext
     ) async throws -> PhotoRecord {
         let filename = makeFilename()
         let photoURL = photosDirectory.appendingPathComponent(filename)
         let thumbURL = thumbnailsDirectory.appendingPathComponent(filename)
         let payload = data
-        let aspect = aspectRatio.heightOverWidth
+        let uprightWH = aspectRatio.uprightWidthOverHeight(isLandscape: isLandscape)
 
         try await Task.detached(priority: .userInitiated) {
-            let finalData = ImageProcessing.croppedJPEG(from: payload, portraitHeightOverWidth: aspect) ?? payload
+            let finalData = ImageProcessing.croppedJPEG(from: payload, uprightWidthOverHeight: uprightWH) ?? payload
             try finalData.write(to: photoURL, options: .atomic)
             ImageProcessing.writeJPEGThumbnail(from: finalData, to: thumbURL, maxPixelSize: 300)
         }.value
@@ -181,7 +182,7 @@ final class PhotoStore: ObservableObject {
 }
 
 private enum ImageProcessing {
-    static func croppedJPEG(from data: Data, portraitHeightOverWidth: CGFloat) -> Data? {
+    static func croppedJPEG(from data: Data, uprightWidthOverHeight: CGFloat) -> Data? {
         guard let source = CGImageSourceCreateWithData(
             data as CFData,
             [kCGImageSourceShouldCache: false] as CFDictionary
@@ -192,34 +193,38 @@ private enum ImageProcessing {
         let height = CGFloat(image.height)
         guard width > 0, height > 0 else { return nil }
 
-        // Saved JPEGs from the camera are typically landscape pixel buffers with EXIF orientation.
-        // Crop in pixel space toward the centered portrait framing the preview shows.
-        let targetAspect = portraitHeightOverWidth // height/width in portrait UI terms
-        // In sensor landscape pixels, portrait crop means cropWidth/cropHeight ≈ 1/targetAspect
-        // when the image is displayed upright. Prefer matching displayed upright aspect.
-        let uprightIsPortrait = height >= width
-        let desired: CGFloat
-        let cropRect: CGRect
-        if uprightIsPortrait {
-            desired = targetAspect
-            let current = height / width
-            if abs(current - desired) < 0.02 {
-                return data
+        var orientation = CGImagePropertyOrientation.up
+        if let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let raw = props[kCGImagePropertyOrientation] as? UInt32,
+           let value = CGImagePropertyOrientation(rawValue: raw) {
+            orientation = value
+        }
+
+        let pixelsMatchUprightPortrait: Bool = {
+            switch orientation {
+            case .left, .leftMirrored, .right, .rightMirrored:
+                return true
+            default:
+                return height >= width
             }
-            if current > desired {
-                let newHeight = width * desired
+        }()
+
+        let cropRect: CGRect
+        if pixelsMatchUprightPortrait {
+            let desiredHeightOverWidth = 1.0 / max(uprightWidthOverHeight, 0.01)
+            let current = height / width
+            if abs(current - desiredHeightOverWidth) < 0.02 { return data }
+            if current > desiredHeightOverWidth {
+                let newHeight = width * desiredHeightOverWidth
                 cropRect = CGRect(x: 0, y: (height - newHeight) / 2, width: width, height: newHeight)
             } else {
-                let newWidth = height / desired
+                let newWidth = height / desiredHeightOverWidth
                 cropRect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height)
             }
         } else {
-            // Landscape buffer: upright portrait aspect corresponds to width/height = 1/targetAspect
-            desired = 1.0 / targetAspect
+            let desired = uprightWidthOverHeight
             let current = width / height
-            if abs(current - desired) < 0.02 {
-                return data
-            }
+            if abs(current - desired) < 0.02 { return data }
             if current > desired {
                 let newWidth = height * desired
                 cropRect = CGRect(x: (width - newWidth) / 2, y: 0, width: newWidth, height: height)
