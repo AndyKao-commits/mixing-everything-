@@ -339,7 +339,8 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
                    self.photoOutput.supportedFlashModes.contains(self.flashModeValue) {
                     settings.flashMode = self.flashModeValue
                 }
-                settings.photoQualityPrioritization = self.photoOutput.maxPhotoQualityPrioritization
+                // Prefer snappy shutter-to-ready over max still quality.
+                settings.photoQualityPrioritization = .speed
 
                 self.photoOutput.capturePhoto(with: settings, delegate: self)
             }
@@ -367,7 +368,7 @@ final class CameraService: NSObject, ObservableObject, @unchecked Sendable {
 
         if session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
-            photoOutput.maxPhotoQualityPrioritization = .quality
+            photoOutput.maxPhotoQualityPrioritization = .speed
         }
 
         session.commitConfiguration()

@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct ShuntPaiApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var lockService = AppLockService()
     @StateObject private var entitlements = EntitlementService()

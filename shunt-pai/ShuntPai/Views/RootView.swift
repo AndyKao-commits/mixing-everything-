@@ -45,5 +45,19 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.keyboard)
+        .onAppear {
+            applyOrientationLock(for: appState.selectedTab)
+        }
+        .onChange(of: appState.selectedTab) { _, tab in
+            applyOrientationLock(for: tab)
+        }
+        .onDisappear {
+            OrientationLock.mask = .all
+        }
+    }
+
+    private func applyOrientationLock(for tab: MainTab) {
+        // Camera chrome stays portrait-fixed like native Camera (shutter on phone bottom).
+        OrientationLock.mask = tab == .camera ? .portrait : .all
     }
 }
