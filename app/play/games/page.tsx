@@ -181,6 +181,33 @@ export default function GamesPage() {
     }
   }
 
+  async function saveMessages() {
+    if (!data?.messagesPublic?.length) return
+    const content = [
+      data.event.name,
+      '今晚的留言',
+      '',
+      ...data.messagesPublic.map((m: any, i: number) => `${i + 1}. 「${m.text}」`),
+    ].join('\n')
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const file = new File([blob], `${data.event.name}-留言.txt`, { type: blob.type })
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${data.event.name} 留言` })
+        return
+      }
+    } catch {
+      // User cancelled the share sheet; keep the page unchanged.
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function decide(choice: 'keep' | 'donate') {
     const token = getPlayerToken()
     if (!token) return
@@ -279,6 +306,21 @@ export default function GamesPage() {
           </div>
         ) : null}
         {isTop && rank.rank !== 2 ? <p className="text-soft">好好享受這個夜晚。</p> : null}
+        {event.status === 'finished' ? (
+          <div className="card space-y-3 text-ink">
+            <h2 className="font-display text-xl font-bold">今晚回顧</h2>
+            <p className="text-sm text-soft">活動結束後資料仍保留到主持人清除活動。你可以回任務下載九宮格照片，也可以重看全部留言。</p>
+            <a href="/play/tasks" className="btn-secondary">回九宮格下載照片</a>
+            {data.messagesReady && data.messagesPublic?.length ? (
+              <>
+                <div className="space-y-2">
+                  {data.messagesPublic.map((m: any) => <div key={m.id} className="rounded-2xl bg-black/5 p-3">「{m.text}」</div>)}
+                </div>
+                <button type="button" className="btn-secondary" onClick={() => void saveMessages()}>一鍵保存全部留言</button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="text-sm text-ember">{error}</p> : null}
       </div>
     )
@@ -316,6 +358,9 @@ export default function GamesPage() {
                 「{m.text}」
               </div>
             ))}
+            <button type="button" className="btn-secondary" onClick={() => void saveMessages()}>
+              一鍵保存全部留言
+            </button>
           </div>
         ) : null}
         {error ? <p className="text-sm text-ember">{error}</p> : null}
