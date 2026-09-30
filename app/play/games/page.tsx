@@ -198,7 +198,10 @@ export default function GamesPage() {
       }
     }
     timer = window.setTimeout(() => void finish(), 2_100)
-    return () => window.clearTimeout(id)
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
   }, [game?.id, game?.kind, game?.payload.finished, left, refresh, setData])
 
   async function readyFinal() {
