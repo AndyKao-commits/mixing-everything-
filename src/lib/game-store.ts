@@ -1115,6 +1115,11 @@ export const gameStore = {
   endGroupGame(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (event.status !== 'active') throw new Error('目前不是團康階段')
+    const game = activeGroupGame()
+    if (!game || game.kind === 'final_button') throw new Error('目前沒有可結束的團康')
+    game.status = 'finished'
+    game.updated_at = nowIso()
     event.active_group_game = 'none'
     event.group_game_id = null
     event.last_group_game_at = nowIso()
