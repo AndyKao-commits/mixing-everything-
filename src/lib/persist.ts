@@ -6,13 +6,24 @@
  * migration atomic while the normalized tables remain available for the next
  * phase. Photos stay in private Storage and are referenced separately.
  */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { getSupabaseAdmin, isSupabaseConfigured } from './supabase-admin'
 
 const STATE_KEY = 'bbq-party-state-v2'
 const LEGACY_STATE_KEY = 'bbq-party-state-v1'
 const memory = new Map<string, unknown>()
 const BINGO_BUCKET = process.env.SUPABASE_BINGO_BUCKET || 'bingo-photos'
-let loadedVersion = 0
+const persistenceContext = new AsyncLocalStorage<{ loadedVersion: number }>()
+
+export function beginPersistenceRequest(): void {
+  persistenceContext.enterWith({ loadedVersion: 0 })
+}
+
+function context() {
+  const current = persistenceContext.getStore()
+  if (!current) throw new Error('Persistence request context is missing')
+  return current
+}
 
 function readLocalState(): unknown | null {
   if (process.env.VERCEL) return null
@@ -48,21 +59,22 @@ async function getRemoteState<T>(): Promise<T | null> {
     .eq('key', STATE_KEY)
     .maybeSingle()
   if (error) throw new Error('Supabase state read failed: ' + error.message)
-  loadedVersion = Number(data?.version || 0)
+  context().loadedVersion = Number(data?.version || 0)
   return (data?.state as T | undefined) ?? null
 }
 
 async function setRemoteState(value: unknown): Promise<void> {
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase.rpc('save_app_state', {
-    p_expected_version: loadedVersion,
+    p_expected_version: context().loadedVersion,
     p_next_state: value,
   })
   if (error) {
     if (/STATE_CONFLICT/i.test(error.message)) throw new Error('STATE_CONFLICT')
     throw new Error('Supabase state write failed: ' + error.message)
   }
-  loadedVersion = Number(data || loadedVersion + 1)
+  const ctx = context()
+  ctx.loadedVersion = Number(data || ctx.loadedVersion + 1)
 }
 
 export async function persistGet<T = unknown>(key: string): Promise<T | null> {
