@@ -297,9 +297,15 @@ export default function AdminPage() {
               <p className="text-sm text-soft">
                 已交卷 {(game.payload.answers as any[])?.length || 0} / {players.length}
               </p>
-              <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('draw_who_wrote')}>
-                抽下一則答案
-              </button>
+              {game.status === 'voting' ? (
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => act('reveal_who_wrote')}>
+                  立即揭曉（不等未投票玩家）
+                </button>
+              ) : (
+                <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('draw_who_wrote')}>
+                  抽下一則答案
+                </button>
+              )}
               <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('end_group_game')}>
                 結束團康
               </button>
