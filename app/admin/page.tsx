@@ -361,7 +361,7 @@ export default function AdminPage() {
               開始最終結算
             </button>
           )}
-          <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('finish_event')}>
+          <button type="button" className="btn-ghost" disabled={busy || event?.status !== 'settlement'} onClick={() => act('finish_event')}>
             結束活動（關閉 60 秒贈與）
           </button>
           {state?.settlement ? (
