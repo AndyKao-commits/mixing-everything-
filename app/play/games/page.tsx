@@ -302,10 +302,10 @@ export default function GamesPage() {
   }
 
   if (game.kind === 'who_wrote_it') {
-    const answers = (game.payload.answers as any[]) || []
-    const mine = answers.find((a) => a.player_id === data.player.id)
+    const mine = Boolean(game.payload.mySubmitted)
+    const answerCount = Number(game.payload.answerCount || 0)
     const reveal = game.payload.reveal as { player_id: string; text: string } | undefined
-    const current = answers.find((a) => a.id === game.payload.currentAnswerId)
+    const current = game.payload.currentAnswer as { id: string; text: string } | undefined
 
     if (game.status === 'playing') {
       return (
@@ -313,7 +313,7 @@ export default function GamesPage() {
           <h1 className="font-display text-3xl font-bold">誰寫的</h1>
           <p className="text-lg">{String(game.payload.prompt)}</p>
           {mine ? (
-            <div className="card">已送出，等待其他人… {answers.length} 人完成</div>
+            <div className="card">已送出，等待其他人… {answerCount} 人完成</div>
           ) : (
             <>
               <textarea className="field min-h-32" value={text} onChange={(e) => setText(e.target.value)} />
@@ -334,7 +334,7 @@ export default function GamesPage() {
           <div className="card text-xl font-medium">「{current.text}」</div>
           <div className="space-y-2">
             {(data.roster || []).map((p: any) => {
-              const disabled = revealedIds.has(p.id)
+              const disabled = revealedIds.has(p.id) || p.id === data.player.id
               return (
                 <button
                   key={p.id}
