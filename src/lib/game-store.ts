@@ -395,9 +395,9 @@ function serializeStore(): SerializedStore {
   const bingoCards = [...store().bingoCards.values()].map((card) => ({
     ...card,
     cells: card.cells.map((cell) => {
-      if (cell.photo_data_url) {
+      if (cell.photo_data_url || cell.photo_ref) {
         photoIds.push(cell.id)
-        return { ...cell, photo_data_url: null, photo_ref: cell.id }
+        return { ...cell, photo_data_url: null, photo_ref: cell.photo_ref || cell.id }
       }
       return { ...cell, photo_data_url: null }
     }),
