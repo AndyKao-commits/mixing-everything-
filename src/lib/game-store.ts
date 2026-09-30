@@ -1039,6 +1039,7 @@ export const gameStore = {
       throw new Error('目前無法投票')
     }
     const revealed = (game.payload.revealedPlayerIds as string[]) || []
+    if (player.id === game.payload.currentAuthorId) throw new Error('這題是你的答案，不需投票')
     if (!store().players.has(guessedPlayerId)) throw new Error('玩家不存在')
     if (guessedPlayerId === player.id) throw new Error('不能猜自己')
     if (revealed.includes(guessedPlayerId)) throw new Error('此玩家已揭曉')
