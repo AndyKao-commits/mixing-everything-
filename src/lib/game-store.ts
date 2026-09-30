@@ -1284,10 +1284,14 @@ export const gameStore = {
       if (!tieBreakOrder?.length) throw new Error('前三名有同分，請先決定同分順序')
       const required = new Set(unresolvedTies.flatMap((t) => t.players.map((p) => p.player_id)))
       const supplied = new Set(tieBreakOrder)
-      if (supplied.size !== tieBreakOrder.length || [...required].some((id) => !supplied.has(id))) {
-        throw new Error('同分順序資料不完整')
+      if (
+        supplied.size !== tieBreakOrder.length ||
+        supplied.size !== required.size ||
+        [...required].some((id) => !supplied.has(id)) ||
+        [...supplied].some((id) => !required.has(id))
+      ) {
+        throw new Error('同分順序必須剛好包含所有需要決勝的玩家')
       }
-      if (tieBreakOrder.some((id) => !store().players.has(id))) throw new Error('同分順序包含不存在的玩家')
     }
     let ranked = rankings()
 
@@ -1364,6 +1368,11 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (event.status !== 'settlement') throw new Error('尚未開始結算')
+    const undecided = [...store().prizeDecisions.values()].filter((d) => !d.choice)
+    const donationEndsAt = event.donation_ends_at ? new Date(event.donation_ends_at).getTime() : 0
+    if (undecided.length && Date.now() < donationEndsAt) {
+      throw new Error('贈與倒數尚未結束')
+    }
     for (const d of store().prizeDecisions.values()) {
       if (!d.choice) {
         d.choice = 'keep'
