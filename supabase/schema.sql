@@ -2,6 +2,15 @@
 
 create extension if not exists "pgcrypto";
 
+-- Durable aggregate used by the current game engine. This removes process
+-- memory / Vercel instance affinity as a correctness requirement.
+create table if not exists app_state (
+  key text primary key,
+  state jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   name text not null,
