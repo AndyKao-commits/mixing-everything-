@@ -58,9 +58,6 @@ export async function routeApiRequest(input: {
         status: 200,
         data: gameStore.completeBounty(playerToken, String(body.bountyId)),
       }
-    } else if (method === 'POST' && path === 'games/dont-copy/answer') {
-      gameStore.submitDontCopyAnswer(playerToken, String(body.text || ''))
-      result = { status: 200, data: { ok: true } }
     } else if (method === 'POST' && path === 'games/who-wrote/answer') {
       gameStore.submitWhoWroteAnswer(playerToken, String(body.text || ''))
       result = { status: 200, data: { ok: true } }
