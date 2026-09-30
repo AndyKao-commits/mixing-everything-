@@ -22,9 +22,12 @@ export default function AdminPage() {
       setState(await api.adminState(t))
       setError('')
     } catch (e) {
-      clearAdminToken()
-      setToken(null)
-      setError(e instanceof Error ? e.message : '請重新登入')
+      const message = e instanceof Error ? e.message : '暫時無法更新'
+      setError(message)
+      if (/管理員未登入|重新登入/.test(message)) {
+        clearAdminToken()
+        setToken(null)
+      }
     }
   }, [token])
 
