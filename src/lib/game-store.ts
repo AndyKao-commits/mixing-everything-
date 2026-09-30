@@ -24,7 +24,7 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearPhotos, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
 import type {
@@ -554,6 +554,30 @@ export const gameStore = {
   },
 
   requireAdmin,
+
+  async clearEventData(adminToken: string) {
+    requireAdmin(adminToken)
+    await persistClearPhotos()
+    const currentAdminSessions = new Set(store().adminSessions)
+    store().event = null
+    store().players.clear()
+    store().sessions.clear()
+    store().scores = []
+    store().bingoCards.clear()
+    store().secretTasks.clear()
+    store().bounties = []
+    store().playerBounties.clear()
+    store().targets.clear()
+    store().groupGames.clear()
+    store().messages.clear()
+    store().prizeDecisions.clear()
+    store().settlement = null
+    store().finalClicks.clear()
+    store().mysteryUsed.clear()
+    store().adminSessions = currentAdminSessions
+    this.bootstrap()
+    return this.getAdminState()
+  },
 
   createPlayer(adminToken: string, name: string) {
     requireAdmin(adminToken)
