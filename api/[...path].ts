@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { routeApiRequest } from '../src/lib/http-router'
 
 export const config = {
   api: {
@@ -10,9 +11,6 @@ export const config = {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Lazy-load app code so import failures become JSON errors, not platform HTML 500s.
-    const { routeApiRequest } = await import('../src/lib/http-router')
-
     const parts = req.query.path
     const path = Array.isArray(parts) ? parts.join('/') : String(parts || '')
 

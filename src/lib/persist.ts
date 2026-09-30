@@ -1,6 +1,6 @@
 /**
  * Cross-instance state for Vercel serverless.
- * Prefer Vercel Runtime Cache; never crash the request if persistence is unavailable.
+ * Uses in-memory + optional Runtime Cache. Never throws.
  */
 
 const STATE_KEY = 'bbq-party-state-v1'
@@ -12,23 +12,31 @@ type CacheLike = {
   set(key: string, value: unknown, opts?: { ttl?: number; tags?: string[] }): Promise<void>
 }
 
-// Process-local fallback (dev + warm lambdas)
 const memory = new Map<string, unknown>()
+let cacheInit: Promise<CacheLike | null> | null = null
 
-async function runtimeCache(): Promise<CacheLike | null> {
-  if (!process.env.VERCEL) return null
-  try {
-    const mod = await import('@vercel/functions')
-    return mod.getCache({ namespace: 'bbq-party' }) as CacheLike
-  } catch (error) {
-    console.error('runtimeCache unavailable', error)
-    return null
+function getRuntimeCache(): Promise<CacheLike | null> {
+  if (!process.env.VERCEL) return Promise.resolve(null)
+  if (!cacheInit) {
+    cacheInit = (async () => {
+      try {
+        // Use require so @vercel/node CJS bundling can include it.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const mod = require('@vercel/functions') as {
+          getCache: (opts?: { namespace?: string }) => CacheLike
+        }
+        return mod.getCache({ namespace: 'bbq-party' })
+      } catch (error) {
+        console.error('runtimeCache unavailable', error)
+        return null
+      }
+    })()
   }
+  return cacheInit
 }
 
 function readLocalFile(key: string): unknown | null {
-  if (process.env.VERCEL) return null
-  if (key !== STATE_KEY) return null
+  if (process.env.VERCEL || key !== STATE_KEY) return null
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs') as typeof import('fs')
@@ -43,8 +51,7 @@ function readLocalFile(key: string): unknown | null {
 }
 
 function writeLocalFile(key: string, value: unknown): void {
-  if (process.env.VERCEL) return
-  if (key !== STATE_KEY) return
+  if (process.env.VERCEL || key !== STATE_KEY) return
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs') as typeof import('fs')
@@ -60,7 +67,7 @@ function writeLocalFile(key: string, value: unknown): void {
 
 export async function persistGet<T = unknown>(key: string): Promise<T | null> {
   try {
-    const cache = await runtimeCache()
+    const cache = await getRuntimeCache()
     if (cache) {
       const value = await cache.get(key)
       if (value != null) return value as T
@@ -73,16 +80,14 @@ export async function persistGet<T = unknown>(key: string): Promise<T | null> {
 
   const fromFile = readLocalFile(key)
   if (fromFile != null) return fromFile as T
-
   return null
 }
 
 export async function persistSet(key: string, value: unknown): Promise<void> {
   memory.set(key, value)
   writeLocalFile(key, value)
-
   try {
-    const cache = await runtimeCache()
+    const cache = await getRuntimeCache()
     if (cache) {
       await cache.set(key, value, { ttl: TTL_SECONDS, tags: ['bbq-party'] })
     }

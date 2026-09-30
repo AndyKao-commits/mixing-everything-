@@ -1,8 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { routeApiRequest } from '../../src/lib/http-router'
 
-/**
- * Explicit login route so /api/admin/login does not depend solely on the catch-all.
- */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') {
@@ -10,7 +8,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { routeApiRequest } = await import('../../src/lib/http-router')
     const result = await routeApiRequest({
       method: 'POST',
       path: 'admin/login',
