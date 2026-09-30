@@ -9,6 +9,7 @@ export default function GamesPage() {
   const { data, refresh, setData } = usePlayerView(1000)
   const [text, setText] = useState('')
   const [clicks, setClicks] = useState(0)
+  const [pendingClicks, setPendingClicks] = useState(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -90,16 +91,27 @@ export default function GamesPage() {
     }
   }
 
-  async function tap() {
-    const token = getPlayerToken()
-    if (!token) return
-    try {
-      const res = await api.finalClick(token, Date.now())
-      setClicks(res.count)
-    } catch {
-      // ignore end
-    }
+  function tap() {
+    if (left === 0) return
+    setClicks((n) => n + 1)
+    setPendingClicks((n) => n + 1)
   }
+
+  useEffect(() => {
+    if (!game || game.kind !== 'final_button' || pendingClicks <= 0) return
+    const id = window.setTimeout(async () => {
+      const token = getPlayerToken()
+      if (!token) return
+      const batch = pendingClicks
+      setPendingClicks((n) => Math.max(0, n - batch))
+      try {
+        await api.finalClick(token, Date.now(), batch)
+      } catch {
+        // The server may reject a late batch after the timer closes.
+      }
+    }, 300)
+    return () => window.clearTimeout(id)
+  }, [pendingClicks, game])
 
   async function sendMessage() {
     const token = getPlayerToken()
