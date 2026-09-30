@@ -7,7 +7,7 @@ export async function exportBingoImage(opts: {
   completed: number
 }): Promise<Blob> {
   const width = 1080
-  const height = 1080
+  const height = 1254
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -16,6 +16,7 @@ export async function exportBingoImage(opts: {
   ctx.fillRect(0, 0, width, height)
 
   const gap = 8
+  const labelHeight = 58
   const size = (width - gap * 2) / 3
   const startY = 0
 
@@ -23,14 +24,16 @@ export async function exportBingoImage(opts: {
     const col = i % 3
     const row = Math.floor(i / 3)
     const x = col * (size + gap)
-    const y = startY + row * (size + gap)
+    const y = startY + row * (size + labelHeight + gap)
     ctx.fillStyle = '#292524'
     ctx.fillRect(x, y, size, size)
     const cell = opts.cells[i]
     if (cell?.photo_data_url) {
       const img = await loadImage(cell.photo_data_url)
-      drawImageCover(ctx, img, x, y, size, size)
+      ctx.drawImage(img, x, y, size, size)
     }
+    ctx.fillStyle = '#fffaf5'
+    drawSingleLine(ctx, cell?.text || '', x + 8, y + size + 34, size - 16)
   }
 
   return new Promise((resolve, reject) => {
@@ -64,11 +67,15 @@ function loadImageElement(src: string) {
   })
 }
 
-function drawImageCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, width: number, height: number) {
-  const scale = Math.max(width / img.naturalWidth, height / img.naturalHeight)
-  const sourceWidth = width / scale
-  const sourceHeight = height / scale
-  const sourceX = (img.naturalWidth - sourceWidth) / 2
-  const sourceY = (img.naturalHeight - sourceHeight) / 2
-  ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height)
+function drawSingleLine(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number) {
+  let fontSize = 22
+  ctx.font = fontSize + 'px sans-serif'
+  while (fontSize > 14 && ctx.measureText(text).width > maxWidth) {
+    fontSize -= 1
+    ctx.font = fontSize + 'px sans-serif'
+  }
+  let output = text
+  while (output.length > 1 && ctx.measureText(output).width > maxWidth) output = output.slice(0, -1)
+  if (output !== text) output += '…'
+  ctx.fillText(output, x, y)
 }
