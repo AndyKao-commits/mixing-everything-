@@ -1,41 +1,69 @@
-# Mixing Everything
+# 今晚誰會贏？
 
-多功能小工具站基礎模板。左側列表導覽；主頁是可即時顯示的日誌。
+手機優先的烤肉聚會積分遊戲 Web App（約 15 人現場使用）。
 
-## Stack
+網站負責：玩家身分、任務、九宮格拍照、懸賞、團康、計分、排名與獎金結算。  
+不要求一直看手機——想到任務再打開，做完就收起來。
 
-- Next.js 15（靜態匯出）
-- TypeScript
-- React 19
-- Tailwind CSS
+## 技術
 
-## 開發
+- Next.js 15 + React 19 + TypeScript + Tailwind CSS
+- 本機開發：Next App Router API（`npm run dev`）
+- Vercel：靜態匯出 `out/` + `/api` Serverless（此專案的 Vercel 設定需要 `out/`）
+- V1：記憶體 store（單實例最適合；多實例建議接 Supabase）
+- 可選：Supabase（見 `supabase/schema.sql`）
+
+## 開始
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 建置
+開啟 http://localhost:3000
 
-```bash
-npm run build
-npm start
-```
+管理員預設 PIN：`2468`（可用環境變數 `ADMIN_PIN` 覆蓋）
+
+## 玩家
+
+掃碼 / 開啟首頁 → **加入遊戲** → 選名字 → 設定或輸入 4 位 PIN
+
+底部導覽：
+
+| 分頁 | 內容 |
+| --- | --- |
+| 首頁 | 自己的積分與進行中活動 |
+| 任務 | 九宮格 / 秘密任務 / 懸賞 |
+| 遊戲 | 團康、最後按鈕、留言、結算 |
+| 我的 | 積分明細、切換玩家 |
+
+結算前玩家**看不到**其他人分數與排名。
+
+## 管理員
+
+首頁右下角「管理員」→ PIN
+
+- 開始活動（發放任務）
+- 團康：不要跟我一樣、誰寫的
+- 最後按鈕大戰、留一句話
+- 鎖定積分 → 最終結算 → 60 秒贈與第二名
+
+## 獎金
+
+| 名次 | 獎金 |
+| --- | --- |
+| 1 | NT$1,069 |
+| 2 | NT$0 + 贈與 |
+| 3 | NT$69 |
+| 4–15 | NT$10（可保留或贈與第二名） |
 
 ## 結構
 
-- 左側導覽：日誌、工具總覽、關於、各工具
-- 主頁日誌：寫完立刻顯示，並存到 LocalStorage
-- 工具註冊表：`src/data/tools.ts`
-
-## 如何新增工具
-
-1. 在 `src/tools/<tool-id>/` 建立元件
-2. 到 `src/data/tools.ts` 註冊
-3. 左側「工具」列表會自動出現
-
-目前內建：
-
-- **計數器** `/tools/counter`
-- **隨手記** `/tools/notes`
+```
+app/                 頁面與 API
+src/components/      UI
+src/data/            題庫
+src/lib/             store / 計分 / session
+src/types/           型別
+supabase/            正式環境 schema
+```
