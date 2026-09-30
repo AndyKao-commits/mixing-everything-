@@ -47,6 +47,7 @@ export default function TasksPage() {
   const [cropZoom, setCropZoom] = useState(1)
   const cameraInput = useRef<HTMLInputElement>(null)
   const libraryInput = useRef<HTMLInputElement>(null)
+  const cropDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
 
   const cells = data?.bingo?.cells || []
 
@@ -291,13 +292,33 @@ export default function TasksPage() {
               <p className="text-sm text-soft">調整照片</p>
               <p className="text-xl font-semibold">選好要放進九宮格的 1:1 範圍</p>
             </div>
-            <div className="aspect-square overflow-hidden rounded-2xl bg-black">
+            <div
+              className="aspect-square touch-none overflow-hidden rounded-2xl bg-black"
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                cropDrag.current = { x: e.clientX, y: e.clientY, startX: cropX, startY: cropY }
+              }}
+              onPointerMove={(e) => {
+                const drag = cropDrag.current
+                if (!drag) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                setCropX(Math.max(0, Math.min(100, drag.startX - ((e.clientX - drag.x) / rect.width) * 100)))
+                setCropY(Math.max(0, Math.min(100, drag.startY - ((e.clientY - drag.y) / rect.height) * 100)))
+              }}
+              onPointerUp={() => { cropDrag.current = null }}
+              onPointerCancel={() => { cropDrag.current = null }}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cropUrl} alt="裁切預覽" className="h-full w-full object-cover" style={{ objectPosition: `${cropX}% ${cropY}%`, transform: `scale(${cropZoom})` }} />
+              <img
+                src={cropUrl}
+                alt="裁切預覽"
+                draggable={false}
+                className="h-full w-full select-none object-cover"
+                style={{ objectPosition: `${cropX}% ${cropY}%`, transform: `scale(${cropZoom})` }}
+              />
             </div>
-            <label className="block text-sm">左右 <input className="w-full" type="range" min="0" max="100" value={cropX} onChange={(e) => setCropX(Number(e.target.value))} /></label>
-            <label className="block text-sm">上下 <input className="w-full" type="range" min="0" max="100" value={cropY} onChange={(e) => setCropY(Number(e.target.value))} /></label>
-            <label className="block text-sm">縮放 <input className="w-full" type="range" min="1" max="2.5" step="0.05" value={cropZoom} onChange={(e) => setCropZoom(Number(e.target.value))} /></label>
+            <p className="text-center text-sm text-soft">直接拖曳照片調整上下左右，再用滑桿縮放</p>
+            <label className="block text-sm">縮放 <input className="w-full" type="range" min="1" max="3" step="0.05" value={cropZoom} onChange={(e) => setCropZoom(Number(e.target.value))} /></label>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" className="btn-ghost" onClick={() => { URL.revokeObjectURL(cropUrl); setCropFile(null); setCropUrl('') }}>重選</button>
               <button type="button" className="btn-primary" disabled={busy} onClick={() => void confirmCrop()}>使用這個範圍</button>
