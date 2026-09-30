@@ -1,14 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { routeApiRequest } from '../src/lib/http-router'
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '2mb',
-    },
-  },
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const parts = req.query.path

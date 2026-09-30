@@ -1,6 +1,7 @@
 /**
- * Cross-instance state for Vercel serverless.
- * Uses in-memory + optional Runtime Cache. Never throws.
+ * Cross-instance state helpers.
+ * Prefer in-process memory. Optionally use Vercel Runtime Cache when available.
+ * Never throws — login/API must keep working if persistence is unavailable.
  */
 
 const STATE_KEY = 'bbq-party-state-v1'
@@ -13,34 +14,27 @@ type CacheLike = {
 }
 
 const memory = new Map<string, unknown>()
-let cacheInit: Promise<CacheLike | null> | null = null
 
-function getRuntimeCache(): Promise<CacheLike | null> {
-  if (!process.env.VERCEL) return Promise.resolve(null)
-  if (!cacheInit) {
-    cacheInit = (async () => {
-      try {
-        // Use require so @vercel/node CJS bundling can include it.
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const mod = require('@vercel/functions') as {
-          getCache: (opts?: { namespace?: string }) => CacheLike
-        }
-        return mod.getCache({ namespace: 'bbq-party' })
-      } catch (error) {
-        console.error('runtimeCache unavailable', error)
-        return null
-      }
-    })()
+async function getRuntimeCache(): Promise<CacheLike | null> {
+  if (!process.env.VERCEL) return null
+  try {
+    // Optional dependency — must not break the function if missing/unbundled.
+    const req = typeof require === 'function' ? require : null
+    if (!req) return null
+    const mod = req('@vercel/functions') as {
+      getCache?: (opts?: { namespace?: string }) => CacheLike
+    }
+    if (typeof mod?.getCache !== 'function') return null
+    return mod.getCache({ namespace: 'bbq-party' })
+  } catch {
+    return null
   }
-  return cacheInit
 }
 
 function readLocalFile(key: string): unknown | null {
   if (process.env.VERCEL || key !== STATE_KEY) return null
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs') as typeof import('fs')
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require('path') as typeof import('path')
     const file = path.join(process.cwd(), '.data', 'bbq-store.json')
     if (!fs.existsSync(file)) return null
@@ -53,9 +47,7 @@ function readLocalFile(key: string): unknown | null {
 function writeLocalFile(key: string, value: unknown): void {
   if (process.env.VERCEL || key !== STATE_KEY) return
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs') as typeof import('fs')
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require('path') as typeof import('path')
     const file = path.join(process.cwd(), '.data', 'bbq-store.json')
     fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -77,7 +69,6 @@ export async function persistGet<T = unknown>(key: string): Promise<T | null> {
   }
 
   if (memory.has(key)) return memory.get(key) as T
-
   const fromFile = readLocalFile(key)
   if (fromFile != null) return fromFile as T
   return null

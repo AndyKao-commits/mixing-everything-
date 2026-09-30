@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "installCommand": "npm install && node node_modules/esbuild/install.js",
   "outputDirectory": "out",
   "framework": null
 }
