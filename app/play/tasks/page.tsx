@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { exportBingoImage } from '@/lib/bingo-export'
 import { getPlayerToken } from '@/lib/client-session'
@@ -8,7 +8,7 @@ import { usePlayerView } from '@/hooks/usePlayerView'
 
 type Tab = 'bingo' | 'secret' | 'bounty'
 
-function compressImage(file: File, max = 900): Promise<string> {
+function compressImage(file: File, max = 1600): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = reject
@@ -21,7 +21,7 @@ function compressImage(file: File, max = 900): Promise<string> {
         canvas.height = Math.round(img.height * scale)
         const ctx = canvas.getContext('2d')!
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.72))
+        resolve(canvas.toDataURL('image/jpeg', 0.92))
       }
       img.onerror = reject
       img.src = String(reader.result)
@@ -37,6 +37,8 @@ export default function TasksPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
+  const cameraInput = useRef<HTMLInputElement>(null)
+  const libraryInput = useRef<HTMLInputElement>(null)
 
   const cells = data?.bingo?.cells || []
 
@@ -288,16 +290,37 @@ export default function TasksPage() {
             ) : activeCell.completed ? (
               <p className="text-moss">✓ 已完成</p>
             ) : (
-              <label className="btn-primary cursor-pointer">
-                拍照／選照片
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => cameraInput.current?.click()}>
+                  拍照
+                </button>
+                <button type="button" className="btn-ghost" disabled={busy} onClick={() => libraryInput.current?.click()}>
+                  選照片
+                </button>
                 <input
+                  ref={cameraInput}
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  className="hidden"
-                  onChange={(e) => void onPhoto(e.target.files?.[0] || null)}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0] || null
+                    e.currentTarget.value = ''
+                    void onPhoto(file)
+                  }}
                 />
-              </label>
+                <input
+                  ref={libraryInput}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0] || null
+                    e.currentTarget.value = ''
+                    void onPhoto(file)
+                  }}
+                />
+              </div>
             )}
           </div>
         </div>

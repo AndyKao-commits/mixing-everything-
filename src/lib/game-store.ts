@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   CREATIVE_PROMPTS,
   FOOD_PROMPTS,
@@ -24,7 +25,8 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistFinalButtonClicks, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
 import type {
@@ -67,30 +69,37 @@ interface Store {
   adminSessions: Set<string>
 }
 
-const g = globalThis as typeof globalThis & { __bbqStore?: Store }
+function createStore(): Store {
+  return {
+    event: null,
+    players: new Map(),
+    sessions: new Map(),
+    scores: [],
+    bingoCards: new Map(),
+    secretTasks: new Map(),
+    bounties: [],
+    playerBounties: new Map(),
+    targets: new Map(),
+    groupGames: new Map(),
+    messages: new Map(),
+    prizeDecisions: new Map(),
+    settlement: null,
+    finalClicks: new Map(),
+    mysteryUsed: new Set(),
+    adminSessions: new Set(),
+  }
+}
+
+const requestStore = new AsyncLocalStorage<Store>()
+
+export function beginGameStoreRequest(): void {
+  requestStore.enterWith(createStore())
+}
 
 function store(): Store {
-  if (!g.__bbqStore) {
-    g.__bbqStore = {
-      event: null,
-      players: new Map(),
-      sessions: new Map(),
-      scores: [],
-      bingoCards: new Map(),
-      secretTasks: new Map(),
-      bounties: [],
-      playerBounties: new Map(),
-      targets: new Map(),
-      groupGames: new Map(),
-      messages: new Map(),
-      prizeDecisions: new Map(),
-      settlement: null,
-      finalClicks: new Map(),
-      mysteryUsed: new Set(),
-      adminSessions: new Set(),
-    }
-  }
-  return g.__bbqStore
+  const current = requestStore.getStore()
+  if (!current) throw new Error('Game store request context is missing')
+  return current
 }
 
 function requireEvent(): Event {
@@ -118,6 +127,10 @@ function addScore(
   note?: string,
 ) {
   assertNotLocked(event)
+  if (!store().players.has(playerId)) throw new Error('玩家不存在')
+  if (!Number.isFinite(points) || !Number.isInteger(points) || Math.abs(points) > 100) {
+    throw new Error('分數必須是 -100 到 100 的整數')
+  }
   if (points === 0) return
   // prevent duplicate source scoring
   const exists = store().scores.some(
@@ -172,8 +185,8 @@ function takeUnique(prompts: BingoPrompt[], used: Set<string>, n: number): Bingo
 
 function buildBingoCard(eventId: string, playerId: string, playerNames: string[]): BingoCard {
   const used = new Set<string>()
-  const food = takeUnique(FOOD_PROMPTS, used, 2)
-  const object = takeUnique(OBJECT_PROMPTS, used, 2)
+  const food = takeUnique(FOOD_PROMPTS, used, 1)
+  const object = takeUnique(OBJECT_PROMPTS, used, 1)
   const people = takeUnique(PEOPLE_PROMPTS, used, 2)
   const moment = takeUnique(MOMENT_PROMPTS, used, 1)
   const creative = takeUnique(CREATIVE_PROMPTS, used, 1)
@@ -199,7 +212,7 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
     ...creative,
     named,
     ...mystery,
-  ]).slice(0, 9)
+  ])
 
   while (selected.length < 9) {
     selected.push(pick(OBJECT_PROMPTS))
@@ -225,6 +238,13 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
     line_bonuses: [],
     full_bonus: false,
   }
+}
+
+function resetSetupAssignments() {
+  store().bingoCards.clear()
+  store().secretTasks.clear()
+  store().targets.clear()
+  store().mysteryUsed.clear()
 }
 
 function ensurePlayerAssignments(event: Event) {
@@ -329,7 +349,7 @@ function getSession(token?: string | null): PlayerSession | null {
   const verified = verifyPlayerToken(token)
   if (!verified) return null
   const event = store().event
-  if (!event) return null
+  if (!event || verified.eventId !== event.id) return null
   const session: PlayerSession = {
     id: uid(),
     event_id: event.id,
@@ -342,12 +362,15 @@ function getSession(token?: string | null): PlayerSession | null {
   return session
 }
 
-function requirePlayerSession(token?: string | null): { session: PlayerSession; player: Player } {
+function requirePlayerSession(
+  token?: string | null,
+  options: { touch?: boolean } = {},
+): { session: PlayerSession; player: Player } {
   const session = getSession(token)
   if (!session) throw new Error('請重新登入')
   const player = store().players.get(session.player_id)
   if (!player) throw new Error('玩家不存在')
-  player.last_seen_at = nowIso()
+  if (options.touch !== false) player.last_seen_at = nowIso()
   return { session, player }
 }
 
@@ -382,9 +405,9 @@ function serializeStore(): SerializedStore {
   const bingoCards = [...store().bingoCards.values()].map((card) => ({
     ...card,
     cells: card.cells.map((cell) => {
-      if (cell.photo_data_url) {
+      if (cell.photo_data_url || cell.photo_ref) {
         photoIds.push(cell.id)
-        return { ...cell, photo_data_url: null, photo_ref: cell.id }
+        return { ...cell, photo_data_url: null, photo_ref: cell.photo_ref || cell.id }
       }
       return { ...cell, photo_data_url: null }
     }),
@@ -447,10 +470,37 @@ function activeGroupGame(): GroupGame | null {
   return store().groupGames.get(event.group_game_id) || null
 }
 
+
+function safeGroupGame(viewerPlayerId?: string): GroupGame | null {
+  const game = activeGroupGame()
+  if (!game || game.kind !== 'who_wrote_it') return game
+  const answers = (game.payload.answers as Array<{ id: string; player_id: string; text: string; revealed: boolean }>) || []
+  const currentId = game.payload.currentAnswerId as string | null
+  const current = currentId ? answers.find((a) => a.id === currentId) : undefined
+  const payload: Record<string, unknown> = {
+    prompt: game.payload.prompt,
+    answerCount: answers.length,
+    mySubmitted: viewerPlayerId ? answers.some((a) => a.player_id === viewerPlayerId) : false,
+    revealedPlayerIds: game.payload.revealedPlayerIds || [],
+  }
+  if (game.status === 'voting' && current) {
+    payload.currentAnswer = { id: current.id, text: current.text }
+    payload.isCurrentAuthor = viewerPlayerId === current.player_id
+  }
+  if (game.status === 'round_result' && game.payload.reveal) {
+    const reveal = game.payload.reveal as { player_id: string; text: string }
+    payload.reveal = viewerPlayerId
+      ? reveal
+      : { text: reveal.text, player_name: store().players.get(reveal.player_id)?.name || '未知玩家' }
+  }
+  return { ...game, payload }
+}
+
 export const gameStore = {
   bootstrap() {
     if (store().event) return
-    const adminPin = process.env.ADMIN_PIN || '2468'
+    const adminPin = process.env.ADMIN_PIN
+    if (!adminPin) throw new Error('ADMIN_PIN 尚未設定')
     const { hash, salt } = hashPin(adminPin)
     const now = nowIso()
     const event: Event = {
@@ -469,24 +519,6 @@ export const gameStore = {
       last_group_game_at: null,
     }
     store().event = event
-    const names = [
-      '阿樂', '小傑', 'Kevin', 'Mia', '婷婷',
-      '阿明', '小雨', 'Jamie', '阿豪', 'Yuki',
-      '小安', 'Chris', '阿珍', 'Ben', '小魚',
-    ]
-    names.forEach((name) => {
-      const p: Player = {
-        id: uid(),
-        event_id: event.id,
-        name,
-        pin_hash: null,
-        pin_salt: null,
-        pin_set: false,
-        created_at: nowIso(),
-        last_seen_at: null,
-      }
-      store().players.set(p.id, p)
-    })
   },
 
   getPublicState() {
@@ -504,42 +536,38 @@ export const gameStore = {
         last_group_game_at: event.last_group_game_at,
       },
       players: publicPlayers(),
-      groupGame: activeGroupGame(),
-      settlement: store().settlement,
+      groupGame: safeGroupGame(),
     }
   },
 
-  async load() {
+  async load(options: { hydratePhotos?: boolean } = {}): Promise<boolean> {
     const data = await persistGetState<SerializedStore>()
-    if (!data?.event) return
+    if (!data?.event) return false
     hydrateStore(data)
-    // Restore bingo photos from separate cache entries (2MB item limit).
+    if (!options.hydratePhotos) return true
+    // Signed photo URLs are only needed for player views that render/export bingo.
     for (const card of store().bingoCards.values()) {
       for (const cell of card.cells) {
         if (cell.photo_data_url) continue
+        if (!('photo_ref' in cell) || !cell.photo_ref) continue
         const photo = await persistGetPhoto(cell.id)
         if (photo) cell.photo_data_url = photo
       }
     }
+    return true
   },
 
   async save() {
     const snapshot = serializeStore()
-    // Persist photos separately so the main state stays under Runtime Cache limits.
-    for (const card of store().bingoCards.values()) {
-      for (const cell of card.cells) {
-        if (cell.photo_data_url) {
-          await persistSetPhoto(cell.id, cell.photo_data_url)
-        }
-      }
-    }
     await persistSetState(snapshot)
   },
 
   adminLogin(pin: string) {
     this.bootstrap()
     const event = requireEvent()
-    if (!verifyPin(pin, event.admin_pin_hash, event.admin_pin_salt)) {
+    const configuredPin = process.env.ADMIN_PIN
+    if (!configuredPin) throw new Error('ADMIN_PIN 尚未設定')
+    if (pin !== configuredPin) {
       throw new Error('管理員密碼錯誤')
     }
     const token = signAdminToken()
@@ -562,19 +590,55 @@ export const gameStore = {
       groupGame: activeGroupGame(),
       settlement: store().settlement,
       prizeDecisions: [...store().prizeDecisions.values()],
-      messages: [...store().messages.values()],
+      messageCount: store().messages.size,
+      messages:
+        store().players.size > 0 && store().messages.size >= store().players.size
+          ? [...store().messages.values()].map((m) => ({ id: m.id, text: m.text, created_at: m.created_at }))
+          : [],
+      ties: this.topTies(),
     }
   },
 
   requireAdmin,
 
+  async clearEventData(adminToken: string) {
+    requireAdmin(adminToken)
+    await persistClearPhotos()
+    await persistClearFinalButtonClicks()
+    const currentAdminSessions = new Set(store().adminSessions)
+    store().event = null
+    store().players.clear()
+    store().sessions.clear()
+    store().scores = []
+    store().bingoCards.clear()
+    store().secretTasks.clear()
+    store().bounties = []
+    store().playerBounties.clear()
+    store().targets.clear()
+    store().groupGames.clear()
+    store().messages.clear()
+    store().prizeDecisions.clear()
+    store().settlement = null
+    store().finalClicks.clear()
+    store().mysteryUsed.clear()
+    store().adminSessions = currentAdminSessions
+    this.bootstrap()
+    return this.getAdminState()
+  },
+
   createPlayer(adminToken: string, name: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    const cleanName = name.trim().slice(0, 16)
+    if (!cleanName) throw new Error('玩家名稱不可空白')
+    if (store().players.size >= 15) throw new Error('玩家人數上限為 15 人')
+    if ([...store().players.values()].some((p) => p.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+      throw new Error('玩家名稱不可重複')
+    }
     const player: Player = {
       id: uid(),
       event_id: event.id,
-      name: name.trim().slice(0, 16),
+      name: cleanName,
       pin_hash: null,
       pin_salt: null,
       pin_set: false,
@@ -582,19 +646,24 @@ export const gameStore = {
       last_seen_at: null,
     }
     store().players.set(player.id, player)
-    // reset targets if already assigned so cycle can rebuild next activate
-    if (event.status === 'setup') {
-      store().targets.clear()
-    }
+    if (event.status === 'setup') resetSetupAssignments()
     touch(event)
     return player
   },
 
   renamePlayer(adminToken: string, playerId: string, name: string) {
     requireAdmin(adminToken)
+    const event = requireEvent()
+    if (event.status !== 'setup') throw new Error('活動開始後不可更改玩家名稱')
     const player = store().players.get(playerId)
     if (!player) throw new Error('玩家不存在')
-    player.name = name.trim().slice(0, 16)
+    const cleanName = name.trim().slice(0, 16)
+    if (!cleanName) throw new Error('玩家名稱不可空白')
+    if ([...store().players.values()].some((p) => p.id !== playerId && p.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+      throw new Error('玩家名稱不可重複')
+    }
+    player.name = cleanName
+    resetSetupAssignments()
     return player
   },
 
@@ -603,10 +672,9 @@ export const gameStore = {
     const event = requireEvent()
     if (event.status !== 'setup') throw new Error('活動開始後不可刪除玩家')
     store().players.delete(playerId)
-    store().bingoCards.delete(playerId)
-    store().targets.delete(playerId)
-    for (const [id, t] of store().secretTasks) {
-      if (t.player_id === playerId) store().secretTasks.delete(id)
+    resetSetupAssignments()
+    for (const [id, session] of store().sessions) {
+      if (session.player_id === playerId) store().sessions.delete(id)
     }
     return true
   },
@@ -621,6 +689,7 @@ export const gameStore = {
   activateEvent(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (event.status !== 'setup') throw new Error('活動已經開始')
     if ([...store().players.values()].length < 2) throw new Error('至少需要 2 位玩家')
     ensurePlayerAssignments(event)
     event.status = 'active'
@@ -648,7 +717,7 @@ export const gameStore = {
     const player = store().players.get(playerId)
     if (!player || !player.pin_hash || !player.pin_salt) throw new Error('請先設定 PIN')
     if (!verifyPin(pin, player.pin_hash, player.pin_salt)) throw new Error('PIN 錯誤')
-    const token = signPlayerToken(player.id)
+    const token = signPlayerToken(player.id, event.id)
     const verified = verifyPlayerToken(token)!
     const session: PlayerSession = {
       id: uid(),
@@ -660,16 +729,16 @@ export const gameStore = {
     }
     store().sessions.set(session.id, session)
     player.last_seen_at = nowIso()
-    if (event.status === 'active' || event.status === 'setup') {
-      ensurePlayerAssignments(event)
-    }
+    // Assignments are finalized only when the event is activated. During setup
+    // the roster can still change, so generating them here would create stale
+    // named/target tasks and consume mystery prompts prematurely.
+    if (event.status === 'active') ensurePlayerAssignments(event)
     return { token, player: { id: player.id, name: player.name } }
   },
 
   getPlayerView(token: string) {
-    const { player } = requirePlayerSession(token)
+    const { player } = requirePlayerSession(token, { touch: false })
     const event = requireEvent()
-    ensurePlayerAssignments(event)
     const card = store().bingoCards.get(player.id) || null
     const secret = [...store().secretTasks.values()].find((t) => t.player_id === player.id) || null
     const target = store().targets.get(player.id) || null
@@ -710,13 +779,14 @@ export const gameStore = {
       bountyRemaining: myBounties.filter((b) => !b.completed).length,
       completedBingo,
       completedBounties,
-      groupGame: activeGroupGame(),
+      groupGame: safeGroupGame(player.id),
       messageSubmitted: [...store().messages.values()].some((m) => m.player_id === player.id),
       prizeDecision: store().prizeDecisions.get(player.id) || null,
-      settlement: store().settlement,
       myRank:
         store().settlement?.rankings.find((r) => r.player_id === player.id) || null,
-      donationTotal: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length * 10,
+      donationTotal:
+        (store().settlement?.rankings.find((r) => r.rank === 2)?.prize || 0) +
+        [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').reduce((sum, d) => sum + d.amount, 0),
       donors: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length,
       // Names only — never include scores here.
       roster: publicPlayers().map((p) => ({ id: p.id, name: p.name })),
@@ -730,6 +800,9 @@ export const gameStore = {
 
   revealMystery(token: string, cellId: string) {
     const { player } = requirePlayerSession(token)
+    const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const card = store().bingoCards.get(player.id)
     if (!card) throw new Error('尚未取得九宮格')
     const cell = card.cells.find((c) => c.id === cellId)
@@ -744,6 +817,7 @@ export const gameStore = {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const card = store().bingoCards.get(player.id)
     if (!card) throw new Error('尚未取得九宮格')
     const cell = card.cells.find((c) => c.id === cellId)
@@ -751,7 +825,7 @@ export const gameStore = {
     if (cell.mystery && !cell.revealed) throw new Error('請先揭曉神秘任務')
     if (cell.completed) throw new Error('此格已完成')
     if (!photoDataUrl?.startsWith('data:image/')) throw new Error('請上傳照片')
-    if (photoDataUrl.length > 1_800_000) throw new Error('照片太大，請壓縮後再傳')
+    if (photoDataUrl.length > 4_000_000) throw new Error('照片太大，請壓縮後再傳')
     // one photo per cell uniqueness soft-check
     if (card.cells.some((c) => c.photo_data_url === photoDataUrl)) {
       throw new Error('這張照片已使用過')
@@ -776,6 +850,8 @@ export const gameStore = {
   completeSecret(token: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const task = [...store().secretTasks.values()].find((t) => t.player_id === player.id)
     if (!task) throw new Error('沒有秘密任務')
     if (task.completed) throw new Error('已完成')
@@ -788,6 +864,8 @@ export const gameStore = {
   completeTarget(token: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const target = store().targets.get(player.id)
     if (!target) throw new Error('沒有懸賞目標')
     if (target.completed) throw new Error('已完成')
@@ -800,6 +878,8 @@ export const gameStore = {
   completeBounty(token: string, bountyId: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const bounty = store().bounties.find((b) => b.id === bountyId)
     if (!bounty) throw new Error('懸賞不存在')
     const key = `${player.id}_${bountyId}`
@@ -823,6 +903,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (event.status !== 'active') throw new Error('活動尚未開始')
+    if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     const game: GroupGame = {
       id: uid(),
       event_id: event.id,
@@ -864,11 +945,15 @@ export const gameStore = {
   scoreDontCopyRound(adminToken: string, uniquePlayerIds: string[]) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是團康計分階段')
     const game = activeGroupGame()
     if (!game || game.kind !== 'dont_copy_me') throw new Error('遊戲不存在')
     const scored = (game.payload.scoredRounds as number[]) || []
     if (scored.includes(game.round)) throw new Error('本輪已計分')
-    for (const pid of uniquePlayerIds) {
+    const validIds = [...new Set(uniquePlayerIds)]
+    if (validIds.some((pid) => !store().players.has(pid))) throw new Error('得分玩家不存在')
+    for (const pid of validIds) {
       addScore(event, pid, 'group_game', `${game.id}_r${game.round}_${pid}`, 1, `不要跟我一樣 R${game.round}`)
     }
     scored.push(game.round)
@@ -882,6 +967,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const game = activeGroupGame()
     if (!game || game.kind !== 'dont_copy_me') throw new Error('遊戲不存在')
+    if (game.status !== 'round_result') throw new Error('請先完成本題計分')
     const prompts = game.payload.prompts as string[]
     if (game.round >= prompts.length) {
       return this.endGroupGame(adminToken)
@@ -897,6 +983,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (event.status !== 'active') throw new Error('活動尚未開始')
+    if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     const game: GroupGame = {
       id: uid(),
       event_id: event.id,
@@ -934,18 +1021,16 @@ export const gameStore = {
       revealed: boolean
     }>
     if (answers.some((a) => a.player_id === player.id)) throw new Error('已提交')
+    const cleaned = text.trim().slice(0, 200)
+    if (!cleaned) throw new Error('請輸入答案')
     answers.push({
       id: uid(),
       player_id: player.id,
-      text: text.trim().slice(0, 200),
+      text: cleaned,
       revealed: false,
     })
     game.payload.answers = answers
     game.updated_at = nowIso()
-    const playerCount = store().players.size
-    if (answers.length >= playerCount) {
-      this.drawWhoWroteAnswer()
-    }
     return true
   },
 
@@ -953,6 +1038,7 @@ export const gameStore = {
     if (adminToken) requireAdmin(adminToken)
     const game = activeGroupGame()
     if (!game || game.kind !== 'who_wrote_it') throw new Error('遊戲不存在')
+    if (game.status !== 'playing' && game.status !== 'round_result') throw new Error('目前不能抽下一則')
     const answers = game.payload.answers as Array<{
       id: string
       player_id: string
@@ -966,6 +1052,7 @@ export const gameStore = {
     }
     const drawn = pick(pool)
     game.payload.currentAnswerId = drawn.id
+    game.payload.currentAuthorId = drawn.player_id
     game.payload.votes = {}
     game.status = 'voting'
     game.updated_at = nowIso()
@@ -980,6 +1067,9 @@ export const gameStore = {
       throw new Error('目前無法投票')
     }
     const revealed = (game.payload.revealedPlayerIds as string[]) || []
+    if (player.id === game.payload.currentAuthorId) throw new Error('這題是你的答案，不需投票')
+    if (!store().players.has(guessedPlayerId)) throw new Error('玩家不存在')
+    if (guessedPlayerId === player.id) throw new Error('不能猜自己')
     if (revealed.includes(guessedPlayerId)) throw new Error('此玩家已揭曉')
     const votes = (game.payload.votes as Record<string, string>) || {}
     if (votes[player.id]) throw new Error('已投票')
@@ -987,45 +1077,55 @@ export const gameStore = {
     game.payload.votes = votes
     game.updated_at = nowIso()
 
-    const playerCount = store().players.size
-    if (Object.keys(votes).length >= playerCount) {
-      const answers = game.payload.answers as Array<{
-        id: string
-        player_id: string
-        text: string
-        revealed: boolean
-      }>
-      const currentId = game.payload.currentAnswerId as string
-      const answer = answers.find((a) => a.id === currentId)
-      if (answer) {
-        for (const [voterId, guess] of Object.entries(votes)) {
-          if (guess === answer.player_id) {
-            addScore(
-              event,
-              voterId,
-              'who_wrote_it',
-              `${game.id}_${currentId}_${voterId}`,
-              1,
-              '猜對作者',
-            )
-          }
-        }
-        answer.revealed = true
-        revealed.push(answer.player_id)
-        game.payload.revealedPlayerIds = revealed
-        game.payload.reveal = {
-          player_id: answer.player_id,
-          text: answer.text,
-        }
-        game.status = 'round_result'
-      }
+    const eligibleVoterIds = [...store().players.keys()].filter((id) => id !== (game.payload.currentAuthorId as string | undefined))
+    if (Object.keys(votes).length >= eligibleVoterIds.length) {
+      this.revealWhoWroteAnswer()
     }
     return true
+  },
+
+  revealWhoWroteAnswer(adminToken?: string) {
+    if (adminToken) requireAdmin(adminToken)
+    const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是團康計分階段')
+    const game = activeGroupGame()
+    if (!game || game.kind !== 'who_wrote_it' || game.status !== 'voting') {
+      throw new Error('目前沒有可揭曉的答案')
+    }
+    const answers = game.payload.answers as Array<{
+      id: string
+      player_id: string
+      text: string
+      revealed: boolean
+    }>
+    const currentId = game.payload.currentAnswerId as string
+    const answer = answers.find((a) => a.id === currentId)
+    if (!answer) throw new Error('找不到目前答案')
+    const votes = (game.payload.votes as Record<string, string>) || {}
+    for (const [voterId, guess] of Object.entries(votes)) {
+      if (guess === answer.player_id) {
+        addScore(event, voterId, 'who_wrote_it', `${game.id}_${currentId}_${voterId}`, 1, '猜對作者')
+      }
+    }
+    answer.revealed = true
+    const revealed = (game.payload.revealedPlayerIds as string[]) || []
+    if (!revealed.includes(answer.player_id)) revealed.push(answer.player_id)
+    game.payload.revealedPlayerIds = revealed
+    game.payload.reveal = { player_id: answer.player_id, text: answer.text }
+    game.status = 'round_result'
+    game.updated_at = nowIso()
+    return game
   },
 
   endGroupGame(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (event.status !== 'active') throw new Error('目前不是團康階段')
+    const game = activeGroupGame()
+    if (!game || game.kind === 'final_button') throw new Error('目前沒有可結束的團康')
+    game.status = 'finished'
+    game.updated_at = nowIso()
     event.active_group_game = 'none'
     event.group_game_id = null
     event.last_group_game_at = nowIso()
@@ -1036,6 +1136,8 @@ export const gameStore = {
   startFinalButton(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (event.status !== 'active') throw new Error('請先完成一般活動階段')
+    if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     if (event.score_locked) throw new Error('已鎖分')
     const start = Date.now() + 3000
     const end = start + 10_000
@@ -1063,7 +1165,7 @@ export const gameStore = {
     return game
   },
 
-  clickFinalButton(token: string, clientTs: number) {
+  async clickFinalButton(token: string, clientTs: number, clickCount = 1) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     const game = activeGroupGame()
@@ -1073,17 +1175,24 @@ export const gameStore = {
     const end = Number(game.payload.endsAt)
     if (now < start) throw new Error('尚未開始')
     if (now > end || game.payload.finished) {
-      this.finishFinalButton()
       throw new Error('時間到')
     }
     // reject wildly skewed client timestamps
     if (Math.abs(clientTs - now) > 5000) throw new Error('時間異常')
+    if (isSupabaseConfigured()) {
+      const count = await persistFinalButtonClicks(game.id, player.id, Math.max(1, Math.floor(clickCount || 1)), now)
+      return { count }
+    }
     const row = store().finalClicks.get(player.id) || { count: 0, lastAt: 0, events: [] as number[] }
     if (now - row.lastAt < 40) {
       // ignore superhuman spam; do not error to keep UX smooth
       return { count: row.count }
     }
-    row.count += 1
+    const accepted = Math.max(1, Math.min(12, Math.floor(clickCount || 1)))
+    const elapsed = row.lastAt ? Math.max(1, now - row.lastAt) : 500
+    const maxForWindow = Math.max(1, Math.ceil(elapsed / 40))
+    const increment = Math.min(accepted, maxForWindow)
+    row.count += increment
     row.lastAt = now
     row.events.push(now)
     if (row.events.length > 400) row.events = row.events.slice(-400)
@@ -1091,7 +1200,7 @@ export const gameStore = {
     return { count: row.count }
   },
 
-  finishFinalButton(adminToken?: string) {
+  async finishFinalButton(adminToken?: string) {
     if (adminToken) requireAdmin(adminToken)
     const event = requireEvent()
     const game = activeGroupGame()
@@ -1099,27 +1208,25 @@ export const gameStore = {
     if (game.payload.finished) return game
     game.payload.finished = true
     game.status = 'finished'
-    const ranked = [...store().finalClicks.entries()]
-      .map(([playerId, data]) => ({ playerId, count: data.count }))
-      .sort((a, b) => b.count - a.count)
+    const ranked = isSupabaseConfigured()
+      ? await persistGetFinalButtonResults(game.id)
+      : [...store().finalClicks.entries()]
+          .map(([playerId, data]) => ({ playerId, count: data.count }))
+          .sort((a, b) => b.count - a.count)
     const points = [3, 2, 1]
     ranked.slice(0, 3).forEach((row, idx) => {
-      try {
-        addScore(
-          event,
-          row.playerId,
-          'final_button',
-          `${game.id}_${row.playerId}`,
-          points[idx],
-          `按鈕大戰第 ${idx + 1} 名 (${row.count} 次)`,
-        )
-      } catch {
-        // already scored
-      }
+      addScore(
+        event,
+        row.playerId,
+        'final_button',
+        `${game.id}_${row.playerId}`,
+        points[idx],
+        `按鈕大戰第 ${idx + 1} 名 (${row.count} 次)`,
+      )
     })
     game.payload.results = ranked
     event.active_group_game = 'none'
-    event.status = 'message'
+    event.status = 'final_game'
     touch(event)
     return game
   },
@@ -1127,8 +1234,8 @@ export const gameStore = {
   submitMessage(token: string, text: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
-    if (event.status !== 'message' && event.status !== 'active' && event.status !== 'final_game') {
-      // allow during message phase primarily
+    if (event.status !== 'message') {
+      throw new Error('尚未開啟留言')
     }
     if ([...store().messages.values()].some((m) => m.player_id === player.id)) {
       throw new Error('已送出')
@@ -1148,6 +1255,7 @@ export const gameStore = {
   openMessages(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (!event.score_locked || event.status !== 'score_locked') throw new Error('請先鎖定積分')
     event.status = 'message'
     touch(event)
     return [...store().messages.values()]
@@ -1157,7 +1265,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     // finish final button if still running
-    if (event.active_group_game === 'final_button') this.finishFinalButton(adminToken)
+    if (event.active_group_game === 'final_button') throw new Error('請先結束最後按鈕大戰')
     event.score_locked = true
     event.status = 'score_locked'
     event.active_group_game = 'none'
@@ -1169,6 +1277,24 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (!event.score_locked) throw new Error('請先鎖定積分')
+    if (event.status !== 'message') throw new Error('請先開啟「留一句話」階段')
+    if (store().players.size === 0 || store().messages.size < store().players.size) {
+      throw new Error(`請等待所有玩家留言（${store().messages.size}/${store().players.size}）`)
+    }
+    const unresolvedTies = this.topTies()
+    if (unresolvedTies.length) {
+      if (!tieBreakOrder?.length) throw new Error('前三名有同分，請先決定同分順序')
+      const required = new Set(unresolvedTies.flatMap((t) => t.players.map((p) => p.player_id)))
+      const supplied = new Set(tieBreakOrder)
+      if (
+        supplied.size !== tieBreakOrder.length ||
+        supplied.size !== required.size ||
+        [...required].some((id) => !supplied.has(id)) ||
+        [...supplied].some((id) => !required.has(id))
+      ) {
+        throw new Error('同分順序必須剛好包含所有需要決勝的玩家')
+      }
+    }
     let ranked = rankings()
 
     // apply optional tie-break for top3 conflicts
@@ -1231,7 +1357,7 @@ export const gameStore = {
       decision.choice = 'keep'
       decision.auto = true
       decision.decided_at = nowIso()
-      throw new Error('時間到，已自動領取')
+      return this.getPlayerView(token)
     }
     decision.choice = choice
     decision.decided_at = nowIso()
@@ -1239,10 +1365,16 @@ export const gameStore = {
     return this.getPlayerView(token)
   },
 
-  finalizeDonationDefaults() {
+
+  finishEvent(adminToken: string) {
+    requireAdmin(adminToken)
     const event = requireEvent()
-    if (!event.donation_ends_at) return
-    if (Date.now() < new Date(event.donation_ends_at).getTime()) return
+    if (event.status !== 'settlement') throw new Error('尚未開始結算')
+    const undecided = [...store().prizeDecisions.values()].filter((d) => !d.choice)
+    const donationEndsAt = event.donation_ends_at ? new Date(event.donation_ends_at).getTime() : 0
+    if (undecided.length && Date.now() < donationEndsAt) {
+      throw new Error('贈與倒數尚未結束')
+    }
     for (const d of store().prizeDecisions.values()) {
       if (!d.choice) {
         d.choice = 'keep'
@@ -1250,12 +1382,6 @@ export const gameStore = {
         d.decided_at = nowIso()
       }
     }
-  },
-
-  finishEvent(adminToken: string) {
-    requireAdmin(adminToken)
-    const event = requireEvent()
-    this.finalizeDonationDefaults()
     event.status = 'finished'
     touch(event)
     return this.getAdminState()
@@ -1273,11 +1399,4 @@ export const gameStore = {
     return ties
   },
 
-  setStatus(adminToken: string, status: EventStatus) {
-    requireAdmin(adminToken)
-    const event = requireEvent()
-    event.status = status
-    touch(event)
-    return event
-  },
 }

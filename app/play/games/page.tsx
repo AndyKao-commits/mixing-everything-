@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { getPlayerToken } from '@/lib/client-session'
 import { usePlayerView } from '@/hooks/usePlayerView'
@@ -9,9 +9,14 @@ export default function GamesPage() {
   const { data, refresh, setData } = usePlayerView(1000)
   const [text, setText] = useState('')
   const [clicks, setClicks] = useState(0)
+  const [pendingClicks, setPendingClicks] = useState(0)
+  const [sendingClicks, setSendingClicks] = useState(false)
+  const pendingClicksRef = useRef(0)
+  const sendingClicksRef = useRef(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [settlementCountdown, setSettlementCountdown] = useState<number | null>(null)
   const [left, setLeft] = useState<number | null>(null)
 
   const game = data?.groupGame
@@ -40,6 +45,20 @@ export default function GamesPage() {
     }, 200)
     return () => window.clearInterval(id)
   }, [event?.status, event?.donation_ends_at])
+
+  useEffect(() => {
+    if (event?.status !== 'settlement' || !event.settlement_started_at) {
+      setSettlementCountdown(null)
+      return
+    }
+    const tick = () => {
+      const elapsed = Date.now() - new Date(event.settlement_started_at).getTime()
+      setSettlementCountdown(elapsed < 3000 ? Math.max(1, 3 - Math.floor(elapsed / 1000)) : 0)
+    }
+    tick()
+    const id = window.setInterval(tick, 100)
+    return () => window.clearInterval(id)
+  }, [event?.status, event?.settlement_started_at])
 
   const revealedIds = useMemo(
     () => new Set((game?.payload?.revealedPlayerIds as string[]) || []),
@@ -90,16 +109,44 @@ export default function GamesPage() {
     }
   }
 
-  async function tap() {
+  function tap() {
+    if (left === 0) return
+    setClicks((n) => n + 1)
+    pendingClicksRef.current += 1
+    setPendingClicks(pendingClicksRef.current)
+  }
+
+  async function flushClicks() {
     const token = getPlayerToken()
-    if (!token) return
+    if (!token || sendingClicksRef.current || pendingClicksRef.current <= 0) return
+    const batch = pendingClicksRef.current
+    pendingClicksRef.current = 0
+    setPendingClicks(0)
+    sendingClicksRef.current = true
+    setSendingClicks(true)
     try {
-      const res = await api.finalClick(token, Date.now())
-      setClicks(res.count)
+      await api.finalClick(token, Date.now(), batch)
     } catch {
-      // ignore end
+      // A batch arriving after the server deadline is intentionally ignored.
+    } finally {
+      sendingClicksRef.current = false
+      setSendingClicks(false)
     }
   }
+
+  useEffect(() => {
+    if (!game || game.kind !== 'final_button' || pendingClicks <= 0 || sendingClicks) return
+    const delay = left !== null && left <= 1 ? 0 : 100
+    const id = window.setTimeout(() => void flushClicks(), delay)
+    return () => window.clearTimeout(id)
+    // flushClicks intentionally uses refs so the final tap batch cannot be lost to stale state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingClicks, game, sendingClicks, left])
+
+  useEffect(() => {
+    if (game?.kind === 'final_button' && left === 0 && pendingClicksRef.current > 0) void flushClicks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [left, game?.kind])
 
   async function sendMessage() {
     const token = getPlayerToken()
@@ -133,6 +180,15 @@ export default function GamesPage() {
   if (!data) return <p className="py-20 text-center text-soft">載入中…</p>
 
   // Settlement reveal
+  if (event.status === 'settlement' && settlementCountdown !== null && settlementCountdown > 0) {
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center text-center animate-rise">
+        <p className="mb-4 tracking-[0.3em] text-soft">FINAL RESULT</p>
+        <p className="font-display text-8xl font-bold tabular-nums">{settlementCountdown}</p>
+      </div>
+    )
+  }
+
   if (event.status === 'settlement' || event.status === 'finished') {
     const rank = data.myRank
     if (!rank) return <p className="text-soft">等待排名…</p>
@@ -142,6 +198,7 @@ export default function GamesPage() {
 
     return (
       <div className={`space-y-5 animate-rise ${rank.rank > 3 ? 'rounded-3xl bg-ink p-5 text-white' : ''}`}>
+        {isTop ? <p className="text-4xl" aria-hidden="true">🎉</p> : null}
         <p className="text-sm opacity-70">你的排名</p>
         <h1 className={`font-display font-bold ${rank.rank > 3 ? 'text-6xl text-red-500' : 'text-5xl text-ink'}`}>
           {rank.rank === 1 ? '🏆 第一名' : rank.rank === 2 ? '第二名' : rank.rank === 3 ? '第三名' : `第 ${rank.rank} 名`}
@@ -258,29 +315,22 @@ export default function GamesPage() {
     const prompts = (game.payload.prompts as string[]) || []
     const prompt = prompts[game.round - 1] || prompts[0]
     return (
-      <div className="space-y-4 animate-rise">
+      <div className="space-y-5 text-center animate-rise">
         <p className="text-sm text-soft">不要跟我一樣 · 第 {game.round} 題</p>
         <h1 className="font-display text-3xl font-bold leading-snug">{prompt}</h1>
-        <input
-          className="field"
-          value={text}
-          placeholder="你的答案"
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button type="button" className="btn-primary" disabled={busy} onClick={sendDontCopy}>
-          送出
-        </button>
-        <p className="text-sm text-soft">答案唯一才得分。主持人會公布。</p>
-        {error ? <p className="text-sm text-ember">{error}</p> : null}
+        <div className="card space-y-2">
+          <p className="font-semibold">不用打字，直接一起喊答案。</p>
+          <p className="text-sm text-soft">答案唯一的人由主持人勾選得分。</p>
+        </div>
       </div>
     )
   }
 
   if (game.kind === 'who_wrote_it') {
-    const answers = (game.payload.answers as any[]) || []
-    const mine = answers.find((a) => a.player_id === data.player.id)
+    const mine = Boolean(game.payload.mySubmitted)
+    const answerCount = Number(game.payload.answerCount || 0)
     const reveal = game.payload.reveal as { player_id: string; text: string } | undefined
-    const current = answers.find((a) => a.id === game.payload.currentAnswerId)
+    const current = game.payload.currentAnswer as { id: string; text: string } | undefined
 
     if (game.status === 'playing') {
       return (
@@ -288,7 +338,7 @@ export default function GamesPage() {
           <h1 className="font-display text-3xl font-bold">誰寫的</h1>
           <p className="text-lg">{String(game.payload.prompt)}</p>
           {mine ? (
-            <div className="card">已送出，等待其他人… {answers.length} 人完成</div>
+            <div className="card">已送出，等待其他人… {answerCount} 人完成</div>
           ) : (
             <>
               <textarea className="field min-h-32" value={text} onChange={(e) => setText(e.target.value)} />
@@ -307,9 +357,12 @@ export default function GamesPage() {
         <div className="space-y-4 animate-rise">
           <h1 className="font-display text-3xl font-bold">這是誰寫的？</h1>
           <div className="card text-xl font-medium">「{current.text}」</div>
+          {game.payload.isCurrentAuthor ? (
+            <div className="card">這題是你的答案，等大家猜就好。</div>
+          ) : (
           <div className="space-y-2">
             {(data.roster || []).map((p: any) => {
-              const disabled = revealedIds.has(p.id)
+              const disabled = revealedIds.has(p.id) || p.id === data.player.id
               return (
                 <button
                   key={p.id}
@@ -323,6 +376,7 @@ export default function GamesPage() {
               )
             })}
           </div>
+          )}
           {error ? <p className="text-sm text-ember">{error}</p> : null}
         </div>
       )

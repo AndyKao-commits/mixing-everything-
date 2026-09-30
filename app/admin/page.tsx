@@ -22,9 +22,12 @@ export default function AdminPage() {
       setState(await api.adminState(t))
       setError('')
     } catch (e) {
-      clearAdminToken()
-      setToken(null)
-      setError(e instanceof Error ? e.message : '請重新登入')
+      const message = e instanceof Error ? e.message : '暫時無法更新'
+      setError(message)
+      if (/管理員未登入|重新登入/.test(message)) {
+        clearAdminToken()
+        setToken(null)
+      }
     }
   }, [token])
 
@@ -81,7 +84,7 @@ export default function AdminPage() {
           ← 回首頁
         </a>
         <h1 className="font-display text-3xl font-bold">管理員</h1>
-        <p className="text-soft">輸入管理員 PIN（預設 2468）</p>
+        <p className="text-soft">輸入管理員 PIN</p>
         <PinPad value={pin} onChange={setPin} />
         {error ? <p className="text-sm leading-relaxed text-ember">{error}</p> : null}
       </main>
@@ -160,6 +163,25 @@ export default function AdminPage() {
               開始活動（發放任務）
             </button>
           ) : null}
+          <div className="card space-y-3 border border-ember/30">
+            <div>
+              <h2 className="font-semibold text-ember">活動資料管理</h2>
+              <p className="mt-1 text-sm text-soft">活動結束後可清除所有玩家、PIN、分數、任務、照片、留言與結算資料。</p>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost text-ember"
+              disabled={busy}
+              onClick={() => {
+                const first = confirm('確定要清除本次活動的所有用戶與遊戲資料？照片也會永久刪除。')
+                if (!first) return
+                const phrase = prompt('此操作無法復原。請輸入「清除資料」確認：')
+                if (phrase === '清除資料') void act('clear_event_data')
+              }}
+            >
+              清除活動資料
+            </button>
+          </div>
           <div className="card space-y-2">
             <h2 className="font-semibold">完整排行榜（僅管理員）</h2>
             {rankings.map((r: any) => (
@@ -263,8 +285,7 @@ export default function AdminPage() {
               <p className="text-sm text-soft">勾選本題答案唯一的玩家：</p>
               <DontCopyScorer
                 players={players}
-                answers={((game.payload.answers as any) || {})[String(game.round)] || {}}
-                onScore={(ids) => act('score_dont_copy', { uniquePlayerIds: ids })}
+                 onScore={(ids) => act('score_dont_copy', { uniquePlayerIds: ids })}
               />
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('next_dont_copy')}>
                 下一題／結束
@@ -279,9 +300,15 @@ export default function AdminPage() {
               <p className="text-sm text-soft">
                 已交卷 {(game.payload.answers as any[])?.length || 0} / {players.length}
               </p>
-              <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('draw_who_wrote')}>
-                抽下一則答案
-              </button>
+              {game.status === 'voting' ? (
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => act('reveal_who_wrote')}>
+                  立即揭曉（不等未投票玩家）
+                </button>
+              ) : (
+                <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('draw_who_wrote')}>
+                  抽下一則答案
+                </button>
+              )}
               <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('end_group_game')}>
                 結束團康
               </button>
@@ -315,17 +342,26 @@ export default function AdminPage() {
           >
             鎖定積分
           </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={busy || !event?.score_locked}
-            onClick={() => {
-              if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
-            }}
-          >
-            開始最終結算
-          </button>
-          <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('finish_event')}>
+          {(state?.ties || []).length ? (
+            <TieBreakControls
+              ties={state.ties}
+              players={players}
+              busy={busy || event?.status !== 'message' || (state?.messageCount || 0) < players.length}
+              onStart={(tieBreakOrder) => act('start_settlement', { tieBreakOrder })}
+            />
+          ) : (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy || event?.status !== 'message' || (state?.messageCount || 0) < players.length}
+              onClick={() => {
+                if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
+              }}
+            >
+              開始最終結算
+            </button>
+          )}
+          <button type="button" className="btn-ghost" disabled={busy || event?.status !== 'settlement'} onClick={() => act('finish_event')}>
             結束活動（關閉 60 秒贈與）
           </button>
           {state?.settlement ? (
@@ -348,8 +384,9 @@ export default function AdminPage() {
           ) : null}
           <div className="card space-y-2">
             <p className="font-semibold">留言</p>
+            <p className="text-sm text-soft">已提交 {state?.messageCount || 0} / {players.length}</p>
             {(state?.messages || []).length === 0 ? (
-              <p className="text-sm text-soft">尚無留言</p>
+              <p className="text-sm text-soft">{(state?.messageCount || 0) > 0 ? '全部提交前內容保持隱藏' : '尚無留言'}</p>
             ) : (
               state.messages.map((m: any) => (
                 <p key={m.id} className="rounded-xl bg-paper p-3 text-sm">
@@ -366,18 +403,15 @@ export default function AdminPage() {
 
 function DontCopyScorer({
   players,
-  answers,
   onScore,
 }: {
   players: any[]
-  answers: Record<string, string>
   onScore: (ids: string[]) => void
 }) {
   const [picked, setPicked] = useState<string[]>([])
   return (
     <div className="space-y-2">
       {players.map((p) => {
-        const ans = answers[p.id]
         const on = picked.includes(p.id)
         return (
           <button
@@ -389,12 +423,65 @@ function DontCopyScorer({
             }
           >
             {p.name}
-            {ans ? ` · 「${ans}」` : ' · 未答'}
           </button>
         )
       })}
       <button type="button" className="btn-primary !min-h-12" onClick={() => onScore(picked)}>
         確認本題得分（{picked.length}）
+      </button>
+    </div>
+  )
+}
+
+
+function TieBreakControls({
+  ties,
+  players,
+  busy,
+  onStart,
+}: {
+  ties: Array<{ score: number; players: Array<{ player_id: string }> }>
+  players: any[]
+  busy: boolean
+  onStart: (order: string[]) => void
+}) {
+  const [orders, setOrders] = useState<string[][]>(() => ties.map((t) => t.players.map((p) => p.player_id)))
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name || '玩家'
+  function move(group: number, index: number, delta: number) {
+    setOrders((prev) => {
+      const next = prev.map((x) => [...x])
+      const target = index + delta
+      if (target < 0 || target >= next[group].length) return prev
+      ;[next[group][index], next[group][target]] = [next[group][target], next[group][index]]
+      return next
+    })
+  }
+  return (
+    <div className="card space-y-3 border border-ember/30">
+      <p className="font-semibold text-ember">前三名有同分，請決定順序</p>
+      {orders.map((order, group) => (
+        <div key={group} className="space-y-2">
+          <p className="text-sm text-soft">同分 {ties[group]?.score} 分 · 上方名次較高</p>
+          {order.map((id, index) => (
+            <div key={id} className="flex items-center justify-between rounded-xl bg-paper p-2">
+              <span className="font-semibold">{index + 1}. {nameOf(id)}</span>
+              <div className="flex gap-1">
+                <button type="button" className="btn-ghost !min-h-9 !px-3" disabled={index === 0} onClick={() => move(group, index, -1)}>↑</button>
+                <button type="button" className="btn-ghost !min-h-9 !px-3" disabled={index === order.length - 1} onClick={() => move(group, index, 1)}>↓</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={busy}
+        onClick={() => {
+          if (confirm('確定依目前同分順序進行最終結算？')) onStart(orders.flat())
+        }}
+      >
+        確認同分順序並開始結算
       </button>
     </div>
   )

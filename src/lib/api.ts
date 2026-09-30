@@ -20,7 +20,7 @@ function errorMessage(data: any, status: number, fallback = '請求失敗') {
   return fallback
 }
 
-async function req<T>(url: string, init?: RequestInit): Promise<T> {
+async function req<T>(url: string, init?: RequestInit, retriesLeft = 3): Promise<T> {
   let res: Response
   try {
     res = await fetch(url, {
@@ -45,6 +45,10 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   const data = await res.json().catch(() => ({}))
+  if (res.status === 409 && retriesLeft > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 160 + (3 - retriesLeft) * 140 + Math.random() * 220))
+    return req<T>(url, init, retriesLeft - 1)
+  }
   if (!res.ok) throw new Error(errorMessage(data, res.status))
   return data as T
 }
@@ -109,11 +113,11 @@ export const api = {
       headers: { 'x-player-token': token },
       body: JSON.stringify({ guessedPlayerId }),
     }),
-  finalClick: (token: string, clientTs: number) =>
+  finalClick: (token: string, clientTs: number, clickCount = 1) =>
     req<any>('/api/games/final-button/click', {
       method: 'POST',
       headers: { 'x-player-token': token },
-      body: JSON.stringify({ clientTs }),
+      body: JSON.stringify({ clientTs, clickCount }),
     }),
   submitMessage: (token: string, text: string) =>
     req<any>('/api/messages', {

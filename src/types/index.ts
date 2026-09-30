@@ -83,6 +83,7 @@ export interface BingoCell {
   mystery: boolean
   revealed: boolean
   photo_data_url: string | null
+  photo_ref?: string
   completed: boolean
   completed_at: string | null
 }
