@@ -1192,18 +1192,14 @@ export const gameStore = {
           .sort((a, b) => b.count - a.count)
     const points = [3, 2, 1]
     ranked.slice(0, 3).forEach((row, idx) => {
-      try {
-        addScore(
-          event,
-          row.playerId,
-          'final_button',
-          `${game.id}_${row.playerId}`,
-          points[idx],
-          `按鈕大戰第 ${idx + 1} 名 (${row.count} 次)`,
-        )
-      } catch {
-        // already scored
-      }
+      addScore(
+        event,
+        row.playerId,
+        'final_button',
+        `${game.id}_${row.playerId}`,
+        points[idx],
+        `按鈕大戰第 ${idx + 1} 名 (${row.count} 次)`,
+      )
     })
     game.payload.results = ranked
     event.active_group_game = 'none'
