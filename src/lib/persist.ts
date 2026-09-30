@@ -12,6 +12,7 @@ const STATE_KEY = 'bbq-party-state-v2'
 const LEGACY_STATE_KEY = 'bbq-party-state-v1'
 const memory = new Map<string, unknown>()
 const BINGO_BUCKET = process.env.SUPABASE_BINGO_BUCKET || 'bingo-photos'
+let loadedVersion = 0
 
 function readLocalState(): unknown | null {
   if (process.env.VERCEL) return null
@@ -43,20 +44,25 @@ async function getRemoteState<T>(): Promise<T | null> {
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('app_state')
-    .select('state')
+    .select('state, version')
     .eq('key', STATE_KEY)
     .maybeSingle()
   if (error) throw new Error('Supabase state read failed: ' + error.message)
+  loadedVersion = Number(data?.version || 0)
   return (data?.state as T | undefined) ?? null
 }
 
 async function setRemoteState(value: unknown): Promise<void> {
   const supabase = getSupabaseAdmin()
-  const { error } = await supabase.from('app_state').upsert(
-    { key: STATE_KEY, state: value, updated_at: new Date().toISOString() },
-    { onConflict: 'key' },
-  )
-  if (error) throw new Error('Supabase state write failed: ' + error.message)
+  const { data, error } = await supabase.rpc('save_app_state', {
+    expected_version: loadedVersion,
+    next_state: value,
+  })
+  if (error) {
+    if (/STATE_CONFLICT/i.test(error.message)) throw new Error('STATE_CONFLICT')
+    throw new Error('Supabase state write failed: ' + error.message)
+  }
+  loadedVersion = Number(data || loadedVersion + 1)
 }
 
 export async function persistGet<T = unknown>(key: string): Promise<T | null> {
