@@ -1,18 +1,11 @@
-import type { Metadata } from 'next'
-import { Space_Grotesk, IBM_Plex_Mono, Noto_Sans_TC } from 'next/font/google'
-import { SideNav } from '@/components/SideNav'
+import type { Metadata, Viewport } from 'next'
+import { Noto_Sans_TC, Sora } from 'next/font/google'
 import './globals.css'
 
-const display = Space_Grotesk({
+const display = Sora({
   subsets: ['latin'],
   variable: '--font-display',
   weight: ['500', '600', '700'],
-})
-
-const mono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '500'],
 })
 
 const body = Noto_Sans_TC({
@@ -22,24 +15,21 @@ const body = Noto_Sans_TC({
 })
 
 export const metadata: Metadata = {
-  title: 'Mixing Everything',
-  description: '多功能小工具站基礎模板',
+  title: '今晚誰會贏？',
+  description: '烤肉聚會積分遊戲 — 吃飯聊天，偷偷累積分',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#e85d04',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-Hant" className={`${display.variable} ${mono.variable} ${body.variable}`}>
-      <body>
-        <div className="site-shell">
-          <div className="site-atmosphere" aria-hidden="true" />
-          <div className="app-frame">
-            <SideNav />
-            <div className="app-content">
-              <main className="site-main">{children}</main>
-            </div>
-          </div>
-        </div>
-      </body>
+    <html lang="zh-Hant" className={`${display.variable} ${body.variable}`}>
+      <body>{children}</body>
     </html>
   )
 }

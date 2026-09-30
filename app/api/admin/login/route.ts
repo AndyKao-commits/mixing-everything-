@@ -1,0 +1,13 @@
+import { NextResponse } from 'next/server'
+import { gameStore } from '@/lib/game-store'
+
+export const dynamic = 'force-dynamic'
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json()
+    return NextResponse.json(gameStore.adminLogin(String(body.pin || '')))
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : '錯誤' }, { status: 401 })
+  }
+}
