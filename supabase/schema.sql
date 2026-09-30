@@ -335,3 +335,30 @@ $$;
 
 revoke all on function record_final_button_clicks(text, text, int, bigint) from public, anon, authenticated;
 grant execute on function record_final_button_clicks(text, text, int, bigint) to service_role;
+
+
+-- Server-only security boundary. The application uses SUPABASE_SERVICE_ROLE_KEY;
+-- browser/anon clients must never read or mutate party state directly.
+alter table app_state enable row level security;
+alter table events enable row level security;
+alter table players enable row level security;
+alter table player_sessions enable row level security;
+alter table score_transactions enable row level security;
+alter table bingo_cards enable row level security;
+alter table bingo_cells enable row level security;
+alter table player_secret_tasks enable row level security;
+alter table bounty_templates enable row level security;
+alter table player_bounties enable row level security;
+alter table player_targets enable row level security;
+alter table group_games enable row level security;
+alter table final_messages enable row level security;
+alter table settlements enable row level security;
+alter table prize_decisions enable row level security;
+alter table who_wrote_answers enable row level security;
+alter table who_wrote_votes enable row level security;
+alter table final_button_sessions enable row level security;
+alter table final_button_events enable row level security;
+alter table final_button_click_counts enable row level security;
+
+revoke all on function save_app_state(bigint, jsonb) from public, anon, authenticated;
+grant execute on function save_app_state(bigint, jsonb) to service_role;
