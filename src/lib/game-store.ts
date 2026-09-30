@@ -127,6 +127,10 @@ function addScore(
   note?: string,
 ) {
   assertNotLocked(event)
+  if (!store().players.has(playerId)) throw new Error('玩家不存在')
+  if (!Number.isFinite(points) || !Number.isInteger(points) || Math.abs(points) > 100) {
+    throw new Error('分數必須是 -100 到 100 的整數')
+  }
   if (points === 0) return
   // prevent duplicate source scoring
   const exists = store().scores.some(
@@ -800,6 +804,7 @@ export const gameStore = {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const card = store().bingoCards.get(player.id)
     if (!card) throw new Error('尚未取得九宮格')
     const cell = card.cells.find((c) => c.id === cellId)
@@ -833,6 +838,7 @@ export const gameStore = {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const task = [...store().secretTasks.values()].find((t) => t.player_id === player.id)
     if (!task) throw new Error('沒有秘密任務')
     if (task.completed) throw new Error('已完成')
@@ -846,6 +852,7 @@ export const gameStore = {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const target = store().targets.get(player.id)
     if (!target) throw new Error('沒有懸賞目標')
     if (target.completed) throw new Error('已完成')
@@ -859,6 +866,7 @@ export const gameStore = {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const bounty = store().bounties.find((b) => b.id === bountyId)
     if (!bounty) throw new Error('懸賞不存在')
     const key = `${player.id}_${bountyId}`
@@ -998,10 +1006,12 @@ export const gameStore = {
       revealed: boolean
     }>
     if (answers.some((a) => a.player_id === player.id)) throw new Error('已提交')
+    const cleaned = text.trim().slice(0, 200)
+    if (!cleaned) throw new Error('請輸入答案')
     answers.push({
       id: uid(),
       player_id: player.id,
-      text: text.trim().slice(0, 200),
+      text: cleaned,
       revealed: false,
     })
     game.payload.answers = answers
@@ -1314,7 +1324,7 @@ export const gameStore = {
       decision.choice = 'keep'
       decision.auto = true
       decision.decided_at = nowIso()
-      throw new Error('時間到，已自動領取')
+      return this.getPlayerView(token)
     }
     decision.choice = choice
     decision.decided_at = nowIso()
