@@ -25,7 +25,7 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistClearFinalButtonClicks, persistClearPhotos, persistFinalButtonClicks, persistSetFinalButtonScore, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistSetFinalButtonScore, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
