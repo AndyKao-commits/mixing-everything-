@@ -153,6 +153,20 @@ export default function GamesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left, game?.kind])
 
+  useEffect(() => {
+    if (game?.kind !== 'final_button' || game.payload.finished || left !== 0) return
+    const token = getPlayerToken()
+    if (!token) return
+    const id = window.setTimeout(async () => {
+      try {
+        setData(await api.finalFinish(token))
+      } catch {
+        await refresh()
+      }
+    }, 250)
+    return () => window.clearTimeout(id)
+  }, [game?.kind, game?.payload.finished, left, refresh, setData])
+
   async function readyFinal() {
     const token = getPlayerToken()
     if (!token) return
