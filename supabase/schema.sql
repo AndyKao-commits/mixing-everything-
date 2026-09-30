@@ -1,6 +1,4 @@
--- BBQ Party Score schema (for Supabase production)
--- V1 currently runs on an in-memory store for single-instance demos.
--- Migrate these tables when wiring Supabase Database / Realtime / Storage.
+-- BBQ Party Score production schema for Supabase Database / Realtime / Storage.
 
 create extension if not exists "pgcrypto";
 
@@ -160,3 +158,80 @@ create table if not exists prize_decisions (
 -- alter publication supabase_realtime add table group_games;
 -- alter publication supabase_realtime add table prize_decisions;
 -- alter publication supabase_realtime add table score_transactions;
+
+
+-- Who Wrote It
+create table if not exists who_wrote_answers (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references events(id) on delete cascade,
+  group_game_id uuid not null references group_games(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  round int not null,
+  text text not null,
+  revealed boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (group_game_id, player_id, round)
+);
+
+create table if not exists who_wrote_votes (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references events(id) on delete cascade,
+  group_game_id uuid not null references group_games(id) on delete cascade,
+  round int not null,
+  voter_player_id uuid not null references players(id) on delete cascade,
+  guessed_player_id uuid not null references players(id) on delete cascade,
+  correct boolean,
+  created_at timestamptz not null default now(),
+  unique (group_game_id, round, voter_player_id)
+);
+
+-- Final button battle. Clients should submit small batches rather than one request per tap.
+create table if not exists final_button_sessions (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references events(id) on delete cascade,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  status text not null default 'pending',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists final_button_events (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references final_button_sessions(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  batch_seq int not null,
+  click_count int not null check (click_count >= 0),
+  client_window_ms int not null check (client_window_ms > 0),
+  received_at timestamptz not null default now(),
+  unique (session_id, player_id, batch_seq)
+);
+
+create index if not exists idx_score_transactions_event_player on score_transactions(event_id, player_id);
+create index if not exists idx_bingo_cells_card on bingo_cells(card_id);
+create index if not exists idx_final_button_events_session_player on final_button_events(session_id, player_id);
+
+-- Private bucket. The server uses the service-role key and returns short-lived signed URLs.
+insert into storage.buckets (id, name, public)
+values ('bingo-photos', 'bingo-photos', false)
+on conflict (id) do update set public = excluded.public;
+
+-- Realtime tables used by live party screens. Safe to re-run.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'events'
+  ) then alter publication supabase_realtime add table events; end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'group_games'
+  ) then alter publication supabase_realtime add table group_games; end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'prize_decisions'
+  ) then alter publication supabase_realtime add table prize_decisions; end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'score_transactions'
+  ) then alter publication supabase_realtime add table score_transactions; end if;
+end $$;
