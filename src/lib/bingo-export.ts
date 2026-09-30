@@ -46,11 +46,28 @@ export async function exportBingoImage(opts: {
   })
 }
 
-function loadImage(src: string) {
+async function loadImage(src: string) {
+  // Supabase signed URLs are cross-origin. Drawing a cross-origin image directly
+  // taints the canvas and makes canvas.toBlob() fail. Fetch the image first and
+  // render it through a same-origin blob URL instead.
+  if (/^https?:\/\//i.test(src)) {
+    const response = await fetch(src, { mode: 'cors', credentials: 'omit' })
+    if (!response.ok) throw new Error('照片載入失敗')
+    const objectUrl = URL.createObjectURL(await response.blob())
+    try {
+      return await loadImageElement(objectUrl)
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+  return loadImageElement(src)
+}
+
+function loadImageElement(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image()
     img.onload = () => resolve(img)
-    img.onerror = reject
+    img.onerror = () => reject(new Error('照片載入失敗'))
     img.src = src
   })
 }
