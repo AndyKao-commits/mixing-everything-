@@ -1,3 +1,5 @@
+import {
+  beginPersistenceRequest() beginPersistenceRequest } from './persist'
 import { gameStore } from './game-store'
 
 type HeadersLike = {
