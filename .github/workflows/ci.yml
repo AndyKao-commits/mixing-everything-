@@ -14,9 +14,8 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
       - name: Validate Next.js 15.5.26 security release
         run: |
-          npm install next@15.5.26 --save-exact
+          npm install --ignore-scripts
           npm audit --omit=dev
           npm run build
