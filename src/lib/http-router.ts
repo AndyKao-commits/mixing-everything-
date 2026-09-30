@@ -67,7 +67,7 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'games/final-button/click') {
       result = {
         status: 200,
-        data: gameStore.clickFinalButton(playerToken, Number(body.clientTs || Date.now()), Number(body.clickCount || 1)),
+        data: await gameStore.clickFinalButton(playerToken, Number(body.clientTs || Date.now()), Number(body.clickCount || 1)),
       }
     } else if (method === 'POST' && path === 'messages') {
       gameStore.submitMessage(playerToken, String(body.text || ''))
@@ -141,7 +141,7 @@ export async function routeApiRequest(input: {
           result = { status: 200, data: gameStore.startFinalButton(adminToken) }
           break
         case 'finish_final_button':
-          result = { status: 200, data: gameStore.finishFinalButton(adminToken) }
+          result = { status: 200, data: await gameStore.finishFinalButton(adminToken) }
           break
         case 'open_messages':
           result = { status: 200, data: gameStore.openMessages(adminToken) }
@@ -169,7 +169,7 @@ export async function routeApiRequest(input: {
       result = { status: 404, data: { error: `找不到 API: ${method} /${path}` } }
     }
 
-    if (result.status < 400) {
+    if (result.status < 400 && !(method === 'POST' && path === 'games/final-button/click')) {
       await gameStore.save()
     }
     return result
