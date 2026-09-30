@@ -346,14 +346,14 @@ export default function AdminPage() {
             <TieBreakControls
               ties={state.ties}
               players={players}
-              busy={busy || event?.status !== 'message'}
+              busy={busy || event?.status !== 'message' || (state?.messageCount || 0) < players.length}
               onStart={(tieBreakOrder) => act('start_settlement', { tieBreakOrder })}
             />
           ) : (
             <button
               type="button"
               className="btn-secondary"
-              disabled={busy || event?.status !== 'message'}
+              disabled={busy || event?.status !== 'message' || (state?.messageCount || 0) < players.length}
               onClick={() => {
                 if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
               }}
