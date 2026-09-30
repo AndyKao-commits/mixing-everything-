@@ -1,14 +1,15 @@
 /**
- * Temporary compatibility persistence layer.
+ * Supabase-backed persistence for the party runtime.
  *
- * Production: Supabase Storage is used for bingo photos.
- * Legacy game-state persistence remains local-memory/file only until the
- * game-store migration is completed. We intentionally no longer use Vercel
- * Runtime Cache as a database.
+ * The game engine still operates on one in-memory aggregate per request, but
+ * Supabase is the durable source of truth. A single JSON snapshot keeps the
+ * migration atomic while the normalized tables remain available for the next
+ * phase. Photos stay in private Storage and are referenced separately.
  */
 import { getSupabaseAdmin, isSupabaseConfigured } from './supabase-admin'
 
-const STATE_KEY = 'bbq-party-state-v1'
+const STATE_KEY = 'bbq-party-state-v2'
+const LEGACY_STATE_KEY = 'bbq-party-state-v1'
 const memory = new Map<string, unknown>()
 const BINGO_BUCKET = process.env.SUPABASE_BINGO_BUCKET || 'bingo-photos'
 
@@ -38,26 +39,53 @@ function writeLocalState(value: unknown): void {
   }
 }
 
+async function getRemoteState<T>(): Promise<T | null> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('app_state')
+    .select('state')
+    .eq('key', STATE_KEY)
+    .maybeSingle()
+  if (error) throw new Error('Supabase state read failed: ' + error.message)
+  return (data?.state as T | undefined) ?? null
+}
+
+async function setRemoteState(value: unknown): Promise<void> {
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('app_state').upsert(
+    { key: STATE_KEY, state: value, updated_at: new Date().toISOString() },
+    { onConflict: 'key' },
+  )
+  if (error) throw new Error('Supabase state write failed: ' + error.message)
+}
+
 export async function persistGet<T = unknown>(key: string): Promise<T | null> {
-  if (memory.has(key)) return memory.get(key) as T
-  if (key === STATE_KEY) {
-    const local = readLocalState()
-    if (local != null) return local as T
-  }
-  return null
+  if (key === STATE_KEY || key === LEGACY_STATE_KEY) return persistGetState<T>()
+  return (memory.get(key) as T | undefined) ?? null
 }
 
 export async function persistSet(key: string, value: unknown): Promise<void> {
+  if (key === STATE_KEY || key === LEGACY_STATE_KEY) {
+    await persistSetState(value)
+    return
+  }
   memory.set(key, value)
-  if (key === STATE_KEY) writeLocalState(value)
 }
 
 export async function persistGetState<T = unknown>(): Promise<T | null> {
-  return persistGet<T>(STATE_KEY)
+  if (isSupabaseConfigured()) return getRemoteState<T>()
+  const local = readLocalState()
+  if (local != null) return local as T
+  return (memory.get(STATE_KEY) as T | undefined) ?? null
 }
 
 export async function persistSetState(value: unknown): Promise<void> {
-  await persistSet(STATE_KEY, value)
+  if (isSupabaseConfigured()) {
+    await setRemoteState(value)
+    return
+  }
+  memory.set(STATE_KEY, value)
+  writeLocalState(value)
 }
 
 function dataUrlToUpload(dataUrl: string): { bytes: Uint8Array; contentType: string } {
@@ -71,7 +99,6 @@ export async function persistGetPhoto(cellId: string): Promise<string | null> {
     const value = memory.get('photo:' + cellId)
     return typeof value === 'string' ? value : null
   }
-
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase.storage.from(BINGO_BUCKET).createSignedUrl(cellId + '.jpg', 60 * 60)
   if (error || !data?.signedUrl) return null
@@ -79,11 +106,11 @@ export async function persistGetPhoto(cellId: string): Promise<string | null> {
 }
 
 export async function persistSetPhoto(cellId: string, dataUrl: string): Promise<void> {
+  if (!dataUrl.startsWith('data:')) return
   if (!isSupabaseConfigured()) {
     memory.set('photo:' + cellId, dataUrl)
     return
   }
-
   const { bytes, contentType } = dataUrlToUpload(dataUrl)
   const supabase = getSupabaseAdmin()
   const { error } = await supabase.storage.from(BINGO_BUCKET).upload(cellId + '.jpg', bytes, {
