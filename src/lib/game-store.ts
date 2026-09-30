@@ -1355,18 +1355,6 @@ export const gameStore = {
     return this.getPlayerView(token)
   },
 
-  finalizeDonationDefaults() {
-    const event = requireEvent()
-    if (!event.donation_ends_at) return
-    if (Date.now() < new Date(event.donation_ends_at).getTime()) return
-    for (const d of store().prizeDecisions.values()) {
-      if (!d.choice) {
-        d.choice = 'keep'
-        d.auto = true
-        d.decided_at = nowIso()
-      }
-    }
-  },
 
   finishEvent(adminToken: string) {
     requireAdmin(adminToken)
