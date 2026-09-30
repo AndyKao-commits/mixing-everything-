@@ -313,8 +313,12 @@ export default function TasksPage() {
                 src={cropUrl}
                 alt="裁切預覽"
                 draggable={false}
-                className="h-full w-full select-none object-cover"
-                style={{ objectPosition: `${cropX}% ${cropY}%`, transform: `scale(${cropZoom})` }}
+                className="pointer-events-none h-full w-full select-none object-cover"
+                style={{
+                  objectPosition: '50% 50%',
+                  transform: `translate(${50 - cropX}%, ${50 - cropY}%) scale(${cropZoom})`,
+                  transformOrigin: 'center',
+                }}
               />
             </div>
             <p className="text-center text-sm text-soft">直接拖曳照片調整上下左右，再用滑桿縮放</p>
