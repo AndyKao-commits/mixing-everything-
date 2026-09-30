@@ -677,12 +677,91 @@ export const gameStore = {
   deletePlayer(adminToken: string, playerId: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
-    if (event.status !== 'setup') throw new Error('活動開始後不可刪除玩家')
-    store().players.delete(playerId)
-    resetSetupAssignments()
+    const player = store().players.get(playerId)
+    if (!player || player.event_id !== event.id) throw new Error('玩家不存在')
+    const activePlayers = [...store().players.values()].filter((p) => p.event_id === event.id)
+    if (event.status !== 'setup' && activePlayers.length <= 2) throw new Error('活動進行中至少保留 2 位玩家')
+
+    // Setup deletion can safely regenerate every assignment. Mid-game exit must
+    // preserve everybody else's completed work and only repair references to
+    // the departing player.
+    if (event.status === 'setup') {
+      store().players.delete(playerId)
+      resetSetupAssignments()
+    } else {
+      store().players.delete(playerId)
+      store().scores = store().scores.filter((s) => s.player_id !== playerId)
+      store().bingoCards.delete(playerId)
+      for (const [id, task] of store().secretTasks) {
+        if (task.player_id === playerId) {
+          store().secretTasks.delete(id)
+          continue
+        }
+        if (task.target_player_id === playerId && !task.completed) {
+          const candidates = [...store().players.values()].filter((p) => p.event_id === event.id && p.id !== task.player_id)
+          const replacement = candidates.length ? pick(candidates) : null
+          if (replacement) {
+            task.target_player_id = replacement.id
+            task.text = task.text.replace(player.name, replacement.name)
+          }
+        }
+      }
+      for (const [id, pb] of store().playerBounties) {
+        if (pb.player_id === playerId) store().playerBounties.delete(id)
+      }
+      store().targets.delete(playerId)
+      const remaining = [...store().players.values()].filter((p) => p.event_id === event.id)
+      if (remaining.length >= 2) {
+        const pairs = buildTargetCycle(remaining.map((p) => p.id))
+        for (const [from, to] of pairs) {
+          const current = store().targets.get(from)
+          if (current?.completed && current.target_player_id !== playerId) continue
+          const tpl = pick(TARGET_TASKS)
+          const targetPlayer = store().players.get(to)!
+          store().targets.set(from, {
+            id: uid(), event_id: event.id, player_id: from, target_player_id: to,
+            text: tpl.text.replace('目標', targetPlayer.name), points: tpl.points,
+            completed: false, completed_at: null,
+          })
+        }
+      }
+      store().messages.delete(playerId)
+      store().prizeDecisions.delete(playerId)
+      store().finalClicks.delete(playerId)
+
+      const game = activeGroupGame()
+      if (game?.kind === 'who_wrote_it') {
+        const answers = ((game.payload.answers as any[]) || []).filter((a) => a.player_id !== playerId)
+        game.payload.answers = answers
+        const votes = { ...((game.payload.votes as Record<string, string>) || {}) }
+        delete votes[playerId]
+        for (const [voter, guess] of Object.entries(votes)) if (guess === playerId) delete votes[voter]
+        game.payload.votes = votes
+        const prompts = { ...((game.payload.promptsByPlayer as Record<string, string>) || {}) }
+        delete prompts[playerId]
+        game.payload.promptsByPlayer = prompts
+        if (game.payload.currentAuthorId === playerId) {
+          game.payload.currentAnswerId = null
+          game.payload.currentAuthorId = null
+          game.status = 'round_result'
+        }
+      } else if (game?.kind === 'final_button' && !game.payload.finished) {
+        const ready = ((game.payload.readyPlayerIds as string[]) || []).filter((id) => id !== playerId)
+        game.payload.readyPlayerIds = ready
+        game.payload.readyCount = ready.length
+        game.payload.playerCount = remaining.length
+        if (!Number(game.payload.startedAt) && ready.length >= remaining.length) {
+          const start = Date.now() + 10_000
+          game.payload.countdownEndsAt = start
+          game.payload.startedAt = start
+          game.payload.endsAt = start + 10_000
+        }
+      }
+    }
     for (const [id, session] of store().sessions) {
       if (session.player_id === playerId) store().sessions.delete(id)
     }
+    touch(event)
     return true
   },
 

@@ -256,17 +256,20 @@ export default function AdminPage() {
                 >
                   調分
                 </button>
-                {event?.status === 'setup' ? (
-                  <button
-                    type="button"
-                    className="btn-ghost text-ember"
-                    onClick={() => {
-                      if (confirm(`刪除 ${p.name}？`)) void act('delete_player', { playerId: p.id })
-                    }}
-                  >
-                    刪除
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className="btn-ghost text-ember"
+                  disabled={busy || (event?.status !== 'setup' && players.length <= 2)}
+                  onClick={() => {
+                    const setup = event?.status === 'setup'
+                    const message = setup
+                      ? `刪除 ${p.name}？`
+                      : `確定讓 ${p.name} 退出本場？\\n\\n將移除他的分數、任務、排名與登入資格，並自動修復其他玩家受影響的指定任務。`
+                    if (confirm(message)) void act('delete_player', { playerId: p.id })
+                  }}
+                >
+                  {event?.status === 'setup' ? '刪除' : '退出本場'}
+                </button>
               </div>
             </div>
           ))}
