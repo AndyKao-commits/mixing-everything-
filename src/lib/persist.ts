@@ -153,3 +153,36 @@ export async function persistClearPhotos(): Promise<void> {
   const { error: removeError } = await supabase.storage.from(BINGO_BUCKET).remove(paths)
   if (removeError) throw new Error('Bingo photo cleanup failed: ' + removeError.message)
 }
+
+
+export async function persistFinalButtonClicks(sessionKey: string, playerKey: string, clickCount: number, nowMs: number): Promise<number> {
+  if (!isSupabaseConfigured()) return clickCount
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase.rpc('record_final_button_clicks', {
+    p_session_key: sessionKey,
+    p_player_key: playerKey,
+    p_click_count: clickCount,
+    p_now_ms: nowMs,
+  })
+  if (error) throw new Error('Final button counter failed: ' + error.message)
+  return Number(data || 0)
+}
+
+export async function persistGetFinalButtonResults(sessionKey: string): Promise<Array<{ playerId: string; count: number }>> {
+  if (!isSupabaseConfigured()) return []
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('final_button_click_counts')
+    .select('player_key,click_count')
+    .eq('session_key', sessionKey)
+    .order('click_count', { ascending: false })
+  if (error) throw new Error('Final button results failed: ' + error.message)
+  return (data || []).map((row) => ({ playerId: String(row.player_key), count: Number(row.click_count) }))
+}
+
+export async function persistClearFinalButtonClicks(): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('final_button_click_counts').delete().neq('session_key', '')
+  if (error) throw new Error('Final button cleanup failed: ' + error.message)
+}
