@@ -7,6 +7,8 @@
   --soft: #6b6560;
   --ember: #e85d04;
   --paper: #f4f5f7;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --font-display: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
 }
 
 * {
