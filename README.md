@@ -8,7 +8,9 @@
 ## 技術
 
 - Next.js 15 + React 19 + TypeScript + Tailwind CSS
-- V1：記憶體 store + API 輪詢（單實例即可玩）
+- 本機開發：Next App Router API（`npm run dev`）
+- Vercel：靜態匯出 `out/` + `/api` Serverless（此專案的 Vercel 設定需要 `out/`）
+- V1：記憶體 store（單實例最適合；多實例建議接 Supabase）
 - 可選：Supabase（見 `supabase/schema.sql`）
 
 ## 開始
