@@ -25,7 +25,8 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistClearPhotos, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistFinalButtonClicks, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
 import type {
@@ -566,6 +567,7 @@ export const gameStore = {
   async clearEventData(adminToken: string) {
     requireAdmin(adminToken)
     await persistClearPhotos()
+    await persistClearFinalButtonClicks()
     const currentAdminSessions = new Set(store().adminSessions)
     store().event = null
     store().players.clear()
@@ -1087,7 +1089,7 @@ export const gameStore = {
     return game
   },
 
-  clickFinalButton(token: string, clientTs: number, clickCount = 1) {
+  async clickFinalButton(token: string, clientTs: number, clickCount = 1) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     const game = activeGroupGame()
@@ -1097,11 +1099,14 @@ export const gameStore = {
     const end = Number(game.payload.endsAt)
     if (now < start) throw new Error('尚未開始')
     if (now > end || game.payload.finished) {
-      this.finishFinalButton()
       throw new Error('時間到')
     }
     // reject wildly skewed client timestamps
     if (Math.abs(clientTs - now) > 5000) throw new Error('時間異常')
+    if (isSupabaseConfigured()) {
+      const count = await persistFinalButtonClicks(game.id, player.id, Math.max(1, Math.floor(clickCount || 1)), now)
+      return { count }
+    }
     const row = store().finalClicks.get(player.id) || { count: 0, lastAt: 0, events: [] as number[] }
     if (now - row.lastAt < 40) {
       // ignore superhuman spam; do not error to keep UX smooth
@@ -1119,7 +1124,7 @@ export const gameStore = {
     return { count: row.count }
   },
 
-  finishFinalButton(adminToken?: string) {
+  async finishFinalButton(adminToken?: string) {
     if (adminToken) requireAdmin(adminToken)
     const event = requireEvent()
     const game = activeGroupGame()
@@ -1127,9 +1132,11 @@ export const gameStore = {
     if (game.payload.finished) return game
     game.payload.finished = true
     game.status = 'finished'
-    const ranked = [...store().finalClicks.entries()]
-      .map(([playerId, data]) => ({ playerId, count: data.count }))
-      .sort((a, b) => b.count - a.count)
+    const ranked = isSupabaseConfigured()
+      ? await persistGetFinalButtonResults(game.id)
+      : [...store().finalClicks.entries()]
+          .map(([playerId, data]) => ({ playerId, count: data.count }))
+          .sort((a, b) => b.count - a.count)
     const points = [3, 2, 1]
     ranked.slice(0, 3).forEach((row, idx) => {
       try {
@@ -1186,7 +1193,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     // finish final button if still running
-    if (event.active_group_game === 'final_button') this.finishFinalButton(adminToken)
+    if (event.active_group_game === 'final_button') throw new Error('請先結束最後按鈕大戰')
     event.score_locked = true
     event.status = 'score_locked'
     event.active_group_game = 'none'
