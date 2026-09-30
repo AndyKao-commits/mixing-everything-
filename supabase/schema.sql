@@ -7,7 +7,8 @@ create extension if not exists "pgcrypto";
 create table if not exists app_state (
   key text primary key,
   state jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  version bigint not null default 0
 );
 
 
@@ -244,3 +245,36 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'score_transactions'
   ) then alter publication supabase_realtime add table score_transactions; end if;
 end $$;
+
+
+-- Optimistic compare-and-swap for concurrent party requests.
+create or replace function save_app_state(expected_version bigint, next_state jsonb)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_version bigint;
+begin
+  select version into current_version from app_state where key = 'bbq-party-state-v2' for update;
+
+  if not found then
+    if expected_version <> 0 then
+      raise exception 'STATE_CONFLICT';
+    end if;
+    insert into app_state(key, state, version, updated_at)
+    values ('bbq-party-state-v2', next_state, 1, now());
+    return 1;
+  end if;
+
+  if current_version <> expected_version then
+    raise exception 'STATE_CONFLICT';
+  end if;
+
+  update app_state
+  set state = next_state, version = current_version + 1, updated_at = now()
+  where key = 'bbq-party-state-v2';
+  return current_version + 1;
+end;
+$$;
