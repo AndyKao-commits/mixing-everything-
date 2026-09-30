@@ -539,7 +539,11 @@ export const gameStore = {
   adminLogin(pin: string) {
     this.bootstrap()
     const event = requireEvent()
-    if (!verifyPin(pin, event.admin_pin_hash, event.admin_pin_salt)) {
+    const configuredPin = process.env.ADMIN_PIN
+    const valid = configuredPin
+      ? pin === configuredPin
+      : verifyPin(pin, event.admin_pin_hash, event.admin_pin_salt)
+    if (!valid) {
       throw new Error('管理員密碼錯誤')
     }
     const token = signAdminToken()
