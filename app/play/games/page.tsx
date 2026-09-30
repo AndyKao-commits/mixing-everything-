@@ -58,7 +58,7 @@ export default function GamesPage() {
     }
     const tick = () => {
       const elapsed = Date.now() - new Date(event.settlement_started_at).getTime()
-      setSettlementCountdown(elapsed < 3000 ? Math.max(1, 3 - Math.floor(elapsed / 1000)) : 0)
+      setSettlementCountdown(elapsed < 10_000 ? Math.max(1, 10 - Math.floor(elapsed / 1000)) : 0)
     }
     tick()
     const id = window.setInterval(tick, 100)
