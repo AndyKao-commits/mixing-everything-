@@ -881,6 +881,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (event.status !== 'active') throw new Error('活動尚未開始')
+    if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     const game: GroupGame = {
       id: uid(),
       event_id: event.id,
@@ -940,6 +941,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const game = activeGroupGame()
     if (!game || game.kind !== 'dont_copy_me') throw new Error('遊戲不存在')
+    if (game.status !== 'round_result') throw new Error('請先完成本題計分')
     const prompts = game.payload.prompts as string[]
     if (game.round >= prompts.length) {
       return this.endGroupGame(adminToken)
@@ -955,6 +957,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (event.status !== 'active') throw new Error('活動尚未開始')
+    if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     const game: GroupGame = {
       id: uid(),
       event_id: event.id,
@@ -1007,6 +1010,7 @@ export const gameStore = {
     if (adminToken) requireAdmin(adminToken)
     const game = activeGroupGame()
     if (!game || game.kind !== 'who_wrote_it') throw new Error('遊戲不存在')
+    if (game.status !== 'playing' && game.status !== 'round_result') throw new Error('目前不能抽下一則')
     const answers = game.payload.answers as Array<{
       id: string
       player_id: string
@@ -1096,6 +1100,8 @@ export const gameStore = {
   startFinalButton(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (event.status !== 'active') throw new Error('請先完成一般活動階段')
+    if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     if (event.score_locked) throw new Error('已鎖分')
     const start = Date.now() + 3000
     const end = start + 10_000
