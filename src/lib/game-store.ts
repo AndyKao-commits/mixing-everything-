@@ -499,7 +499,8 @@ function safeGroupGame(viewerPlayerId?: string): GroupGame | null {
 export const gameStore = {
   bootstrap() {
     if (store().event) return
-    const adminPin = process.env.ADMIN_PIN || '2468'
+    const adminPin = process.env.ADMIN_PIN
+    if (!adminPin) throw new Error('ADMIN_PIN 尚未設定')
     const { hash, salt } = hashPin(adminPin)
     const now = nowIso()
     const event: Event = {
@@ -565,10 +566,8 @@ export const gameStore = {
     this.bootstrap()
     const event = requireEvent()
     const configuredPin = process.env.ADMIN_PIN
-    const valid = configuredPin
-      ? pin === configuredPin
-      : verifyPin(pin, event.admin_pin_hash, event.admin_pin_salt)
-    if (!valid) {
+    if (!configuredPin) throw new Error('ADMIN_PIN 尚未設定')
+    if (pin !== configuredPin) {
       throw new Error('管理員密碼錯誤')
     }
     const token = signAdminToken()
