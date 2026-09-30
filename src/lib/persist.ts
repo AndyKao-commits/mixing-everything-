@@ -55,8 +55,8 @@ async function getRemoteState<T>(): Promise<T | null> {
 async function setRemoteState(value: unknown): Promise<void> {
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase.rpc('save_app_state', {
-    expected_version: loadedVersion,
-    next_state: value,
+    p_expected_version: loadedVersion,
+    p_next_state: value,
   })
   if (error) {
     if (/STATE_CONFLICT/i.test(error.message)) throw new Error('STATE_CONFLICT')
