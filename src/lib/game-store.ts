@@ -1027,6 +1027,7 @@ export const gameStore = {
     const answers = game.payload.answers as Array<{
       id: string
       player_id: string
+      prompt: string
       text: string
       revealed: boolean
     }>
@@ -1053,6 +1054,7 @@ export const gameStore = {
     const answers = game.payload.answers as Array<{
       id: string
       player_id: string
+      prompt: string
       text: string
       revealed: boolean
     }>
@@ -1110,6 +1112,7 @@ export const gameStore = {
     const answers = game.payload.answers as Array<{
       id: string
       player_id: string
+      prompt: string
       text: string
       revealed: boolean
     }>
