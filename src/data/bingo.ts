@@ -8,13 +8,14 @@ export interface BingoPrompt {
 }
 
 export const FOOD_PROMPTS: BingoPrompt[] = [
+  { id: 'f0', category: 'food', text: '拍一盤自己烤的肉' },
   { id: 'f1', category: 'food', text: '拍到生豬肉', pool: 'raw_meat' },
   { id: 'f2', category: 'food', text: '拍到生牛肉', pool: 'raw_meat' },
   { id: 'f3', category: 'food', text: '拍到生雞肉', pool: 'raw_meat' },
   { id: 'f4', category: 'food', text: '拍到生海鮮', pool: 'raw_meat' },
   { id: 'f5', category: 'food', text: '拍到烤焦的肉' },
   { id: 'f6', category: 'food', text: '拍到烤焦的菜' },
-  { id: 'f7', category: 'food', text: '拍到正在滴油的肉' },
+  { id: 'f7', category: 'food', text: '拍到正在烤的肉' },
   { id: 'f8', category: 'food', text: '拍到正在冒煙的食物' },
   { id: 'f9', category: 'food', text: '拍到只剩最後一口的食物' },
   { id: 'f10', category: 'food', text: '拍到一盤全部都是肉' },
