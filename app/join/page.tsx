@@ -18,9 +18,14 @@ export default function JoinPage() {
   const [phase, setPhase] = useState<'pin' | 'confirm'>('pin')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loadingList, setLoadingList] = useState(true)
 
   useEffect(() => {
-    api.state().then((s) => setPlayers(s.players || [])).catch((e) => setError(e.message))
+    api
+      .state()
+      .then((s) => setPlayers(s.players || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingList(false))
   }, [])
 
   function pick(p: { id: string; name: string; pin_set: boolean }) {
@@ -95,6 +100,7 @@ export default function JoinPage() {
       </a>
       <h1 className="mt-4 font-display text-3xl font-bold">你是誰？</h1>
       <p className="mt-2 text-soft">選自己的名字，設定或輸入 PIN</p>
+      {loadingList ? <p className="mt-8 text-soft">載入玩家名單…</p> : null}
       <div className="mt-6 grid grid-cols-2 gap-2">
         {players.map((p) => (
           <button
@@ -108,6 +114,9 @@ export default function JoinPage() {
           </button>
         ))}
       </div>
+      {!loadingList && players.length === 0 ? (
+        <p className="mt-4 text-sm text-ember">目前沒有玩家，請管理員先建立名單。</p>
+      ) : null}
       {error ? <p className="mt-4 text-sm text-ember">{error}</p> : null}
     </main>
   )
