@@ -469,7 +469,10 @@ function safeGroupGame(viewerPlayerId?: string): GroupGame | null {
     mySubmitted: viewerPlayerId ? answers.some((a) => a.player_id === viewerPlayerId) : false,
     revealedPlayerIds: game.payload.revealedPlayerIds || [],
   }
-  if (game.status === 'voting' && current) payload.currentAnswer = { id: current.id, text: current.text }
+  if (game.status === 'voting' && current) {
+    payload.currentAnswer = { id: current.id, text: current.text }
+    payload.isCurrentAuthor = viewerPlayerId === current.player_id
+  }
   if (game.status === 'round_result' && game.payload.reveal) payload.reveal = game.payload.reveal
   return { ...game, payload }
 }
