@@ -339,16 +339,25 @@ export default function AdminPage() {
           >
             鎖定積分
           </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={busy || event?.status !== 'message'}
-            onClick={() => {
-              if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
-            }}
-          >
-            開始最終結算
-          </button>
+          {(state?.ties || []).length ? (
+            <TieBreakControls
+              ties={state.ties}
+              players={players}
+              busy={busy}
+              onStart={(tieBreakOrder) => act('start_settlement', { tieBreakOrder })}
+            />
+          ) : (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy || event?.status !== 'message'}
+              onClick={() => {
+                if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
+              }}
+            >
+              開始最終結算
+            </button>
+          )}
           <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('finish_event')}>
             結束活動（關閉 60 秒贈與）
           </button>
@@ -415,6 +424,60 @@ function DontCopyScorer({
       })}
       <button type="button" className="btn-primary !min-h-12" onClick={() => onScore(picked)}>
         確認本題得分（{picked.length}）
+      </button>
+    </div>
+  )
+}
+
+
+function TieBreakControls({
+  ties,
+  players,
+  busy,
+  onStart,
+}: {
+  ties: Array<{ score: number; players: Array<{ player_id: string }> }>
+  players: any[]
+  busy: boolean
+  onStart: (order: string[]) => void
+}) {
+  const [orders, setOrders] = useState<string[][]>(() => ties.map((t) => t.players.map((p) => p.player_id)))
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name || '玩家'
+  function move(group: number, index: number, delta: number) {
+    setOrders((prev) => {
+      const next = prev.map((x) => [...x])
+      const target = index + delta
+      if (target < 0 || target >= next[group].length) return prev
+      ;[next[group][index], next[group][target]] = [next[group][target], next[group][index]]
+      return next
+    })
+  }
+  return (
+    <div className="card space-y-3 border border-ember/30">
+      <p className="font-semibold text-ember">前三名有同分，請決定順序</p>
+      {orders.map((order, group) => (
+        <div key={group} className="space-y-2">
+          <p className="text-sm text-soft">同分 {ties[group]?.score} 分 · 上方名次較高</p>
+          {order.map((id, index) => (
+            <div key={id} className="flex items-center justify-between rounded-xl bg-paper p-2">
+              <span className="font-semibold">{index + 1}. {nameOf(id)}</span>
+              <div className="flex gap-1">
+                <button type="button" className="btn-ghost !min-h-9 !px-3" disabled={index === 0} onClick={() => move(group, index, -1)}>↑</button>
+                <button type="button" className="btn-ghost !min-h-9 !px-3" disabled={index === order.length - 1} onClick={() => move(group, index, 1)}>↓</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={busy}
+        onClick={() => {
+          if (confirm('確定依目前同分順序進行最終結算？')) onStart(orders.flat())
+        }}
+      >
+        確認同分順序並開始結算
       </button>
     </div>
   )
