@@ -999,6 +999,8 @@ export const gameStore = {
       throw new Error('目前無法投票')
     }
     const revealed = (game.payload.revealedPlayerIds as string[]) || []
+    if (!store().players.has(guessedPlayerId)) throw new Error('玩家不存在')
+    if (guessedPlayerId === player.id) throw new Error('不能猜自己')
     if (revealed.includes(guessedPlayerId)) throw new Error('此玩家已揭曉')
     const votes = (game.payload.votes as Record<string, string>) || {}
     if (votes[player.id]) throw new Error('已投票')
@@ -1008,38 +1010,41 @@ export const gameStore = {
 
     const eligibleVoterIds = [...store().players.keys()].filter((id) => id !== (game.payload.currentAuthorId as string | undefined))
     if (Object.keys(votes).length >= eligibleVoterIds.length) {
-      const answers = game.payload.answers as Array<{
-        id: string
-        player_id: string
-        text: string
-        revealed: boolean
-      }>
-      const currentId = game.payload.currentAnswerId as string
-      const answer = answers.find((a) => a.id === currentId)
-      if (answer) {
-        for (const [voterId, guess] of Object.entries(votes)) {
-          if (guess === answer.player_id) {
-            addScore(
-              event,
-              voterId,
-              'who_wrote_it',
-              `${game.id}_${currentId}_${voterId}`,
-              1,
-              '猜對作者',
-            )
-          }
-        }
-        answer.revealed = true
-        revealed.push(answer.player_id)
-        game.payload.revealedPlayerIds = revealed
-        game.payload.reveal = {
-          player_id: answer.player_id,
-          text: answer.text,
-        }
-        game.status = 'round_result'
-      }
+      this.revealWhoWroteAnswer()
     }
     return true
+  },
+
+  revealWhoWroteAnswer(adminToken?: string) {
+    if (adminToken) requireAdmin(adminToken)
+    const event = requireEvent()
+    const game = activeGroupGame()
+    if (!game || game.kind !== 'who_wrote_it' || game.status !== 'voting') {
+      throw new Error('目前沒有可揭曉的答案')
+    }
+    const answers = game.payload.answers as Array<{
+      id: string
+      player_id: string
+      text: string
+      revealed: boolean
+    }>
+    const currentId = game.payload.currentAnswerId as string
+    const answer = answers.find((a) => a.id === currentId)
+    if (!answer) throw new Error('找不到目前答案')
+    const votes = (game.payload.votes as Record<string, string>) || {}
+    for (const [voterId, guess] of Object.entries(votes)) {
+      if (guess === answer.player_id) {
+        addScore(event, voterId, 'who_wrote_it', `${game.id}_${currentId}_${voterId}`, 1, '猜對作者')
+      }
+    }
+    answer.revealed = true
+    const revealed = (game.payload.revealedPlayerIds as string[]) || []
+    if (!revealed.includes(answer.player_id)) revealed.push(answer.player_id)
+    game.payload.revealedPlayerIds = revealed
+    game.payload.reveal = { player_id: answer.player_id, text: answer.text }
+    game.status = 'round_result'
+    game.updated_at = nowIso()
+    return game
   },
 
   endGroupGame(adminToken: string) {
