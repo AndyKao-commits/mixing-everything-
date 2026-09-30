@@ -8,7 +8,7 @@ import { usePlayerView } from '@/hooks/usePlayerView'
 export default function PlayLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { data } = usePlayerView(3000)
+  const { data } = usePlayerView(2000)
 
   useEffect(() => {
     if (!data?.event) return
