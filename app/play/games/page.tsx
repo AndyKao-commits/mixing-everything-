@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { getPlayerToken } from '@/lib/client-session'
 import { usePlayerView } from '@/hooks/usePlayerView'
@@ -11,6 +11,8 @@ export default function GamesPage() {
   const [clicks, setClicks] = useState(0)
   const [pendingClicks, setPendingClicks] = useState(0)
   const [sendingClicks, setSendingClicks] = useState(false)
+  const pendingClicksRef = useRef(0)
+  const sendingClicksRef = useRef(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -95,27 +97,41 @@ export default function GamesPage() {
   function tap() {
     if (left === 0) return
     setClicks((n) => n + 1)
-    setPendingClicks((n) => n + 1)
+    pendingClicksRef.current += 1
+    setPendingClicks(pendingClicksRef.current)
+  }
+
+  async function flushClicks() {
+    const token = getPlayerToken()
+    if (!token || sendingClicksRef.current || pendingClicksRef.current <= 0) return
+    const batch = pendingClicksRef.current
+    pendingClicksRef.current = 0
+    setPendingClicks(0)
+    sendingClicksRef.current = true
+    setSendingClicks(true)
+    try {
+      await api.finalClick(token, Date.now(), batch)
+    } catch {
+      // A batch arriving after the server deadline is intentionally ignored.
+    } finally {
+      sendingClicksRef.current = false
+      setSendingClicks(false)
+    }
   }
 
   useEffect(() => {
     if (!game || game.kind !== 'final_button' || pendingClicks <= 0 || sendingClicks) return
-    const id = window.setTimeout(async () => {
-      const token = getPlayerToken()
-      if (!token) return
-      const batch = pendingClicks
-      setPendingClicks((n) => Math.max(0, n - batch))
-      setSendingClicks(true)
-      try {
-        await api.finalClick(token, Date.now(), batch)
-      } catch {
-        // The server may reject a late batch after the timer closes.
-      } finally {
-        setSendingClicks(false)
-      }
-    }, 300)
+    const delay = left !== null && left <= 1 ? 0 : 250
+    const id = window.setTimeout(() => void flushClicks(), delay)
     return () => window.clearTimeout(id)
-  }, [pendingClicks, game, sendingClicks])
+    // flushClicks intentionally uses refs so the final tap batch cannot be lost to stale state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingClicks, game, sendingClicks, left])
+
+  useEffect(() => {
+    if (game?.kind === 'final_button' && left === 0 && pendingClicksRef.current > 0) void flushClicks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [left, game?.kind])
 
   async function sendMessage() {
     const token = getPlayerToken()
