@@ -485,7 +485,7 @@ export default function GamesPage() {
       return (
         <div className="space-y-4 animate-rise">
           <p className="text-center tracking-[0.3em] text-soft">FINAL GAME RESULT</p>
-          <h1 className="text-center font-display text-3xl font-bold">按鈕大賽排名</h1>
+          <h1 className="text-center font-display text-3xl font-bold">快點擊澤澤的胸肌賺分數排名</h1>
           {results.map((row) => (
             <div key={row.playerId} className="card flex items-center justify-between">
               <div><span className="mr-3 font-display text-2xl font-bold">#{row.rank}</span>{row.playerName}</div>
@@ -501,7 +501,7 @@ export default function GamesPage() {
       return (
         <div className="flex min-h-[65vh] flex-col items-center justify-center gap-6 text-center animate-rise">
           <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
-          <h1 className="font-display text-4xl font-bold">按鈕大賽</h1>
+          <h1 className="font-display text-4xl font-bold">快點擊澤澤的胸肌賺分數</h1>
           <p className="text-soft">全員準備後，統一倒數 10 秒開始</p>
           <p className="font-display text-3xl font-bold tabular-nums">{readyCount} / {playerCount}</p>
           <button type="button" className="btn-primary max-w-xs" disabled={mineReady || busy} onClick={readyFinal}>
