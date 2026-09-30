@@ -751,7 +751,7 @@ export const gameStore = {
         game.payload.readyCount = ready.length
         game.payload.playerCount = remaining.length
         if (!Number(game.payload.startedAt) && ready.length >= remaining.length) {
-          const start = Date.now() + 10_000
+          const start = Date.now() + 20_000
           game.payload.countdownEndsAt = start
           game.payload.startedAt = start
           game.payload.endsAt = start + 10_000
@@ -1282,7 +1282,7 @@ export const gameStore = {
     game.payload.playerCount = store().players.size
 
     if (!Number(game.payload.startedAt) && ready.size >= store().players.size) {
-      const start = Date.now() + 10_000
+      const start = Date.now() + 20_000
       game.payload.countdownEndsAt = start
       game.payload.startedAt = start
       game.payload.endsAt = start + 10_000
