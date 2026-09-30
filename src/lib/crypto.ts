@@ -30,7 +30,12 @@ export function sessionToken(): string {
 }
 
 function authSecret() {
-  return process.env.SESSION_SECRET || process.env.ADMIN_PIN || 'bbq-party-demo-secret'
+  const secret = process.env.SESSION_SECRET
+  if (secret) return secret
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET is required in production')
+  }
+  return process.env.ADMIN_PIN || 'bbq-party-local-dev-secret'
 }
 
 function sign(payload: string): string {
