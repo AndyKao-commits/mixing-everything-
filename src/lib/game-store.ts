@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   CREATIVE_PROMPTS,
   FOOD_PROMPTS,
@@ -67,30 +68,37 @@ interface Store {
   adminSessions: Set<string>
 }
 
-const g = globalThis as typeof globalThis & { __bbqStore?: Store }
+function createStore(): Store {
+  return {
+    event: null,
+    players: new Map(),
+    sessions: new Map(),
+    scores: [],
+    bingoCards: new Map(),
+    secretTasks: new Map(),
+    bounties: [],
+    playerBounties: new Map(),
+    targets: new Map(),
+    groupGames: new Map(),
+    messages: new Map(),
+    prizeDecisions: new Map(),
+    settlement: null,
+    finalClicks: new Map(),
+    mysteryUsed: new Set(),
+    adminSessions: new Set(),
+  }
+}
+
+const requestStore = new AsyncLocalStorage<Store>()
+
+export function beginGameStoreRequest(): void {
+  requestStore.enterWith(createStore())
+}
 
 function store(): Store {
-  if (!g.__bbqStore) {
-    g.__bbqStore = {
-      event: null,
-      players: new Map(),
-      sessions: new Map(),
-      scores: [],
-      bingoCards: new Map(),
-      secretTasks: new Map(),
-      bounties: [],
-      playerBounties: new Map(),
-      targets: new Map(),
-      groupGames: new Map(),
-      messages: new Map(),
-      prizeDecisions: new Map(),
-      settlement: null,
-      finalClicks: new Map(),
-      mysteryUsed: new Set(),
-      adminSessions: new Set(),
-    }
-  }
-  return g.__bbqStore
+  const current = requestStore.getStore()
+  if (!current) throw new Error('Game store request context is missing')
+  return current
 }
 
 function requireEvent(): Event {
