@@ -543,14 +543,6 @@ export const gameStore = {
 
   async save() {
     const snapshot = serializeStore()
-    // Persist photos separately so the main state stays under Runtime Cache limits.
-    for (const card of store().bingoCards.values()) {
-      for (const cell of card.cells) {
-        if (cell.photo_data_url) {
-          await persistSetPhoto(cell.id, cell.photo_data_url)
-        }
-      }
-    }
     await persistSetState(snapshot)
   },
 
