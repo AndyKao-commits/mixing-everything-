@@ -332,6 +332,9 @@ export default function GamesPage() {
         <div className="space-y-4 animate-rise">
           <h1 className="font-display text-3xl font-bold">這是誰寫的？</h1>
           <div className="card text-xl font-medium">「{current.text}」</div>
+          {game.payload.isCurrentAuthor ? (
+            <div className="card">這題是你的答案，等大家猜就好。</div>
+          ) : (
           <div className="space-y-2">
             {(data.roster || []).map((p: any) => {
               const disabled = revealedIds.has(p.id) || p.id === data.player.id
@@ -348,6 +351,7 @@ export default function GamesPage() {
               )
             })}
           </div>
+          )}
           {error ? <p className="text-sm text-ember">{error}</p> : null}
         </div>
       )
