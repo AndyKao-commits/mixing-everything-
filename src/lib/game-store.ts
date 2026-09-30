@@ -1139,8 +1139,10 @@ export const gameStore = {
     if (event.status !== 'active') throw new Error('請先完成一般活動階段')
     if (event.active_group_game !== 'none') throw new Error('請先結束目前團康')
     if (event.score_locked) throw new Error('已鎖分')
-    const start = Date.now() + 3000
-    const end = start + 10_000
+    // Wait for every player to explicitly ready up. The 10-second countdown
+    // starts only when the last player becomes ready.
+    const start = 0
+    const end = 0
     const game: GroupGame = {
       id: uid(),
       event_id: event.id,
@@ -1152,6 +1154,9 @@ export const gameStore = {
         endsAt: end,
         startedAt: start,
         finished: false,
+        readyPlayerIds: [] as string[],
+        readyCount: 0,
+        playerCount: store().players.size,
       },
       created_at: nowIso(),
       updated_at: nowIso(),
@@ -1163,6 +1168,29 @@ export const gameStore = {
     event.group_game_id = game.id
     touch(event)
     return game
+  },
+
+  readyFinalButton(token: string) {
+    const { player } = requirePlayerSession(token)
+    const event = requireEvent()
+    const game = activeGroupGame()
+    if (!game || game.kind !== 'final_button' || game.payload.finished) throw new Error('遊戲未開放準備')
+
+    const ready = new Set((game.payload.readyPlayerIds as string[]) || [])
+    ready.add(player.id)
+    game.payload.readyPlayerIds = [...ready]
+    game.payload.readyCount = ready.size
+    game.payload.playerCount = store().players.size
+
+    if (!Number(game.payload.startedAt) && ready.size >= store().players.size) {
+      const start = Date.now() + 10_000
+      game.payload.countdownEndsAt = start
+      game.payload.startedAt = start
+      game.payload.endsAt = start + 10_000
+    }
+    game.updated_at = nowIso()
+    touch(event)
+    return this.getPlayerView(token)
   },
 
   async clickFinalButton(token: string, clientTs: number, clickCount = 1) {
@@ -1224,7 +1252,11 @@ export const gameStore = {
         `按鈕大戰第 ${idx + 1} 名 (${row.count} 次)`,
       )
     })
-    game.payload.results = ranked
+    game.payload.results = ranked.map((row, idx) => ({
+      ...row,
+      rank: idx + 1,
+      playerName: store().players.get(row.playerId)?.name || '未知玩家',
+    }))
     event.active_group_game = 'none'
     event.status = 'final_game'
     touch(event)
