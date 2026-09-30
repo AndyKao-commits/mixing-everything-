@@ -456,6 +456,24 @@ function activeGroupGame(): GroupGame | null {
   return store().groupGames.get(event.group_game_id) || null
 }
 
+
+function safeGroupGame(viewerPlayerId?: string): GroupGame | null {
+  const game = activeGroupGame()
+  if (!game || game.kind !== 'who_wrote_it') return game
+  const answers = (game.payload.answers as Array<{ id: string; player_id: string; text: string; revealed: boolean }>) || []
+  const currentId = game.payload.currentAnswerId as string | null
+  const current = currentId ? answers.find((a) => a.id === currentId) : undefined
+  const payload: Record<string, unknown> = {
+    prompt: game.payload.prompt,
+    answerCount: answers.length,
+    mySubmitted: viewerPlayerId ? answers.some((a) => a.player_id === viewerPlayerId) : false,
+    revealedPlayerIds: game.payload.revealedPlayerIds || [],
+  }
+  if (game.status === 'voting' && current) payload.currentAnswer = { id: current.id, text: current.text }
+  if (game.status === 'round_result' && game.payload.reveal) payload.reveal = game.payload.reveal
+  return { ...game, payload }
+}
+
 export const gameStore = {
   bootstrap() {
     if (store().event) return
@@ -495,7 +513,7 @@ export const gameStore = {
         last_group_game_at: event.last_group_game_at,
       },
       players: publicPlayers(),
-      groupGame: activeGroupGame(),
+      groupGame: safeGroupGame(),
       settlement: store().settlement,
     }
   },
@@ -732,7 +750,7 @@ export const gameStore = {
       bountyRemaining: myBounties.filter((b) => !b.completed).length,
       completedBingo,
       completedBounties,
-      groupGame: activeGroupGame(),
+      groupGame: safeGroupGame(player.id),
       messageSubmitted: [...store().messages.values()].some((m) => m.player_id === player.id),
       prizeDecision: store().prizeDecisions.get(player.id) || null,
       settlement: store().settlement,
