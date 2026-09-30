@@ -616,10 +616,15 @@ export const gameStore = {
   createPlayer(adminToken: string, name: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    const cleanName = name.trim().slice(0, 16)
+    if (!cleanName) throw new Error('玩家名稱不可空白')
+    if ([...store().players.values()].some((p) => p.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+      throw new Error('玩家名稱不可重複')
+    }
     const player: Player = {
       id: uid(),
       event_id: event.id,
-      name: name.trim().slice(0, 16),
+      name: cleanName,
       pin_hash: null,
       pin_salt: null,
       pin_set: false,
@@ -639,7 +644,12 @@ export const gameStore = {
     requireAdmin(adminToken)
     const player = store().players.get(playerId)
     if (!player) throw new Error('玩家不存在')
-    player.name = name.trim().slice(0, 16)
+    const cleanName = name.trim().slice(0, 16)
+    if (!cleanName) throw new Error('玩家名稱不可空白')
+    if ([...store().players.values()].some((p) => p.id !== playerId && p.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+      throw new Error('玩家名稱不可重複')
+    }
+    player.name = cleanName
     return player
   },
 
