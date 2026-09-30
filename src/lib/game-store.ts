@@ -1379,11 +1379,4 @@ export const gameStore = {
     return ties
   },
 
-  setStatus(adminToken: string, status: EventStatus) {
-    requireAdmin(adminToken)
-    const event = requireEvent()
-    event.status = status
-    touch(event)
-    return event
-  },
 }
