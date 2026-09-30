@@ -63,6 +63,8 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'games/who-wrote/vote') {
       gameStore.voteWhoWrote(playerToken, String(body.guessedPlayerId))
       result = { status: 200, data: { ok: true } }
+    } else if (method === 'POST' && path === 'games/final-button/ready') {
+      result = { status: 200, data: gameStore.readyFinalButton(playerToken) }
     } else if (method === 'POST' && path === 'games/final-button/click') {
       result = {
         status: 200,
