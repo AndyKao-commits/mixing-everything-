@@ -477,7 +477,12 @@ function safeGroupGame(viewerPlayerId?: string): GroupGame | null {
     payload.currentAnswer = { id: current.id, text: current.text }
     payload.isCurrentAuthor = viewerPlayerId === current.player_id
   }
-  if (game.status === 'round_result' && game.payload.reveal) payload.reveal = game.payload.reveal
+  if (game.status === 'round_result' && game.payload.reveal) {
+    const reveal = game.payload.reveal as { player_id: string; text: string }
+    payload.reveal = viewerPlayerId
+      ? reveal
+      : { text: reveal.text, player_name: store().players.get(reveal.player_id)?.name || '未知玩家' }
+  }
   return { ...game, payload }
 }
 
