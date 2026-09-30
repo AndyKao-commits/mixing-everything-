@@ -158,13 +158,17 @@ export default function GamesPage() {
     if (game?.kind !== 'final_button' || game.payload.finished || left !== 0) return
     const token = getPlayerToken()
     if (!token) return
+    // Give every device time to flush its last click batch before anyone
+    // snapshots the shared results. During this window the UI shows settling.
     const id = window.setTimeout(async () => {
       try {
+        // Flush this device once more before asking the server to rank everyone.
+        if (pendingClicksRef.current > 0) await flushClicks()
         setData(await api.finalFinish(token))
       } catch {
         await refresh()
       }
-    }, 250)
+    }, 10_000)
     return () => window.clearTimeout(id)
   }, [game?.kind, game?.payload.finished, left, refresh, setData])
 
@@ -506,6 +510,16 @@ export default function GamesPage() {
     const playerCount = Number(game.payload.playerCount || data.roster?.length || 0)
     const startedAt = Number(game.payload.startedAt || 0)
     const results = (game.payload.results as Array<{ playerId: string; playerName: string; count: number; rank: number }>) || []
+
+    if (startedAt && left === 0 && !game.payload.finished) {
+      return (
+        <div className="flex min-h-[65vh] flex-col items-center justify-center gap-4 text-center animate-rise">
+          <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
+          <h1 className="font-display text-4xl font-bold">結算中…</h1>
+          <p className="text-soft">正在同步所有玩家最後的點擊，10 秒後公布排名</p>
+        </div>
+      )
+    }
 
     if (game.payload.finished && results.length) {
       return (
