@@ -469,24 +469,6 @@ export const gameStore = {
       last_group_game_at: null,
     }
     store().event = event
-    const names = [
-      '阿樂', '小傑', 'Kevin', 'Mia', '婷婷',
-      '阿明', '小雨', 'Jamie', '阿豪', 'Yuki',
-      '小安', 'Chris', '阿珍', 'Ben', '小魚',
-    ]
-    names.forEach((name) => {
-      const p: Player = {
-        id: uid(),
-        event_id: event.id,
-        name,
-        pin_hash: null,
-        pin_salt: null,
-        pin_set: false,
-        created_at: nowIso(),
-        last_seen_at: null,
-      }
-      store().players.set(p.id, p)
-    })
   },
 
   getPublicState() {
@@ -517,6 +499,7 @@ export const gameStore = {
     for (const card of store().bingoCards.values()) {
       for (const cell of card.cells) {
         if (cell.photo_data_url) continue
+        if (!('photo_ref' in cell) || !cell.photo_ref) continue
         const photo = await persistGetPhoto(cell.id)
         if (photo) cell.photo_data_url = photo
       }
