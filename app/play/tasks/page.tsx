@@ -8,7 +8,7 @@ import { usePlayerView } from '@/hooks/usePlayerView'
 
 type Tab = 'bingo' | 'secret' | 'bounty'
 
-function compressImage(file: File, max = 900): Promise<string> {
+function compressImage(file: File, max = 1600): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = reject
@@ -21,7 +21,7 @@ function compressImage(file: File, max = 900): Promise<string> {
         canvas.height = Math.round(img.height * scale)
         const ctx = canvas.getContext('2d')!
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.72))
+        resolve(canvas.toDataURL('image/jpeg', 0.92))
       }
       img.onerror = reject
       img.src = String(reader.result)
