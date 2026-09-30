@@ -13,20 +13,20 @@ function cropSquareImage(file: File, offsetX = 50, offsetY = 50, zoom = 1): Prom
     const url = URL.createObjectURL(file)
     const img = new Image()
     img.onload = () => {
-      const coverScale = Math.max(1600 / img.width, 1600 / img.height)
+      const coverScale = Math.max(1200 / img.width, 1200 / img.height)
       const scale = coverScale * zoom
       const drawnW = img.width * scale
       const drawnH = img.height * scale
-      const overflowX = Math.max(0, drawnW - 1600)
-      const overflowY = Math.max(0, drawnH - 1600)
+      const overflowX = Math.max(0, drawnW - 1200)
+      const overflowY = Math.max(0, drawnH - 1200)
       const dx = -overflowX * (offsetX / 100)
       const dy = -overflowY * (offsetY / 100)
       const canvas = document.createElement('canvas')
-      canvas.width = 1600
-      canvas.height = 1600
+      canvas.width = 1200
+      canvas.height = 1200
       canvas.getContext('2d')!.drawImage(img, dx, dy, drawnW, drawnH)
       URL.revokeObjectURL(url)
-      resolve(canvas.toDataURL('image/jpeg', 0.94))
+      resolve(canvas.toDataURL('image/jpeg', 0.82))
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)

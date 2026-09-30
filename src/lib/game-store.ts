@@ -1238,7 +1238,7 @@ export const gameStore = {
     const startedAt = Number(game.payload.startedAt || 0)
     const endsAt = Number(game.payload.endsAt || 0)
     if (!startedAt || !endsAt) throw new Error('按鈕大戰尚未開始')
-    if (Date.now() < endsAt) throw new Error('遊戲尚未結束')
+    if (Date.now() < endsAt + 10_000) throw new Error('點擊結果仍在結算中')
     await this.finishFinalButton()
     return this.getPlayerView(token)
   },

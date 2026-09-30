@@ -43,7 +43,7 @@ export function usePlayerView(pollMs = 3000) {
       timer = window.setTimeout(async () => {
         if (document.visibilityState === 'visible') await refresh()
         schedule()
-      }, pollMs)
+      }, pollMs + Math.floor(Math.random() * Math.min(600, Math.max(100, pollMs * 0.2))))
     }
 
     const onVisibilityChange = () => {

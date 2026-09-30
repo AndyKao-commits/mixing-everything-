@@ -121,6 +121,18 @@ export default function GamesPage() {
     }
   }
 
+  useEffect(() => {
+    if (game?.kind !== 'final_button') return
+    // Every final-button run is a fresh round. Never carry the previous run's
+    // visible/ref/pending counters into the new game id.
+    clicksRef.current = 0
+    pendingClicksRef.current = 0
+    sendingClicksRef.current = false
+    setClicks(0)
+    setPendingClicks(0)
+    setSendingClicks(false)
+  }, [game?.id, game?.kind])
+
   function tap() {
     if (left === 0 || left === null) return
     clicksRef.current += 1
@@ -177,7 +189,7 @@ export default function GamesPage() {
       } catch {
         await refresh()
       }
-    }, 10_000)
+    }, 10_500)
     return () => window.clearTimeout(id)
   }, [game?.kind, game?.payload.finished, left, refresh, setData])
 
