@@ -160,6 +160,25 @@ export default function AdminPage() {
               開始活動（發放任務）
             </button>
           ) : null}
+          <div className="card space-y-3 border border-ember/30">
+            <div>
+              <h2 className="font-semibold text-ember">活動資料管理</h2>
+              <p className="mt-1 text-sm text-soft">活動結束後可清除所有玩家、PIN、分數、任務、照片、留言與結算資料。</p>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost text-ember"
+              disabled={busy}
+              onClick={() => {
+                const first = confirm('確定要清除本次活動的所有用戶與遊戲資料？照片也會永久刪除。')
+                if (!first) return
+                const phrase = prompt('此操作無法復原。請輸入「清除資料」確認：')
+                if (phrase === '清除資料') void act('clear_event_data')
+              }}
+            >
+              清除活動資料
+            </button>
+          </div>
           <div className="card space-y-2">
             <h2 className="font-semibold">完整排行榜（僅管理員）</h2>
             {rankings.map((r: any) => (
