@@ -362,12 +362,15 @@ function getSession(token?: string | null): PlayerSession | null {
   return session
 }
 
-function requirePlayerSession(token?: string | null): { session: PlayerSession; player: Player } {
+function requirePlayerSession(
+  token?: string | null,
+  options: { touch?: boolean } = {},
+): { session: PlayerSession; player: Player } {
   const session = getSession(token)
   if (!session) throw new Error('請重新登入')
   const player = store().players.get(session.player_id)
   if (!player) throw new Error('玩家不存在')
-  player.last_seen_at = nowIso()
+  if (options.touch !== false) player.last_seen_at = nowIso()
   return { session, player }
 }
 
@@ -734,9 +737,8 @@ export const gameStore = {
   },
 
   getPlayerView(token: string) {
-    const { player } = requirePlayerSession(token)
+    const { player } = requirePlayerSession(token, { touch: false })
     const event = requireEvent()
-    ensurePlayerAssignments(event)
     const card = store().bingoCards.get(player.id) || null
     const secret = [...store().secretTasks.values()].find((t) => t.player_id === player.id) || null
     const target = store().targets.get(player.id) || null
