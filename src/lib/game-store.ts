@@ -1253,6 +1253,9 @@ export const gameStore = {
     const event = requireEvent()
     if (!event.score_locked) throw new Error('請先鎖定積分')
     if (event.status !== 'message') throw new Error('請先開啟「留一句話」階段')
+    if (store().players.size === 0 || store().messages.size < store().players.size) {
+      throw new Error(`請等待所有玩家留言（${store().messages.size}/${store().players.size}）`)
+    }
     const unresolvedTies = this.topTies()
     if (unresolvedTies.length) {
       if (!tieBreakOrder?.length) throw new Error('前三名有同分，請先決定同分順序')
