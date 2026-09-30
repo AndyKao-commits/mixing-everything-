@@ -6,7 +6,7 @@ import { getPlayerToken } from '@/lib/client-session'
 import { usePlayerView } from '@/hooks/usePlayerView'
 
 export default function GamesPage() {
-  const { data, refresh, setData } = usePlayerView(1000)
+  const { data, refresh, setData } = usePlayerView(1500)
   const [text, setText] = useState('')
   const [clicks, setClicks] = useState(0)
   const [pendingClicks, setPendingClicks] = useState(0)
@@ -189,9 +189,9 @@ export default function GamesPage() {
       } catch {
         await refresh()
       }
-    }, 10_500)
+    }, 11_000)
     return () => window.clearTimeout(id)
-  }, [game?.kind, game?.payload.finished, left, refresh, setData])
+  }, [game?.id, game?.kind, game?.payload.finished, left, refresh, setData])
 
   async function readyFinal() {
     const token = getPlayerToken()
