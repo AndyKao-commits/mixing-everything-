@@ -795,6 +795,7 @@ export const gameStore = {
   completeSecret(token: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
+    assertNotLocked(event)
     const task = [...store().secretTasks.values()].find((t) => t.player_id === player.id)
     if (!task) throw new Error('沒有秘密任務')
     if (task.completed) throw new Error('已完成')
@@ -807,6 +808,7 @@ export const gameStore = {
   completeTarget(token: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
+    assertNotLocked(event)
     const target = store().targets.get(player.id)
     if (!target) throw new Error('沒有懸賞目標')
     if (target.completed) throw new Error('已完成')
@@ -819,6 +821,7 @@ export const gameStore = {
   completeBounty(token: string, bountyId: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
+    assertNotLocked(event)
     const bounty = store().bounties.find((b) => b.id === bountyId)
     if (!bounty) throw new Error('懸賞不存在')
     const key = `${player.id}_${bountyId}`
