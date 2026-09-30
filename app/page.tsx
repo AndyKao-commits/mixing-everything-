@@ -10,7 +10,7 @@ export default function LandingPage() {
   const [hasSession, setHasSession] = useState(false)
 
   useEffect(() => {
-    setHasSession(Boolean(getStoredPlayer()))
+    setHasSession(Boolean(getPlayerToken()))
     api.state().then((s) => setEventName(s.event?.name || '今晚誰會贏？')).catch(() => {})
   }, [])
 
