@@ -781,7 +781,9 @@ export const gameStore = {
       prizeDecision: store().prizeDecisions.get(player.id) || null,
       myRank:
         store().settlement?.rankings.find((r) => r.player_id === player.id) || null,
-      donationTotal: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length * 10,
+      donationTotal:
+        (store().settlement?.rankings.find((r) => r.rank === 2)?.prize || 0) +
+        [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').reduce((sum, d) => sum + d.amount, 0),
       donors: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length,
       // Names only — never include scores here.
       roster: publicPlayers().map((p) => ({ id: p.id, name: p.name })),
