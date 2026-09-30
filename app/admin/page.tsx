@@ -263,8 +263,7 @@ export default function AdminPage() {
               <p className="text-sm text-soft">勾選本題答案唯一的玩家：</p>
               <DontCopyScorer
                 players={players}
-                answers={{}}
-                onScore={(ids) => act('score_dont_copy', { uniquePlayerIds: ids })}
+                 onScore={(ids) => act('score_dont_copy', { uniquePlayerIds: ids })}
               />
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('next_dont_copy')}>
                 下一題／結束
@@ -369,8 +368,7 @@ function DontCopyScorer({
   onScore,
 }: {
   players: any[]
-  answers: Record<string, string>
-  onScore: (ids: string[]) => void
+   onScore: (ids: string[]) => void
 }) {
   const [picked, setPicked] = useState<string[]>([])
   return (
