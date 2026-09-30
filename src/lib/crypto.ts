@@ -73,23 +73,23 @@ export function verifyAdminToken(token: string | null | undefined): boolean {
 }
 
 /** Stateless player token encoding playerId + expiry. */
-export function signPlayerToken(playerId: string, ttlMs = 1000 * 60 * 60 * 24 * 7): string {
+export function signPlayerToken(playerId: string, eventId: string, ttlMs = 1000 * 60 * 60 * 24 * 7): string {
   const exp = Date.now() + ttlMs
-  const payload = `p:${playerId}:${exp}`
+  const payload = `p:${eventId}:${playerId}:${exp}`
   return `${payload}:${sign(payload)}`
 }
 
 export function verifyPlayerToken(
   token: string | null | undefined,
-): { playerId: string; expiresAt: number } | null {
+): { eventId: string; playerId: string; expiresAt: number } | null {
   if (!token) return null
   const parts = token.split(':')
-  if (parts.length !== 4 || parts[0] !== 'p') return null
-  const [, playerId, expRaw, sig] = parts
-  if (!playerId || !/^\d+$/.test(expRaw) || !sig) return null
+  if (parts.length !== 5 || parts[0] !== 'p') return null
+  const [, eventId, playerId, expRaw, sig] = parts
+  if (!eventId || !playerId || !/^\d+$/.test(expRaw) || !sig) return null
   const expiresAt = Number(expRaw)
   if (expiresAt < Date.now()) return null
-  const payload = `p:${playerId}:${expRaw}`
+  const payload = `p:${eventId}:${playerId}:${expRaw}`
   if (!safeEqualHex(sig, sign(payload))) return null
-  return { playerId, expiresAt }
+  return { eventId, playerId, expiresAt }
 }
