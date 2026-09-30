@@ -16,6 +16,7 @@ export default function GamesPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
+  const [settlementCountdown, setSettlementCountdown] = useState<number | null>(null)
   const [left, setLeft] = useState<number | null>(null)
 
   const game = data?.groupGame
@@ -44,6 +45,20 @@ export default function GamesPage() {
     }, 200)
     return () => window.clearInterval(id)
   }, [event?.status, event?.donation_ends_at])
+
+  useEffect(() => {
+    if (event?.status !== 'settlement' || !event.settlement_started_at) {
+      setSettlementCountdown(null)
+      return
+    }
+    const tick = () => {
+      const elapsed = Date.now() - new Date(event.settlement_started_at).getTime()
+      setSettlementCountdown(elapsed < 3000 ? Math.max(1, 3 - Math.floor(elapsed / 1000)) : 0)
+    }
+    tick()
+    const id = window.setInterval(tick, 100)
+    return () => window.clearInterval(id)
+  }, [event?.status, event?.settlement_started_at])
 
   const revealedIds = useMemo(
     () => new Set((game?.payload?.revealedPlayerIds as string[]) || []),
@@ -165,6 +180,15 @@ export default function GamesPage() {
   if (!data) return <p className="py-20 text-center text-soft">載入中…</p>
 
   // Settlement reveal
+  if (event.status === 'settlement' && settlementCountdown !== null && settlementCountdown > 0) {
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center text-center animate-rise">
+        <p className="mb-4 tracking-[0.3em] text-soft">FINAL RESULT</p>
+        <p className="font-display text-8xl font-bold tabular-nums">{settlementCountdown}</p>
+      </div>
+    )
+  }
+
   if (event.status === 'settlement' || event.status === 'finished') {
     const rank = data.myRank
     if (!rank) return <p className="text-soft">等待排名…</p>
@@ -174,6 +198,7 @@ export default function GamesPage() {
 
     return (
       <div className={`space-y-5 animate-rise ${rank.rank > 3 ? 'rounded-3xl bg-ink p-5 text-white' : ''}`}>
+        {isTop ? <p className="text-4xl" aria-hidden="true">🎉</p> : null}
         <p className="text-sm opacity-70">你的排名</p>
         <h1 className={`font-display font-bold ${rank.rank > 3 ? 'text-6xl text-red-500' : 'text-5xl text-ink'}`}>
           {rank.rank === 1 ? '🏆 第一名' : rank.rank === 2 ? '第二名' : rank.rank === 3 ? '第三名' : `第 ${rank.rank} 名`}
