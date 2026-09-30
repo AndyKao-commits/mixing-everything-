@@ -278,3 +278,60 @@ begin
   return current_version + 1;
 end;
 $$;
+
+
+-- High-concurrency counter used by the final button battle.
+-- Kept separate from app_state so simultaneous taps never contend on the app-state CAS version.
+create table if not exists final_button_click_counts (
+  session_key text not null,
+  player_key text not null,
+  click_count int not null default 0 check (click_count >= 0),
+  last_at_ms bigint not null default 0,
+  primary key (session_key, player_key)
+);
+
+create or replace function record_final_button_clicks(
+  p_session_key text,
+  p_player_key text,
+  p_click_count int,
+  p_now_ms bigint
+)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_count int;
+  previous_ms bigint;
+  accepted int;
+  max_for_window int;
+begin
+  insert into final_button_click_counts(session_key, player_key, click_count, last_at_ms)
+  values (p_session_key, p_player_key, 0, 0)
+  on conflict (session_key, player_key) do nothing;
+
+  select click_count, last_at_ms into current_count, previous_ms
+  from final_button_click_counts
+  where session_key = p_session_key and player_key = p_player_key
+  for update;
+
+  if previous_ms > 0 and p_now_ms - previous_ms < 40 then
+    return current_count;
+  end if;
+
+  accepted := greatest(1, least(12, p_click_count));
+  max_for_window := greatest(1, ceil(greatest(1, case when previous_ms > 0 then p_now_ms - previous_ms else 500 end)::numeric / 40)::int);
+  accepted := least(accepted, max_for_window);
+
+  update final_button_click_counts
+  set click_count = click_count + accepted, last_at_ms = p_now_ms
+  where session_key = p_session_key and player_key = p_player_key
+  returning click_count into current_count;
+
+  return current_count;
+end;
+$$;
+
+revoke all on function record_final_button_clicks(text, text, int, bigint) from public, anon, authenticated;
+grant execute on function record_final_button_clicks(text, text, int, bigint) to service_role;
