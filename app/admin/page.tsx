@@ -41,9 +41,29 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!token) return
-    const id = window.setInterval(() => void refresh(), 2000)
-    return () => window.clearInterval(id)
-  }, [token, refresh])
+    let timer: number | undefined
+    let stopped = false
+
+    const schedule = () => {
+      if (stopped) return
+      timer = window.setTimeout(async () => {
+        if (document.visibilityState === 'visible' && !busy) await refresh()
+        schedule()
+      }, 3000)
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+
+    schedule()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      stopped = true
+      if (timer) window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [token, refresh, busy])
 
   useEffect(() => {
     if (pin.length === 4) {
