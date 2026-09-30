@@ -676,6 +676,7 @@ export const gameStore = {
   activateEvent(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (event.status !== 'setup') throw new Error('活動已經開始')
     if ([...store().players.values()].length < 2) throw new Error('至少需要 2 位玩家')
     ensurePlayerAssignments(event)
     event.status = 'active'
@@ -926,6 +927,8 @@ export const gameStore = {
   scoreDontCopyRound(adminToken: string, uniquePlayerIds: string[]) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是團康計分階段')
     const game = activeGroupGame()
     if (!game || game.kind !== 'dont_copy_me') throw new Error('遊戲不存在')
     const scored = (game.payload.scoredRounds as number[]) || []
@@ -1066,6 +1069,8 @@ export const gameStore = {
   revealWhoWroteAnswer(adminToken?: string) {
     if (adminToken) requireAdmin(adminToken)
     const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是團康計分階段')
     const game = activeGroupGame()
     if (!game || game.kind !== 'who_wrote_it' || game.status !== 'voting') {
       throw new Error('目前沒有可揭曉的答案')
