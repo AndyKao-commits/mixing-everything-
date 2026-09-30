@@ -342,7 +342,7 @@ export default function AdminPage() {
           <button
             type="button"
             className="btn-secondary"
-            disabled={busy || !event?.score_locked}
+            disabled={busy || event?.status !== 'message'}
             onClick={() => {
               if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
             }}
