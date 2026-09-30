@@ -38,8 +38,7 @@ export async function exportBingoImage(opts: {
       ctx.drawImage(img, x, y, size, size)
     }
     ctx.fillStyle = '#fffaf5'
-    ctx.font = '22px sans-serif'
-    wrapText(ctx, cell?.text || '', x + 8, y + size + 28, size - 16, 26)
+    drawSingleLine(ctx, cell?.text || '', x + 8, y + size + 30, size - 16)
   }
 
   return new Promise((resolve, reject) => {
@@ -56,26 +55,25 @@ function loadImage(src: string) {
   })
 }
 
-function wrapText(
+function drawSingleLine(
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
   y: number,
   maxWidth: number,
-  lineHeight: number,
 ) {
-  const chars = text.split('')
-  let line = ''
-  let yy = y
-  for (const ch of chars) {
-    const test = line + ch
-    if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line, x, yy)
-      line = ch
-      yy += lineHeight
-    } else {
-      line = test
-    }
+  let fontSize = 22
+  ctx.font = fontSize + 'px sans-serif'
+  while (fontSize > 15 && ctx.measureText(text).width > maxWidth) {
+    fontSize -= 1
+    ctx.font = fontSize + 'px sans-serif'
   }
-  ctx.fillText(line, x, yy)
+  let output = text
+  if (ctx.measureText(output).width > maxWidth) {
+    while (output.length > 1 && ctx.measureText(output + '…').width > maxWidth) {
+      output = output.slice(0, -1)
+    }
+    output += '…'
+  }
+  ctx.fillText(output, x, y)
 }
