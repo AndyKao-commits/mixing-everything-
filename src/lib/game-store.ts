@@ -1249,7 +1249,10 @@ export const gameStore = {
     requirePlayerSession(token, { touch: false })
     const game = activeGroupGame()
     if (!game || game.kind !== 'final_button') throw new Error('按鈕大戰不存在')
-    if (Date.now() < Number(game.payload.endsAt || 0)) throw new Error('遊戲尚未結束')
+    const startedAt = Number(game.payload.startedAt || 0)
+    const endsAt = Number(game.payload.endsAt || 0)
+    if (!startedAt || !endsAt) throw new Error('按鈕大戰尚未開始')
+    if (Date.now() < endsAt) throw new Error('遊戲尚未結束')
     await this.finishFinalButton()
     return this.getPlayerView(token)
   },
