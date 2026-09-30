@@ -61,7 +61,7 @@ export default function MePage() {
       ) : null}
 
       <Link href="/join" className="btn-secondary" onClick={() => clearPlayerSession()}>
-        切換玩家
+        結束這次登入
       </Link>
     </div>
   )
