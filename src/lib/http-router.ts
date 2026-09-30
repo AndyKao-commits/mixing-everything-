@@ -169,6 +169,9 @@ export async function routeApiRequest(input: {
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : '錯誤'
+    if (message === 'STATE_CONFLICT') {
+      return { status: 409, data: { error: '資料剛被其他玩家更新，請再試一次' } }
+    }
     const status =
       message.includes('未登入') || message.includes('請重新登入') || message.includes('管理員未登入')
         ? 401
