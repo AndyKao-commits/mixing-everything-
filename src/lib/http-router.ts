@@ -20,7 +20,7 @@ export async function routeApiRequest(input: {
   const body = input.body || {}
 
   try {
-    await gameStore.load()
+    const hadDurableState = await gameStore.load()
     let result: { status: number; data: unknown }
 
     if (method === 'GET' && path === 'state') {
@@ -169,9 +169,9 @@ export async function routeApiRequest(input: {
       result = { status: 404, data: { error: `找不到 API: ${method} /${path}` } }
     }
 
-    if (result.status < 400 && !(method === 'POST' && path === 'games/final-button/click')) {
-      await gameStore.save()
-    }
+    const isFinalTap = method === 'POST' && path === 'games/final-button/click'
+    const shouldPersist = result.status < 400 && !isFinalTap && (method !== 'GET' || !hadDurableState)
+    if (shouldPersist) await gameStore.save()
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : '錯誤'
