@@ -248,7 +248,7 @@ end $$;
 
 
 -- Optimistic compare-and-swap for concurrent party requests.
-create or replace function save_app_state(expected_version bigint, next_state jsonb)
+create or replace function save_app_state(p_expected_version bigint, p_next_state jsonb)
 returns bigint
 language plpgsql
 security definer
@@ -260,20 +260,20 @@ begin
   select version into current_version from app_state where key = 'bbq-party-state-v2' for update;
 
   if not found then
-    if expected_version <> 0 then
+    if p_expected_version <> 0 then
       raise exception 'STATE_CONFLICT';
     end if;
     insert into app_state(key, state, version, updated_at)
-    values ('bbq-party-state-v2', next_state, 1, now());
+    values ('bbq-party-state-v2', p_next_state, 1, now());
     return 1;
   end if;
 
-  if current_version <> expected_version then
+  if current_version <> p_expected_version then
     raise exception 'STATE_CONFLICT';
   end if;
 
   update app_state
-  set state = next_state, version = current_version + 1, updated_at = now()
+  set state = p_next_state, version = current_version + 1, updated_at = now()
   where key = 'bbq-party-state-v2';
   return current_version + 1;
 end;
