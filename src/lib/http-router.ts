@@ -67,7 +67,7 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'games/final-button/click') {
       result = {
         status: 200,
-        data: gameStore.clickFinalButton(playerToken, Number(body.clientTs || Date.now())),
+        data: gameStore.clickFinalButton(playerToken, Number(body.clientTs || Date.now()), Number(body.clickCount || 1)),
       }
     } else if (method === 'POST' && path === 'messages') {
       gameStore.submitMessage(playerToken, String(body.text || ''))
