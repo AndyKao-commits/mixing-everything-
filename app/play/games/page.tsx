@@ -153,6 +153,19 @@ export default function GamesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left, game?.kind])
 
+  async function readyFinal() {
+    const token = getPlayerToken()
+    if (!token) return
+    setBusy(true)
+    try {
+      setData(await api.finalReady(token))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '準備失敗')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function sendMessage() {
     const token = getPlayerToken()
     if (!token || !text.trim()) return
@@ -403,6 +416,43 @@ export default function GamesPage() {
   }
 
   if (game.kind === 'final_button') {
+    const readyIds = new Set((game.payload.readyPlayerIds as string[]) || [])
+    const readyCount = Number(game.payload.readyCount || readyIds.size)
+    const playerCount = Number(game.payload.playerCount || data.roster?.length || 0)
+    const startedAt = Number(game.payload.startedAt || 0)
+    const results = (game.payload.results as Array<{ playerId: string; playerName: string; count: number; rank: number }>) || []
+
+    if (game.payload.finished && results.length) {
+      return (
+        <div className="space-y-4 animate-rise">
+          <p className="text-center tracking-[0.3em] text-soft">FINAL GAME RESULT</p>
+          <h1 className="text-center font-display text-3xl font-bold">按鈕大賽排名</h1>
+          {results.map((row) => (
+            <div key={row.playerId} className="card flex items-center justify-between">
+              <div><span className="mr-3 font-display text-2xl font-bold">#{row.rank}</span>{row.playerName}</div>
+              <span className="font-semibold tabular-nums">{row.count} 下</span>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    if (!startedAt) {
+      const mineReady = readyIds.has(data.player.id)
+      return (
+        <div className="flex min-h-[65vh] flex-col items-center justify-center gap-6 text-center animate-rise">
+          <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
+          <h1 className="font-display text-4xl font-bold">按鈕大賽</h1>
+          <p className="text-soft">全員準備後，統一倒數 10 秒開始</p>
+          <p className="font-display text-3xl font-bold tabular-nums">{readyCount} / {playerCount}</p>
+          <button type="button" className="btn-primary max-w-xs" disabled={mineReady || busy} onClick={readyFinal}>
+            {mineReady ? '✓ 已準備' : '我準備好了'}
+          </button>
+          {mineReady ? <p className="text-soft">等待其他玩家…</p> : null}
+        </div>
+      )
+    }
+
     return (
       <div className="flex min-h-[65vh] flex-col items-center justify-center gap-6 text-center animate-rise">
         <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
