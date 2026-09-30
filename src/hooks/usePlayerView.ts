@@ -22,9 +22,12 @@ export function usePlayerView(pollMs = 2000) {
       setData(view)
       setError('')
     } catch (e) {
-      clearPlayerSession()
-      setError(e instanceof Error ? e.message : '請重新登入')
-      router.replace('/join')
+      const message = e instanceof Error ? e.message : '暫時無法更新'
+      setError(message)
+      if (/未登入|重新登入|PIN/.test(message)) {
+        clearPlayerSession()
+        router.replace('/join')
+      }
     } finally {
       setLoading(false)
     }
