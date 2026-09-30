@@ -136,7 +136,7 @@ export default function GamesPage() {
 
   useEffect(() => {
     if (!game || game.kind !== 'final_button' || pendingClicks <= 0 || sendingClicks) return
-    const delay = left !== null && left <= 1 ? 0 : 250
+    const delay = left !== null && left <= 1 ? 0 : 100
     const id = window.setTimeout(() => void flushClicks(), delay)
     return () => window.clearTimeout(id)
     // flushClicks intentionally uses refs so the final tap batch cannot be lost to stale state.
