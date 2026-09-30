@@ -797,6 +797,9 @@ export const gameStore = {
 
   revealMystery(token: string, cellId: string) {
     const { player } = requirePlayerSession(token)
+    const event = requireEvent()
+    assertNotLocked(event)
+    if (event.status !== 'active') throw new Error('目前不是任務進行階段')
     const card = store().bingoCards.get(player.id)
     if (!card) throw new Error('尚未取得九宮格')
     const cell = card.cells.find((c) => c.id === cellId)
