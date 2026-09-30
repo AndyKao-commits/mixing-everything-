@@ -942,10 +942,6 @@ export const gameStore = {
     })
     game.payload.answers = answers
     game.updated_at = nowIso()
-    const playerCount = store().players.size
-    if (answers.length >= playerCount) {
-      this.drawWhoWroteAnswer()
-    }
     return true
   },
 
@@ -966,6 +962,7 @@ export const gameStore = {
     }
     const drawn = pick(pool)
     game.payload.currentAnswerId = drawn.id
+    game.payload.currentAuthorId = drawn.player_id
     game.payload.votes = {}
     game.status = 'voting'
     game.updated_at = nowIso()
@@ -987,8 +984,8 @@ export const gameStore = {
     game.payload.votes = votes
     game.updated_at = nowIso()
 
-    const playerCount = store().players.size
-    if (Object.keys(votes).length >= playerCount) {
+    const eligibleVoterIds = [...store().players.keys()].filter((id) => id !== (game.payload.currentAuthorId as string | undefined))
+    if (Object.keys(votes).length >= eligibleVoterIds.length) {
       const answers = game.payload.answers as Array<{
         id: string
         player_id: string
@@ -1063,7 +1060,7 @@ export const gameStore = {
     return game
   },
 
-  clickFinalButton(token: string, clientTs: number) {
+  clickFinalButton(token: string, clientTs: number, clickCount = 1) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
     const game = activeGroupGame()
@@ -1083,7 +1080,11 @@ export const gameStore = {
       // ignore superhuman spam; do not error to keep UX smooth
       return { count: row.count }
     }
-    row.count += 1
+    const accepted = Math.max(1, Math.min(12, Math.floor(clickCount || 1)))
+    const elapsed = row.lastAt ? Math.max(1, now - row.lastAt) : 500
+    const maxForWindow = Math.max(1, Math.ceil(elapsed / 40))
+    const increment = Math.min(accepted, maxForWindow)
+    row.count += increment
     row.lastAt = now
     row.events.push(now)
     if (row.events.length > 400) row.events = row.events.slice(-400)
