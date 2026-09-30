@@ -240,6 +240,13 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
   }
 }
 
+function resetSetupAssignments() {
+  store().bingoCards.clear()
+  store().secretTasks.clear()
+  store().targets.clear()
+  store().mysteryUsed.clear()
+}
+
 function ensurePlayerAssignments(event: Event) {
   const players = [...store().players.values()].filter((p) => p.event_id === event.id)
   if (players.length < 2) return
@@ -637,10 +644,7 @@ export const gameStore = {
       last_seen_at: null,
     }
     store().players.set(player.id, player)
-    // reset targets if already assigned so cycle can rebuild next activate
-    if (event.status === 'setup') {
-      store().targets.clear()
-    }
+    if (event.status === 'setup') resetSetupAssignments()
     touch(event)
     return player
   },
@@ -657,6 +661,7 @@ export const gameStore = {
       throw new Error('玩家名稱不可重複')
     }
     player.name = cleanName
+    resetSetupAssignments()
     return player
   },
 
@@ -665,13 +670,9 @@ export const gameStore = {
     const event = requireEvent()
     if (event.status !== 'setup') throw new Error('活動開始後不可刪除玩家')
     store().players.delete(playerId)
-    store().bingoCards.delete(playerId)
-    store().targets.clear()
+    resetSetupAssignments()
     for (const [id, session] of store().sessions) {
       if (session.player_id === playerId) store().sessions.delete(id)
-    }
-    for (const [id, t] of store().secretTasks) {
-      if (t.player_id === playerId) store().secretTasks.delete(id)
     }
     return true
   },
