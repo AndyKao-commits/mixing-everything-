@@ -381,8 +381,9 @@ export default function AdminPage() {
           ) : null}
           <div className="card space-y-2">
             <p className="font-semibold">留言</p>
+            <p className="text-sm text-soft">已提交 {state?.messageCount || 0} / {players.length}</p>
             {(state?.messages || []).length === 0 ? (
-              <p className="text-sm text-soft">尚無留言</p>
+              <p className="text-sm text-soft">{(state?.messageCount || 0) > 0 ? '全部提交前內容保持隱藏' : '尚無留言'}</p>
             ) : (
               state.messages.map((m: any) => (
                 <p key={m.id} className="rounded-xl bg-paper p-3 text-sm">
