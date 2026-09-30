@@ -366,7 +366,6 @@ export default function AdminPage() {
 
 function DontCopyScorer({
   players,
-  answers,
   onScore,
 }: {
   players: any[]
@@ -377,7 +376,6 @@ function DontCopyScorer({
   return (
     <div className="space-y-2">
       {players.map((p) => {
-        const ans = answers[p.id]
         const on = picked.includes(p.id)
         return (
           <button
