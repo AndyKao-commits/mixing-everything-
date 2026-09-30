@@ -10,26 +10,29 @@ type Tab = 'bingo' | 'secret' | 'bounty'
 
 function cropSquareImage(file: File, offsetX = 50, offsetY = 50, zoom = 1): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = reject
-    reader.onload = () => {
-      const img = new Image()
-      img.onload = () => {
-        const base = Math.min(img.width, img.height) / zoom
-        const maxX = img.width - base
-        const maxY = img.height - base
-        const sx = maxX * (offsetX / 100)
-        const sy = maxY * (offsetY / 100)
-        const canvas = document.createElement('canvas')
-        canvas.width = 1600
-        canvas.height = 1600
-        canvas.getContext('2d')!.drawImage(img, sx, sy, base, base, 0, 0, 1600, 1600)
-        resolve(canvas.toDataURL('image/jpeg', 0.94))
-      }
-      img.onerror = reject
-      img.src = String(reader.result)
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const coverScale = Math.max(1600 / img.width, 1600 / img.height)
+      const scale = coverScale * zoom
+      const drawnW = img.width * scale
+      const drawnH = img.height * scale
+      const overflowX = Math.max(0, drawnW - 1600)
+      const overflowY = Math.max(0, drawnH - 1600)
+      const dx = -overflowX * (offsetX / 100)
+      const dy = -overflowY * (offsetY / 100)
+      const canvas = document.createElement('canvas')
+      canvas.width = 1600
+      canvas.height = 1600
+      canvas.getContext('2d')!.drawImage(img, dx, dy, drawnW, drawnH)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/jpeg', 0.94))
     }
-    reader.readAsDataURL(file)
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('照片讀取失敗'))
+    }
+    img.src = url
   })
 }
 
@@ -315,9 +318,9 @@ export default function TasksPage() {
                 draggable={false}
                 className="pointer-events-none h-full w-full select-none object-cover"
                 style={{
-                  objectPosition: '50% 50%',
-                  transform: `translate(${50 - cropX}%, ${50 - cropY}%) scale(${cropZoom})`,
-                  transformOrigin: 'center',
+                  objectPosition: `${cropX}% ${cropY}%`,
+                  transform: `scale(${cropZoom})`,
+                  transformOrigin: `${cropX}% ${cropY}%`,
                 }}
               />
             </div>
@@ -355,7 +358,19 @@ export default function TasksPage() {
                 揭曉
               </button>
             ) : activeCell.completed ? (
-              <p className="text-moss">✓ 已完成</p>
+              <div className="space-y-3">
+                <p className="text-moss">✓ 已完成</p>
+                {activeCell.photo_data_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={activeCell.photo_data_url} alt="目前照片" className="aspect-square w-full rounded-2xl object-cover" />
+                ) : null}
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className="btn-primary" disabled={busy} onClick={() => cameraInput.current?.click()}>重新拍照</button>
+                  <button type="button" className="btn-ghost" disabled={busy} onClick={() => libraryInput.current?.click()}>重新選照片</button>
+                </div>
+                <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { const file = e.currentTarget.files?.[0] || null; e.currentTarget.value = ''; void onPhoto(file) }} />
+                <input ref={libraryInput} type="file" accept="image/*" className="sr-only" onChange={(e) => { const file = e.currentTarget.files?.[0] || null; e.currentTarget.value = ''; void onPhoto(file) }} />
+              </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" className="btn-primary" disabled={busy} onClick={() => cameraInput.current?.click()}>
