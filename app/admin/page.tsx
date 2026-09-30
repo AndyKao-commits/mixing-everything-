@@ -263,7 +263,7 @@ export default function AdminPage() {
               <p className="text-sm text-soft">勾選本題答案唯一的玩家：</p>
               <DontCopyScorer
                 players={players}
-                answers={((game.payload.answers as any) || {})[String(game.round)] || {}}
+                answers={{}}
                 onScore={(ids) => act('score_dont_copy', { uniquePlayerIds: ids })}
               />
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('next_dont_copy')}>
@@ -389,7 +389,6 @@ function DontCopyScorer({
             }
           >
             {p.name}
-            {ans ? ` · 「${ans}」` : ' · 未答'}
           </button>
         )
       })}
