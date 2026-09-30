@@ -337,7 +337,7 @@ function activeGroupGame(): GroupGame | null {
 
 export const gameStore = {
   bootstrap() {
-    if (store().event) return this.getPublicState()
+    if (store().event) return
     const adminPin = process.env.ADMIN_PIN || '2468'
     const { hash, salt } = hashPin(adminPin)
     const now = nowIso()
@@ -375,7 +375,6 @@ export const gameStore = {
       }
       store().players.set(p.id, p)
     })
-    return this.getPublicState()
   },
 
   getPublicState() {
