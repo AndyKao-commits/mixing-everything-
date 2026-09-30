@@ -13,6 +13,7 @@ export default function GamesPage() {
   const [sendingClicks, setSendingClicks] = useState(false)
   const pendingClicksRef = useRef(0)
   const sendingClicksRef = useRef(false)
+  const clicksRef = useRef(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -122,7 +123,8 @@ export default function GamesPage() {
 
   function tap() {
     if (left === 0 || left === null) return
-    setClicks((n) => n + 1)
+    clicksRef.current += 1
+    setClicks(clicksRef.current)
     pendingClicksRef.current += 1
     setPendingClicks(pendingClicksRef.current)
     setChestHit(true)
@@ -133,13 +135,12 @@ export default function GamesPage() {
   async function flushClicks() {
     const token = getPlayerToken()
     if (!token || sendingClicksRef.current || pendingClicksRef.current <= 0) return
-    const batch = pendingClicksRef.current
     pendingClicksRef.current = 0
     setPendingClicks(0)
     sendingClicksRef.current = true
     setSendingClicks(true)
     try {
-      await api.finalClick(token, Date.now(), batch)
+      await api.finalClick(token, Date.now(), clicksRef.current)
     } catch {
       // A batch arriving after the server deadline is intentionally ignored.
     } finally {
@@ -171,7 +172,7 @@ export default function GamesPage() {
     const id = window.setTimeout(async () => {
       try {
         // Flush this device once more before asking the server to rank everyone.
-        if (pendingClicksRef.current > 0) await flushClicks()
+        await api.finalClick(token, Date.now(), clicksRef.current)
         setData(await api.finalFinish(token))
       } catch {
         await refresh()

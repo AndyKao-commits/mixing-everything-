@@ -25,7 +25,7 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistClearFinalButtonClicks, persistClearPhotos, persistFinalButtonClicks, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistSetFinalButtonScore, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
@@ -1213,39 +1213,22 @@ export const gameStore = {
     return this.getPlayerView(token)
   },
 
-  async clickFinalButton(token: string, clientTs: number, clickCount = 1) {
+  async clickFinalButton(token: string, clientTs: number, clickCount = 0) {
     const { player } = requirePlayerSession(token)
-    const event = requireEvent()
     const game = activeGroupGame()
     if (!game || game.kind !== 'final_button') throw new Error('遊戲未開始')
     const now = Date.now()
-    const start = Number(game.payload.startedAt)
-    const end = Number(game.payload.endsAt)
-    if (now < start) throw new Error('尚未開始')
-    if (now > end || game.payload.finished) {
-      throw new Error('時間到')
-    }
-    // reject wildly skewed client timestamps
-    if (Math.abs(clientTs - now) > 5000) throw new Error('時間異常')
+    const start = Number(game.payload.startedAt || 0)
+    const finish = Number(game.payload.endsAt || 0)
+    if (!start || !finish || now < start) throw new Error('尚未開始')
+    // During the 10-second settling window the client sends its locked on-screen total.
+    if (now > finish + 10_000 || game.payload.finished) throw new Error('結算已完成')
+    const count = Math.max(0, Math.floor(clickCount || 0))
     if (isSupabaseConfigured()) {
-      const count = await persistFinalButtonClicks(game.id, player.id, Math.max(1, Math.floor(clickCount || 1)), now)
-      return { count }
+      return { count: await persistSetFinalButtonScore(game.id, player.id, count) }
     }
-    const row = store().finalClicks.get(player.id) || { count: 0, lastAt: 0, events: [] as number[] }
-    if (now - row.lastAt < 40) {
-      // ignore superhuman spam; do not error to keep UX smooth
-      return { count: row.count }
-    }
-    const accepted = Math.max(1, Math.min(12, Math.floor(clickCount || 1)))
-    const elapsed = row.lastAt ? Math.max(1, now - row.lastAt) : 500
-    const maxForWindow = Math.max(1, Math.ceil(elapsed / 40))
-    const increment = Math.min(accepted, maxForWindow)
-    row.count += increment
-    row.lastAt = now
-    row.events.push(now)
-    if (row.events.length > 400) row.events = row.events.slice(-400)
-    store().finalClicks.set(player.id, row)
-    return { count: row.count }
+    store().finalClicks.set(player.id, { count, lastAt: now, events: [] })
+    return { count }
   },
 
   async finalizeFinalButton(token: string) {
