@@ -24,6 +24,13 @@ npm run dev
 
 管理員預設 PIN：`2468`（可用環境變數 `ADMIN_PIN` 覆蓋）
 
+若使用 npm v12，安裝時可能警告 `esbuild` / `sharp` 的 install scripts 未核准；可執行：
+
+```bash
+npm approve-scripts esbuild sharp --no-allow-scripts-pin
+npm rebuild esbuild sharp
+```
+
 ## 玩家
 
 掃碼 / 開啟首頁 → **加入遊戲** → 選名字 → 設定或輸入 4 位 PIN
