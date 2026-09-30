@@ -518,9 +518,9 @@ export const gameStore = {
     }
   },
 
-  async load() {
+  async load(): Promise<boolean> {
     const data = await persistGetState<SerializedStore>()
-    if (!data?.event) return
+    if (!data?.event) return false
     hydrateStore(data)
     // Restore bingo photos from separate cache entries (2MB item limit).
     for (const card of store().bingoCards.values()) {
@@ -531,6 +531,7 @@ export const gameStore = {
         if (photo) cell.photo_data_url = photo
       }
     }
+    return true
   },
 
   async save() {
