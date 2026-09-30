@@ -730,9 +730,10 @@ export const gameStore = {
     }
     store().sessions.set(session.id, session)
     player.last_seen_at = nowIso()
-    if (event.status === 'active' || event.status === 'setup') {
-      ensurePlayerAssignments(event)
-    }
+    // Assignments are finalized only when the event is activated. During setup
+    // the roster can still change, so generating them here would create stale
+    // named/target tasks and consume mystery prompts prematurely.
+    if (event.status === 'active') ensurePlayerAssignments(event)
     return { token, player: { id: player.id, name: player.name } }
   },
 
