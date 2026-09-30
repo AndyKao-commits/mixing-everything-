@@ -10,6 +10,7 @@ export default function GamesPage() {
   const [text, setText] = useState('')
   const [clicks, setClicks] = useState(0)
   const [pendingClicks, setPendingClicks] = useState(0)
+  const [sendingClicks, setSendingClicks] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -98,20 +99,23 @@ export default function GamesPage() {
   }
 
   useEffect(() => {
-    if (!game || game.kind !== 'final_button' || pendingClicks <= 0) return
+    if (!game || game.kind !== 'final_button' || pendingClicks <= 0 || sendingClicks) return
     const id = window.setTimeout(async () => {
       const token = getPlayerToken()
       if (!token) return
       const batch = pendingClicks
       setPendingClicks((n) => Math.max(0, n - batch))
+      setSendingClicks(true)
       try {
         await api.finalClick(token, Date.now(), batch)
       } catch {
         // The server may reject a late batch after the timer closes.
+      } finally {
+        setSendingClicks(false)
       }
     }, 300)
     return () => window.clearTimeout(id)
-  }, [pendingClicks, game])
+  }, [pendingClicks, game, sendingClicks])
 
   async function sendMessage() {
     const token = getPlayerToken()
