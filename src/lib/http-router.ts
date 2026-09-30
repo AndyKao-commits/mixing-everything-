@@ -131,6 +131,9 @@ export async function routeApiRequest(input: {
         case 'draw_who_wrote':
           result = { status: 200, data: gameStore.drawWhoWroteAnswer(adminToken) }
           break
+        case 'reveal_who_wrote':
+          result = { status: 200, data: gameStore.revealWhoWroteAnswer(adminToken) }
+          break
         case 'end_group_game':
           result = { status: 200, data: { ok: gameStore.endGroupGame(adminToken) } }
           break
