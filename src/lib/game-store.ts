@@ -1205,6 +1205,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     const event = requireEvent()
     if (!event.score_locked) throw new Error('請先鎖定積分')
+    if (event.status !== 'message') throw new Error('請先開啟「留一句話」階段')
     let ranked = rankings()
 
     // apply optional tie-break for top3 conflicts
@@ -1291,7 +1292,14 @@ export const gameStore = {
   finishEvent(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
-    this.finalizeDonationDefaults()
+    if (event.status !== 'settlement') throw new Error('尚未開始結算')
+    for (const d of store().prizeDecisions.values()) {
+      if (!d.choice) {
+        d.choice = 'keep'
+        d.auto = true
+        d.decided_at = nowIso()
+      }
+    }
     event.status = 'finished'
     touch(event)
     return this.getAdminState()
