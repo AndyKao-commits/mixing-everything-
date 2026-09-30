@@ -123,7 +123,7 @@ export const api = {
       method: 'POST',
       headers: { 'x-player-token': token },
     }),
-  finalClick: (token: string, clientTs: number, clickCount = 1) =>
+  finalClick: (token: string, clientTs: number, clickCount = 0) =>
     req<any>('/api/games/final-button/click', {
       method: 'POST',
       headers: { 'x-player-token': token },
