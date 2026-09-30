@@ -19,7 +19,6 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
     const forceGames =
       data.event.status === 'message' ||
       data.event.status === 'settlement' ||
-      data.event.status === 'finished' ||
       (data.event.active_group_game && data.event.active_group_game !== 'none')
 
     if (forceGames && pathname !== '/play/games') router.replace('/play/games')
