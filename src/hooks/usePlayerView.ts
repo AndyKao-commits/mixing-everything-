@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { clearPlayerSession, getPlayerToken } from '@/lib/client-session'
 
-export function usePlayerView(pollMs = 2000) {
+export function usePlayerView(pollMs = 3000) {
   const router = useRouter()
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
@@ -35,8 +35,28 @@ export function usePlayerView(pollMs = 2000) {
 
   useEffect(() => {
     void refresh()
-    const id = window.setInterval(() => void refresh(), pollMs)
-    return () => window.clearInterval(id)
+    let timer: number | undefined
+    let stopped = false
+
+    const schedule = () => {
+      if (stopped) return
+      timer = window.setTimeout(async () => {
+        if (document.visibilityState === 'visible') await refresh()
+        schedule()
+      }, pollMs)
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+
+    schedule()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      stopped = true
+      if (timer) window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [refresh, pollMs])
 
   return { data, error, loading, refresh, setData }
