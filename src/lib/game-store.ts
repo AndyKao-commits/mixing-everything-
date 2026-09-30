@@ -930,7 +930,9 @@ export const gameStore = {
     if (!game || game.kind !== 'dont_copy_me') throw new Error('遊戲不存在')
     const scored = (game.payload.scoredRounds as number[]) || []
     if (scored.includes(game.round)) throw new Error('本輪已計分')
-    for (const pid of uniquePlayerIds) {
+    const validIds = [...new Set(uniquePlayerIds)]
+    if (validIds.some((pid) => !store().players.has(pid))) throw new Error('得分玩家不存在')
+    for (const pid of validIds) {
       addScore(event, pid, 'group_game', `${game.id}_r${game.round}_${pid}`, 1, `不要跟我一樣 R${game.round}`)
     }
     scored.push(game.round)
