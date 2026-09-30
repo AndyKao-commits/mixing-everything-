@@ -24,7 +24,7 @@ export function usePlayerView(pollMs = 2000) {
     } catch (e) {
       const message = e instanceof Error ? e.message : '暫時無法更新'
       setError(message)
-      if (/未登入|重新登入|PIN/.test(message)) {
+      if (/未登入|重新登入|PIN|玩家不存在/.test(message)) {
         clearPlayerSession()
         router.replace('/join')
       }
