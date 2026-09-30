@@ -18,6 +18,8 @@ export default function GamesPage() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [settlementCountdown, setSettlementCountdown] = useState<number | null>(null)
   const [left, setLeft] = useState<number | null>(null)
+  const [chestHit, setChestHit] = useState(false)
+  const chestHitTimer = useRef<number | null>(null)
 
   const game = data?.groupGame
   const event = data?.event
@@ -119,6 +121,9 @@ export default function GamesPage() {
     setClicks((n) => n + 1)
     pendingClicksRef.current += 1
     setPendingClicks(pendingClicksRef.current)
+    setChestHit(true)
+    if (chestHitTimer.current) window.clearTimeout(chestHitTimer.current)
+    chestHitTimer.current = window.setTimeout(() => setChestHit(false), 90)
   }
 
   async function flushClicks() {
@@ -520,14 +525,23 @@ export default function GamesPage() {
         ) : (
           <>
             <p className="text-soft">剩餘 {left ?? 0} 秒</p>
-            <button
-              type="button"
-              className="btn-primary max-w-xs text-2xl active:scale-95"
-              onClick={tap}
-              disabled={left === 0}
-            >
-              狂按
-            </button>
+            <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-card">
+              {/* The photo itself is the game surface. Only discrete clicks count; holding never repeats. */}
+              <img
+                src={chestHit ? '/zeze-chest-hit.png' : '/zeze-chest-idle.jpg'}
+                alt="澤澤"
+                draggable={false}
+                className={`block h-auto w-full select-none transition-transform duration-75 ${chestHit ? 'scale-[1.025]' : 'scale-100'}`}
+              />
+              <button
+                type="button"
+                aria-label="點擊澤澤的胸肌"
+                disabled={left === 0}
+                onClick={tap}
+                onContextMenu={(e) => e.preventDefault()}
+                className="absolute left-[18%] top-[22%] h-[45%] w-[64%] touch-manipulation select-none rounded-[45%] bg-transparent disabled:pointer-events-none"
+              />
+            </div>
             <p className="font-display text-4xl font-bold tabular-nums">{clicks}</p>
           </>
         )}
