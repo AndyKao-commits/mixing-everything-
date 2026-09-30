@@ -86,6 +86,9 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'admin/action') {
       const action = String(body.action || '')
       switch (action) {
+        case 'clear_event_data':
+          result = { status: 200, data: await gameStore.clearEventData(adminToken) }
+          break
         case 'activate':
           result = { status: 200, data: gameStore.activateEvent(adminToken) }
           break
