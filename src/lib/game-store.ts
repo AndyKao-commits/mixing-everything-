@@ -524,11 +524,12 @@ export const gameStore = {
     }
   },
 
-  async load(): Promise<boolean> {
+  async load(options: { hydratePhotos?: boolean } = {}): Promise<boolean> {
     const data = await persistGetState<SerializedStore>()
     if (!data?.event) return false
     hydrateStore(data)
-    // Restore bingo photos from separate cache entries (2MB item limit).
+    if (!options.hydratePhotos) return true
+    // Signed photo URLs are only needed for player views that render/export bingo.
     for (const card of store().bingoCards.values()) {
       for (const cell of card.cells) {
         if (cell.photo_data_url) continue
