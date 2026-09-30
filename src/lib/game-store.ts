@@ -1228,6 +1228,15 @@ export const gameStore = {
     return { count: row.count }
   },
 
+  async finalizeFinalButton(token: string) {
+    requirePlayerSession(token, { touch: false })
+    const game = activeGroupGame()
+    if (!game || game.kind !== 'final_button') throw new Error('按鈕大戰不存在')
+    if (Date.now() < Number(game.payload.endsAt || 0)) throw new Error('遊戲尚未結束')
+    await this.finishFinalButton()
+    return this.getPlayerView(token)
+  },
+
   async finishFinalButton(adminToken?: string) {
     if (adminToken) requireAdmin(adminToken)
     const event = requireEvent()
@@ -1236,11 +1245,14 @@ export const gameStore = {
     if (game.payload.finished) return game
     game.payload.finished = true
     game.status = 'finished'
-    const ranked = isSupabaseConfigured()
+    const recorded = isSupabaseConfigured()
       ? await persistGetFinalButtonResults(game.id)
-      : [...store().finalClicks.entries()]
-          .map(([playerId, data]) => ({ playerId, count: data.count }))
-          .sort((a, b) => b.count - a.count)
+      : [...store().finalClicks.entries()].map(([playerId, data]) => ({ playerId, count: data.count }))
+    const counts = new Map(recorded.map((row) => [row.playerId, row.count]))
+    const ranked = [...store().players.values()]
+      .filter((player) => player.event_id === event.id)
+      .map((player) => ({ playerId: player.id, count: counts.get(player.id) || 0 }))
+      .sort((a, b) => b.count - a.count || (store().players.get(a.playerId)?.name || '').localeCompare(store().players.get(b.playerId)?.name || ''))
     const points = [3, 2, 1]
     ranked.slice(0, 3).forEach((row, idx) => {
       addScore(
