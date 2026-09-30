@@ -6,14 +6,14 @@ import {
   OBJECT_PROMPTS,
   PEOPLE_PROMPTS,
   type BingoPrompt,
-} from '@/data/bingo'
+} from '../data/bingo'
 import {
   BOUNTY_TEMPLATES,
   DONT_COPY_PROMPTS,
   SECRET_TASK_TEMPLATES,
   TARGET_TASKS,
   WHO_WROTE_PROMPTS,
-} from '@/data/tasks'
+} from '../data/tasks'
 import {
   hashPin,
   nowIso,
@@ -23,10 +23,10 @@ import {
   verifyAdminToken,
   verifyPin,
   verifyPlayerToken,
-} from '@/lib/crypto'
-import { persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from '@/lib/persist'
-import { computeBingoBonuses, totalScore } from '@/lib/scoring'
-import { buildTargetCycle } from '@/lib/target-cycle'
+} from './crypto'
+import { persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { computeBingoBonuses, totalScore } from './scoring'
+import { buildTargetCycle } from './target-cycle'
 import type {
   BingoCard,
   BingoCell,
@@ -46,7 +46,7 @@ import type {
   ScoreTransaction,
   SecretTask,
   Settlement,
-} from '@/types'
+} from '../types'
 
 interface Store {
   event: Event | null

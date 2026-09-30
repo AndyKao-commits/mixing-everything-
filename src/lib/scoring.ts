@@ -1,4 +1,4 @@
-import type { BingoCard, ScoreTransaction } from '@/types'
+import type { BingoCard, ScoreTransaction } from '../types'
 
 const LINES = [
   ['r0', [0, 1, 2]],

@@ -1,23 +1,51 @@
 'use client'
 
-function errorMessage(data: any, fallback = '請求失敗') {
-  if (!data) return fallback
-  if (typeof data.error === 'string') return data.error
-  if (typeof data.error?.message === 'string') return data.error.message
-  if (typeof data.message === 'string') return data.message
+function errorMessage(data: any, status: number, fallback = '請求失敗') {
+  const raw =
+    (typeof data?.error === 'string' && data.error) ||
+    (typeof data?.error?.message === 'string' && data.error.message) ||
+    (typeof data?.message === 'string' && data.message) ||
+    ''
+
+  const text = String(raw || '')
+  if (
+    status === 401 ||
+    /protected deployment|vercel authentication|vercel_auth/i.test(text) ||
+    data?.protection?.vercel_auth_enabled
+  ) {
+    return 'Vercel 預覽站需要先通過驗證。請重新整理並完成 Vercel 登入後再試；若要給賓客使用，請在 Vercel 專案關閉 Deployment Protection。'
+  }
+  if (text) return text
+  if (status) return `${fallback}（HTTP ${status}）`
   return fallback
 }
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      ...init,
+      redirect: 'manual',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(init?.headers || {}),
+      },
+    })
+  } catch {
+    throw new Error('無法連線到伺服器，請檢查網路後重試')
+  }
+
+  // Vercel Deployment Protection often 302s unauthenticated API calls.
+  if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+    throw new Error(
+      'Vercel 預覽站需要先通過驗證。請重新整理並完成 Vercel 登入後再試；若要給賓客使用，請在 Vercel 專案關閉 Deployment Protection。',
+    )
+  }
+
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(errorMessage(data))
+  if (!res.ok) throw new Error(errorMessage(data, res.status))
   return data as T
 }
 
