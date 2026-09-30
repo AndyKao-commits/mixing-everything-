@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'crypto'
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto'
 
 export function uid(): string {
   return randomBytes(16).toString('hex')
@@ -27,4 +27,64 @@ export function verifyPin(pin: string, hash: string, salt: string): boolean {
 
 export function sessionToken(): string {
   return createHash('sha256').update(randomBytes(32)).digest('hex')
+}
+
+function authSecret() {
+  return process.env.SESSION_SECRET || process.env.ADMIN_PIN || 'bbq-party-demo-secret'
+}
+
+function sign(payload: string): string {
+  return createHmac('sha256', authSecret()).update(payload).digest('hex')
+}
+
+function safeEqualHex(a: string, b: string): boolean {
+  try {
+    const left = Buffer.from(a, 'hex')
+    const right = Buffer.from(b, 'hex')
+    if (left.length !== right.length) return false
+    return timingSafeEqual(left, right)
+  } catch {
+    return false
+  }
+}
+
+/** Stateless admin token that survives serverless cold starts. */
+export function signAdminToken(ttlMs = 1000 * 60 * 60 * 12): string {
+  const exp = Date.now() + ttlMs
+  const nonce = randomBytes(8).toString('hex')
+  const payload = `a:${exp}:${nonce}`
+  return `${payload}:${sign(payload)}`
+}
+
+export function verifyAdminToken(token: string | null | undefined): boolean {
+  if (!token) return false
+  const parts = token.split(':')
+  if (parts.length !== 4 || parts[0] !== 'a') return false
+  const [, expRaw, nonce, sig] = parts
+  if (!/^\d+$/.test(expRaw) || !nonce || !sig) return false
+  if (Number(expRaw) < Date.now()) return false
+  const payload = `a:${expRaw}:${nonce}`
+  return safeEqualHex(sig, sign(payload))
+}
+
+/** Stateless player token encoding playerId + expiry. */
+export function signPlayerToken(playerId: string, ttlMs = 1000 * 60 * 60 * 24 * 7): string {
+  const exp = Date.now() + ttlMs
+  const payload = `p:${playerId}:${exp}`
+  return `${payload}:${sign(payload)}`
+}
+
+export function verifyPlayerToken(
+  token: string | null | undefined,
+): { playerId: string; expiresAt: number } | null {
+  if (!token) return null
+  const parts = token.split(':')
+  if (parts.length !== 4 || parts[0] !== 'p') return null
+  const [, playerId, expRaw, sig] = parts
+  if (!playerId || !/^\d+$/.test(expRaw) || !sig) return null
+  const expiresAt = Number(expRaw)
+  if (expiresAt < Date.now()) return null
+  const payload = `p:${playerId}:${expRaw}`
+  if (!safeEqualHex(sig, sign(payload))) return null
+  return { playerId, expiresAt }
 }

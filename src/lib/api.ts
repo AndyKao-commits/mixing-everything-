@@ -1,5 +1,13 @@
 'use client'
 
+function errorMessage(data: any, fallback = '請求失敗') {
+  if (!data) return fallback
+  if (typeof data.error === 'string') return data.error
+  if (typeof data.error?.message === 'string') return data.error.message
+  if (typeof data.message === 'string') return data.message
+  return fallback
+}
+
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -9,7 +17,7 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
     },
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || '請求失敗')
+  if (!res.ok) throw new Error(errorMessage(data))
   return data as T
 }
 

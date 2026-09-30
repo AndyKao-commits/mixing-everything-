@@ -12,6 +12,7 @@ dist
 dist-ssr
 .next
 out
+.data
 app/_api_stash
 *.local
 .env

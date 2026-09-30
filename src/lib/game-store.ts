@@ -14,7 +14,17 @@ import {
   TARGET_TASKS,
   WHO_WROTE_PROMPTS,
 } from '@/data/tasks'
-import { hashPin, nowIso, sessionToken, uid, verifyPin } from '@/lib/crypto'
+import {
+  hashPin,
+  nowIso,
+  signAdminToken,
+  signPlayerToken,
+  uid,
+  verifyAdminToken,
+  verifyPin,
+  verifyPlayerToken,
+} from '@/lib/crypto'
+import { persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from '@/lib/persist'
 import { computeBingoBonuses, totalScore } from '@/lib/scoring'
 import { buildTargetCycle } from '@/lib/target-cycle'
 import type {
@@ -306,12 +316,29 @@ function rankings() {
 
 function getSession(token?: string | null): PlayerSession | null {
   if (!token) return null
-  const session = [...store().sessions.values()].find((s) => s.token === token)
-  if (!session) return null
-  if (new Date(session.expires_at).getTime() < Date.now()) {
-    store().sessions.delete(session.id)
-    return null
+  const existing = [...store().sessions.values()].find((s) => s.token === token)
+  if (existing) {
+    if (new Date(existing.expires_at).getTime() < Date.now()) {
+      store().sessions.delete(existing.id)
+      return null
+    }
+    return existing
   }
+
+  // Signed player tokens survive serverless cold starts / instance hops.
+  const verified = verifyPlayerToken(token)
+  if (!verified) return null
+  const event = store().event
+  if (!event) return null
+  const session: PlayerSession = {
+    id: uid(),
+    event_id: event.id,
+    player_id: verified.playerId,
+    token,
+    created_at: nowIso(),
+    expires_at: new Date(verified.expiresAt).toISOString(),
+  }
+  store().sessions.set(session.id, session)
   return session
 }
 
@@ -325,8 +352,93 @@ function requirePlayerSession(token?: string | null): { session: PlayerSession; 
 }
 
 function requireAdmin(token?: string | null) {
-  if (!token || !store().adminSessions.has(token)) throw new Error('管理員未登入')
-  return true
+  if (!token) throw new Error('管理員未登入')
+  if (verifyAdminToken(token) || store().adminSessions.has(token)) return true
+  throw new Error('管理員未登入')
+}
+
+type SerializedStore = {
+  event: Event | null
+  players: Player[]
+  sessions: PlayerSession[]
+  scores: ScoreTransaction[]
+  bingoCards: Array<Omit<BingoCard, 'cells'> & { cells: Array<Omit<BingoCell, 'photo_data_url'> & { photo_data_url: string | null; photo_ref?: string }> }>
+  secretTasks: SecretTask[]
+  bounties: Bounty[]
+  playerBounties: PlayerBounty[]
+  targets: Array<[string, PlayerTarget]>
+  groupGames: GroupGame[]
+  messages: FinalMessage[]
+  prizeDecisions: PrizeDecision[]
+  settlement: Settlement | null
+  finalClicks: Array<[string, { count: number; lastAt: number; events: number[] }]>
+  mysteryUsed: string[]
+  adminSessions: string[]
+  photoIds: string[]
+}
+
+function serializeStore(): SerializedStore {
+  const photoIds: string[] = []
+  const bingoCards = [...store().bingoCards.values()].map((card) => ({
+    ...card,
+    cells: card.cells.map((cell) => {
+      if (cell.photo_data_url) {
+        photoIds.push(cell.id)
+        return { ...cell, photo_data_url: null, photo_ref: cell.id }
+      }
+      return { ...cell, photo_data_url: null }
+    }),
+  }))
+  return {
+    event: store().event,
+    players: [...store().players.values()],
+    sessions: [...store().sessions.values()],
+    scores: store().scores,
+    bingoCards,
+    secretTasks: [...store().secretTasks.values()],
+    bounties: store().bounties,
+    playerBounties: [...store().playerBounties.values()],
+    targets: [...store().targets.entries()],
+    groupGames: [...store().groupGames.values()],
+    messages: [...store().messages.values()],
+    prizeDecisions: [...store().prizeDecisions.values()],
+    settlement: store().settlement,
+    finalClicks: [...store().finalClicks.entries()],
+    mysteryUsed: [...store().mysteryUsed],
+    adminSessions: [...store().adminSessions],
+    photoIds,
+  }
+}
+
+function hydrateStore(data: SerializedStore) {
+  const next = store()
+  next.event = data.event
+  next.players = new Map((data.players || []).map((p) => [p.id, p]))
+  next.sessions = new Map((data.sessions || []).map((s) => [s.id, s]))
+  next.scores = data.scores || []
+  next.bingoCards = new Map(
+    (data.bingoCards || []).map((card) => [
+      card.player_id,
+      {
+        ...card,
+        cells: card.cells.map((cell) => ({
+          ...cell,
+          photo_data_url: cell.photo_data_url,
+        })),
+      },
+    ]),
+  )
+  next.secretTasks = new Map((data.secretTasks || []).map((t) => [t.id, t]))
+  next.bounties = data.bounties || []
+  next.playerBounties = new Map((data.playerBounties || []).map((pb) => [pb.id, pb]))
+  next.targets = new Map(data.targets || [])
+  next.groupGames = new Map((data.groupGames || []).map((g) => [g.id, g]))
+  next.messages = new Map((data.messages || []).map((m) => [m.id, m]))
+  next.prizeDecisions = new Map((data.prizeDecisions || []).map((d) => [d.player_id, d]))
+  next.settlement = data.settlement
+  next.finalClicks = new Map(data.finalClicks || [])
+  next.mysteryUsed = new Set(data.mysteryUsed || [])
+  next.adminSessions = new Set(data.adminSessions || [])
 }
 
 function activeGroupGame(): GroupGame | null {
@@ -397,22 +509,54 @@ export const gameStore = {
     }
   },
 
+  async load() {
+    const data = await persistGetState<SerializedStore>()
+    if (!data?.event) return
+    hydrateStore(data)
+    // Restore bingo photos from separate cache entries (2MB item limit).
+    for (const card of store().bingoCards.values()) {
+      for (const cell of card.cells) {
+        if (cell.photo_data_url) continue
+        const photo = await persistGetPhoto(cell.id)
+        if (photo) cell.photo_data_url = photo
+      }
+    }
+  },
+
+  async save() {
+    const snapshot = serializeStore()
+    // Persist photos separately so the main state stays under Runtime Cache limits.
+    for (const card of store().bingoCards.values()) {
+      for (const cell of card.cells) {
+        if (cell.photo_data_url) {
+          await persistSetPhoto(cell.id, cell.photo_data_url)
+        }
+      }
+    }
+    await persistSetState(snapshot)
+  },
+
   adminLogin(pin: string) {
     this.bootstrap()
     const event = requireEvent()
     if (!verifyPin(pin, event.admin_pin_hash, event.admin_pin_salt)) {
       throw new Error('管理員密碼錯誤')
     }
-    const token = sessionToken()
+    const token = signAdminToken()
     store().adminSessions.add(token)
     return { token, ...this.getAdminState() }
   },
 
   getAdminState() {
     const event = requireEvent()
+    const { admin_pin_hash: _h, admin_pin_salt: _s, ...safeEvent } = event
     return {
-      event,
-      players: [...store().players.values()],
+      event: safeEvent,
+      players: [...store().players.values()].map((p) => ({
+        ...p,
+        pin_hash: null,
+        pin_salt: null,
+      })),
       rankings: rankings(),
       scores: store().scores,
       groupGame: activeGroupGame(),
@@ -504,14 +648,15 @@ export const gameStore = {
     const player = store().players.get(playerId)
     if (!player || !player.pin_hash || !player.pin_salt) throw new Error('請先設定 PIN')
     if (!verifyPin(pin, player.pin_hash, player.pin_salt)) throw new Error('PIN 錯誤')
-    const token = sessionToken()
+    const token = signPlayerToken(player.id)
+    const verified = verifyPlayerToken(token)!
     const session: PlayerSession = {
       id: uid(),
       event_id: event.id,
       player_id: player.id,
       token,
       created_at: nowIso(),
-      expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
+      expires_at: new Date(verified.expiresAt).toISOString(),
     }
     store().sessions.set(session.id, session)
     player.last_seen_at = nowIso()

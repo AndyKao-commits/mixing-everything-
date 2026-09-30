@@ -1,4 +1,4 @@
-import { gameStore } from '@/lib/game-store'
+import { gameStore } from './game-store'
 
 type HeadersLike = {
   get(name: string): string | null
@@ -17,35 +17,28 @@ export async function routeApiRequest(input: {
   const body = input.body || {}
 
   try {
-    if (method === 'GET' && path === 'state') {
-      return { status: 200, data: gameStore.getPublicState() }
-    }
+    await gameStore.load()
+    let result: { status: number; data: unknown }
 
-    if (method === 'POST' && path === 'auth/pin') {
-      return {
+    if (method === 'GET' && path === 'state') {
+      result = { status: 200, data: gameStore.getPublicState() }
+    } else if (method === 'POST' && path === 'auth/pin') {
+      result = {
         status: 200,
         data: gameStore.setPlayerPin(String(body.playerId), String(body.pin), String(body.confirm)),
       }
-    }
-
-    if (method === 'POST' && path === 'auth/login') {
-      return {
+    } else if (method === 'POST' && path === 'auth/login') {
+      result = {
         status: 200,
         data: gameStore.loginPlayer(String(body.playerId), String(body.pin)),
       }
-    }
-
-    if (method === 'GET' && path === 'me') {
+    } else if (method === 'GET' && path === 'me') {
       gameStore.finalizeDonationDefaults()
-      return { status: 200, data: gameStore.getPlayerView(playerToken) }
-    }
-
-    if (method === 'POST' && path === 'bingo/reveal') {
-      return { status: 200, data: { cell: gameStore.revealMystery(playerToken, String(body.cellId)) } }
-    }
-
-    if (method === 'POST' && path === 'bingo/complete') {
-      return {
+      result = { status: 200, data: gameStore.getPlayerView(playerToken) }
+    } else if (method === 'POST' && path === 'bingo/reveal') {
+      result = { status: 200, data: { cell: gameStore.revealMystery(playerToken, String(body.cellId)) } }
+    } else if (method === 'POST' && path === 'bingo/complete') {
+      result = {
         status: 200,
         data: gameStore.completeBingoCell(
           playerToken,
@@ -53,81 +46,61 @@ export async function routeApiRequest(input: {
           String(body.photoDataUrl || ''),
         ),
       }
-    }
-
-    if (method === 'POST' && path === 'tasks/secret') {
-      return { status: 200, data: gameStore.completeSecret(playerToken) }
-    }
-
-    if (method === 'POST' && path === 'tasks/target') {
-      return { status: 200, data: gameStore.completeTarget(playerToken) }
-    }
-
-    if (method === 'POST' && path === 'tasks/bounty') {
-      return {
+    } else if (method === 'POST' && path === 'tasks/secret') {
+      result = { status: 200, data: gameStore.completeSecret(playerToken) }
+    } else if (method === 'POST' && path === 'tasks/target') {
+      result = { status: 200, data: gameStore.completeTarget(playerToken) }
+    } else if (method === 'POST' && path === 'tasks/bounty') {
+      result = {
         status: 200,
         data: gameStore.completeBounty(playerToken, String(body.bountyId)),
       }
-    }
-
-    if (method === 'POST' && path === 'games/dont-copy/answer') {
+    } else if (method === 'POST' && path === 'games/dont-copy/answer') {
       gameStore.submitDontCopyAnswer(playerToken, String(body.text || ''))
-      return { status: 200, data: { ok: true } }
-    }
-
-    if (method === 'POST' && path === 'games/who-wrote/answer') {
+      result = { status: 200, data: { ok: true } }
+    } else if (method === 'POST' && path === 'games/who-wrote/answer') {
       gameStore.submitWhoWroteAnswer(playerToken, String(body.text || ''))
-      return { status: 200, data: { ok: true } }
-    }
-
-    if (method === 'POST' && path === 'games/who-wrote/vote') {
+      result = { status: 200, data: { ok: true } }
+    } else if (method === 'POST' && path === 'games/who-wrote/vote') {
       gameStore.voteWhoWrote(playerToken, String(body.guessedPlayerId))
-      return { status: 200, data: { ok: true } }
-    }
-
-    if (method === 'POST' && path === 'games/final-button/click') {
-      return {
+      result = { status: 200, data: { ok: true } }
+    } else if (method === 'POST' && path === 'games/final-button/click') {
+      result = {
         status: 200,
         data: gameStore.clickFinalButton(playerToken, Number(body.clientTs || Date.now())),
       }
-    }
-
-    if (method === 'POST' && path === 'messages') {
+    } else if (method === 'POST' && path === 'messages') {
       gameStore.submitMessage(playerToken, String(body.text || ''))
-      return { status: 200, data: { ok: true } }
-    }
-
-    if (method === 'POST' && path === 'settlement/decide') {
+      result = { status: 200, data: { ok: true } }
+    } else if (method === 'POST' && path === 'settlement/decide') {
       const choice = body.choice === 'donate' ? 'donate' : 'keep'
-      return { status: 200, data: gameStore.decidePrize(playerToken, choice) }
-    }
-
-    if (method === 'POST' && path === 'admin/login') {
-      return { status: 200, data: gameStore.adminLogin(String(body.pin || '')) }
-    }
-
-    if (method === 'GET' && path === 'admin/state') {
+      result = { status: 200, data: gameStore.decidePrize(playerToken, choice) }
+    } else if (method === 'POST' && path === 'admin/login') {
+      result = { status: 200, data: gameStore.adminLogin(String(body.pin || '')) }
+    } else if (method === 'GET' && path === 'admin/state') {
       gameStore.requireAdmin(adminToken)
       gameStore.finalizeDonationDefaults()
-      return { status: 200, data: gameStore.getAdminState() }
-    }
-
-    if (method === 'POST' && path === 'admin/action') {
+      result = { status: 200, data: gameStore.getAdminState() }
+    } else if (method === 'POST' && path === 'admin/action') {
       const action = String(body.action || '')
       switch (action) {
         case 'activate':
-          return { status: 200, data: gameStore.activateEvent(adminToken) }
+          result = { status: 200, data: gameStore.activateEvent(adminToken) }
+          break
         case 'create_player':
-          return { status: 200, data: gameStore.createPlayer(adminToken, String(body.name || '')) }
+          result = { status: 200, data: gameStore.createPlayer(adminToken, String(body.name || '')) }
+          break
         case 'rename_player':
-          return {
+          result = {
             status: 200,
             data: gameStore.renamePlayer(adminToken, String(body.playerId), String(body.name || '')),
           }
+          break
         case 'delete_player':
-          return { status: 200, data: { ok: gameStore.deletePlayer(adminToken, String(body.playerId)) } }
+          result = { status: 200, data: { ok: gameStore.deletePlayer(adminToken, String(body.playerId)) } }
+          break
         case 'adjust_score':
-          return {
+          result = {
             status: 200,
             data: gameStore.adjustScore(
               adminToken,
@@ -136,45 +109,64 @@ export async function routeApiRequest(input: {
               String(body.note || ''),
             ),
           }
+          break
         case 'start_dont_copy':
-          return { status: 200, data: gameStore.startDontCopyMe(adminToken) }
+          result = { status: 200, data: gameStore.startDontCopyMe(adminToken) }
+          break
         case 'score_dont_copy':
-          return {
+          result = {
             status: 200,
             data: gameStore.scoreDontCopyRound(adminToken, (body.uniquePlayerIds || []) as string[]),
           }
+          break
         case 'next_dont_copy':
-          return { status: 200, data: gameStore.nextDontCopyRound(adminToken) }
+          result = { status: 200, data: gameStore.nextDontCopyRound(adminToken) }
+          break
         case 'start_who_wrote':
-          return { status: 200, data: gameStore.startWhoWroteIt(adminToken) }
+          result = { status: 200, data: gameStore.startWhoWroteIt(adminToken) }
+          break
         case 'draw_who_wrote':
-          return { status: 200, data: gameStore.drawWhoWroteAnswer(adminToken) }
+          result = { status: 200, data: gameStore.drawWhoWroteAnswer(adminToken) }
+          break
         case 'end_group_game':
-          return { status: 200, data: { ok: gameStore.endGroupGame(adminToken) } }
+          result = { status: 200, data: { ok: gameStore.endGroupGame(adminToken) } }
+          break
         case 'start_final_button':
-          return { status: 200, data: gameStore.startFinalButton(adminToken) }
+          result = { status: 200, data: gameStore.startFinalButton(adminToken) }
+          break
         case 'finish_final_button':
-          return { status: 200, data: gameStore.finishFinalButton(adminToken) }
+          result = { status: 200, data: gameStore.finishFinalButton(adminToken) }
+          break
         case 'open_messages':
-          return { status: 200, data: gameStore.openMessages(adminToken) }
+          result = { status: 200, data: gameStore.openMessages(adminToken) }
+          break
         case 'lock_scores':
-          return { status: 200, data: gameStore.lockScores(adminToken) }
+          result = { status: 200, data: gameStore.lockScores(adminToken) }
+          break
         case 'start_settlement':
-          return {
+          result = {
             status: 200,
             data: gameStore.startSettlement(adminToken, body.tieBreakOrder as string[] | undefined),
           }
+          break
         case 'finish_event':
-          return { status: 200, data: gameStore.finishEvent(adminToken) }
+          result = { status: 200, data: gameStore.finishEvent(adminToken) }
+          break
         case 'top_ties':
           gameStore.requireAdmin(adminToken)
-          return { status: 200, data: { ties: gameStore.topTies() } }
+          result = { status: 200, data: { ties: gameStore.topTies() } }
+          break
         default:
-          return { status: 400, data: { error: '未知操作' } }
+          result = { status: 400, data: { error: '未知操作' } }
       }
+    } else {
+      result = { status: 404, data: { error: `找不到 API: ${method} /${path}` } }
     }
 
-    return { status: 404, data: { error: `找不到 API: ${method} /${path}` } }
+    if (result.status < 400) {
+      await gameStore.save()
+    }
+    return result
   } catch (error) {
     const message = error instanceof Error ? error.message : '錯誤'
     const status =
