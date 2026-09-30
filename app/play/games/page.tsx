@@ -29,12 +29,20 @@ export default function GamesPage() {
     if (!game || game.kind !== 'final_button') return
     const tick = () => {
       const now = Date.now()
-      const start = Number(game.payload.startedAt)
-      const end = Number(game.payload.endsAt)
-      if (now < start) setCountdown(Math.ceil((start - now) / 1000))
-      else setCountdown(null)
-      if (now >= start && now <= end) setLeft(Math.max(0, Math.ceil((end - now) / 1000)))
-      else if (now > end) setLeft(0)
+      const start = Number(game.payload.startedAt || 0)
+      const end = Number(game.payload.endsAt || 0)
+      if (!start || !end) {
+        setCountdown(null)
+        setLeft(null)
+        return
+      }
+      if (now < start) {
+        setCountdown(Math.ceil((start - now) / 1000))
+        setLeft(null)
+      } else {
+        setCountdown(null)
+        setLeft(now <= end ? Math.max(0, Math.ceil((end - now) / 1000)) : 0)
+      }
     }
     tick()
     const id = window.setInterval(tick, 100)
