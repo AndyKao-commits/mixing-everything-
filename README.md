@@ -1,13 +1,14 @@
-# Mixing Everything
+# 今晚玩什麼？ / Party Room
 
-多功能小工具站基礎模板。左側列表導覽；主頁是可即時顯示的日誌。
+手機優先的聚會派對遊戲 Web App。
+
+核心流程：建立房間 → 分享房號 → 輸入代號進房 → 選遊戲 → 馬上玩。
 
 ## Stack
 
-- Next.js 15（靜態匯出）
-- TypeScript
-- React 19
-- Tailwind CSS
+- Next.js 15 + React 19 + TypeScript + Tailwind CSS
+- 預設：Node 記憶體 store + 輪詢同步（本機 / 單實例可直接玩）
+- 可選：Supabase Database + Realtime（部署多實例時建議接上）
 
 ## 開發
 
@@ -16,26 +17,38 @@ npm install
 npm run dev
 ```
 
-## 建置
+開啟 http://localhost:3000
 
-```bash
-npm run build
-npm start
+## 環境變數（可選）
+
+複製 `.env.example`：
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
-## 結構
+Supabase schema 見 `supabase/schema.sql`。
 
-- 左側導覽：日誌、工具總覽、關於、各工具
-- 主頁日誌：寫完立刻顯示，並存到 LocalStorage
-- 工具註冊表：`src/data/tools.ts`
+目前 MVP 以記憶體 store 為準；接上 Supabase 後可把 `party-store` 換成 DB 實作。
 
-## 如何新增工具
+## MVP 功能
 
-1. 在 `src/tools/<tool-id>/` 建立元件
-2. 到 `src/data/tools.ts` 註冊
-3. 左側「工具」列表會自動出現
+- 首頁 / 建立房間 / 加入房間
+- Lobby 玩家同步、房主選遊戲
+- 滿分男：經典 / 反向 / 主題 / 極速
+- 評分、全員回答後同時翻牌、平均分、最高最低吐槽
+- localStorage 重連、房主離線 30 秒轉移
 
-目前內建：
+## 專案結構
 
-- **計數器** `/tools/counter`
-- **隨手記** `/tools/notes`
+```
+app/                 頁面與 API
+src/components/      UI 與遊戲模組
+src/data/            題庫與遊戲清單
+src/lib/             store / api / storage
+src/types/           型別
+supabase/            SQL schema
+```
+
+房間是平台，遊戲是模組。新增遊戲時加 Game Module，不必重做房間系統。
