@@ -20,7 +20,7 @@ export async function routeApiRequest(input: {
   const body = input.body || {}
 
   try {
-    const hadDurableState = await gameStore.load()
+    const hadDurableState = await gameStore.load({ hydratePhotos: method === 'GET' && path === 'me' })
     let result: { status: number; data: unknown }
 
     if (method === 'GET' && path === 'state') {
