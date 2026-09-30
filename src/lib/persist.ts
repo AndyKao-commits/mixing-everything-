@@ -138,3 +138,18 @@ export async function persistSetPhoto(cellId: string, dataUrl: string): Promise<
   })
   if (error) throw new Error('Bingo photo upload failed: ' + error.message)
 }
+
+
+export async function persistClearPhotos(): Promise<void> {
+  if (!isSupabaseConfigured()) {
+    for (const key of [...memory.keys()]) if (key.startsWith('photo:')) memory.delete(key)
+    return
+  }
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase.storage.from(BINGO_BUCKET).list('', { limit: 1000 })
+  if (error) throw new Error('Bingo photo cleanup failed: ' + error.message)
+  const paths = (data || []).filter((item) => item.name).map((item) => item.name)
+  if (!paths.length) return
+  const { error: removeError } = await supabase.storage.from(BINGO_BUCKET).remove(paths)
+  if (removeError) throw new Error('Bingo photo cleanup failed: ' + removeError.message)
+}
