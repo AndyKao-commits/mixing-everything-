@@ -4,13 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/build.mjs",
+    "build": "next build",
     "start": "next start",
     "lint": "oxlint"
   },
   "dependencies": {
     "@vercel/functions": "^3.9.9",
-    "@vercel/node": "^16.0.2",
     "next": "^15.5.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
