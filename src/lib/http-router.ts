@@ -171,7 +171,16 @@ export async function routeApiRequest(input: {
 
     const isFinalTap = method === 'POST' && path === 'games/final-button/click'
     const shouldPersist = result.status < 400 && !isFinalTap && (method !== 'GET' || !hadDurableState)
-    if (shouldPersist) await gameStore.save()
+    if (shouldPersist) {
+      if (method === 'POST' && path === 'bingo/complete') {
+        const completedCell = (result.data as any)?.bingo?.cells?.find((cell: any) => cell.id === String(body.cellId))
+        if (completedCell?.photo_data_url?.startsWith('data:')) {
+          const { persistSetPhoto } = await import('./persist')
+          await persistSetPhoto(completedCell.id, completedCell.photo_data_url)
+        }
+      }
+      await gameStore.save()
+    }
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : '錯誤'
