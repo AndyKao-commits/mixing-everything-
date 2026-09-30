@@ -40,9 +40,14 @@ export default function GamesPage() {
 
   useEffect(() => {
     if (event?.status !== 'settlement' || !event.donation_ends_at) return
-    const id = window.setInterval(() => {
+
+    // The final-button game also uses `left`. Reset it before the settlement
+    // timer takes ownership so the two phases can never flash each other's value.
+    const tick = () => {
       setLeft(Math.max(0, Math.ceil((new Date(event.donation_ends_at).getTime() - Date.now()) / 1000)))
-    }, 200)
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
   }, [event?.status, event?.donation_ends_at])
 
@@ -53,7 +58,7 @@ export default function GamesPage() {
     }
     const tick = () => {
       const elapsed = Date.now() - new Date(event.settlement_started_at).getTime()
-      setSettlementCountdown(elapsed < 3000 ? Math.max(1, 3 - Math.floor(elapsed / 1000)) : 0)
+      setSettlementCountdown(elapsed < 10_000 ? Math.max(1, 10 - Math.floor(elapsed / 1000)) : 0)
     }
     tick()
     const id = window.setInterval(tick, 100)
@@ -148,6 +153,19 @@ export default function GamesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left, game?.kind])
 
+  async function readyFinal() {
+    const token = getPlayerToken()
+    if (!token) return
+    setBusy(true)
+    try {
+      setData(await api.finalReady(token))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '準備失敗')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function sendMessage() {
     const token = getPlayerToken()
     if (!token || !text.trim()) return
@@ -161,6 +179,33 @@ export default function GamesPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function saveMessages() {
+    if (!data?.messagesPublic?.length) return
+    const content = [
+      data.event.name,
+      '今晚的留言',
+      '',
+      ...data.messagesPublic.map((m: any, i: number) => `${i + 1}. 「${m.text}」`),
+    ].join('\n')
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const file = new File([blob], `${data.event.name}-留言.txt`, { type: blob.type })
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${data.event.name} 留言` })
+        return
+      }
+    } catch {
+      // User cancelled the share sheet; keep the page unchanged.
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function decide(choice: 'keep' | 'donate') {
@@ -191,6 +236,9 @@ export default function GamesPage() {
 
   if (event.status === 'settlement' || event.status === 'finished') {
     const rank = data.myRank
+    const settlementLeft = event.donation_ends_at
+      ? Math.max(0, Math.ceil((new Date(event.donation_ends_at).getTime() - Date.now()) / 1000))
+      : 0
     if (!rank) return <p className="text-soft">等待排名…</p>
     const isTop = rank.rank <= 3
     const isSecond = rank.rank === 2
@@ -223,8 +271,8 @@ export default function GamesPage() {
             <p className="text-soft">
               {data.donors ? `${data.donors} 個人救了你` : '還沒有人救你'}
             </p>
-            {left !== null ? <p className="text-sm">倒數 {left}s</p> : null}
-            {event.status === 'finished' || left === 0 ? (
+            <p className="text-sm">倒數 {settlementLeft}s</p>
+            {event.status === 'finished' || settlementLeft === 0 ? (
               <p className="font-semibold">
                 TIME&apos;S UP · 最終獎金 NT${data.donationTotal}
                 <br />
@@ -236,8 +284,8 @@ export default function GamesPage() {
         {canDonate ? (
           <div className="space-y-3">
             <p className="text-4xl font-bold text-red-400">NT$10</p>
-            {left !== null && left > 0 && !data.prizeDecision?.choice ? (
-              <p className="text-white/70">{left} 秒內決定</p>
+            {settlementLeft > 0 && !data.prizeDecision?.choice ? (
+              <p className="text-white/70">{settlementLeft} 秒內決定</p>
             ) : null}
             {data.prizeDecision?.choice ? (
               <p className="rounded-2xl bg-white/10 p-4">
@@ -258,6 +306,21 @@ export default function GamesPage() {
           </div>
         ) : null}
         {isTop && rank.rank !== 2 ? <p className="text-soft">好好享受這個夜晚。</p> : null}
+        {event.status === 'finished' ? (
+          <div className="card space-y-3 text-ink">
+            <h2 className="font-display text-xl font-bold">今晚回顧</h2>
+            <p className="text-sm text-soft">活動結束後資料仍保留到主持人清除活動。你可以回任務下載九宮格照片，也可以重看全部留言。</p>
+            <a href="/play/tasks" className="btn-secondary">回九宮格下載照片</a>
+            {data.messagesReady && data.messagesPublic?.length ? (
+              <>
+                <div className="space-y-2">
+                  {data.messagesPublic.map((m: any) => <div key={m.id} className="rounded-2xl bg-black/5 p-3">「{m.text}」</div>)}
+                </div>
+                <button type="button" className="btn-secondary" onClick={() => void saveMessages()}>一鍵保存全部留言</button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="text-sm text-ember">{error}</p> : null}
       </div>
     )
@@ -295,6 +358,9 @@ export default function GamesPage() {
                 「{m.text}」
               </div>
             ))}
+            <button type="button" className="btn-secondary" onClick={() => void saveMessages()}>
+              一鍵保存全部留言
+            </button>
           </div>
         ) : null}
         {error ? <p className="text-sm text-ember">{error}</p> : null}
@@ -395,6 +461,43 @@ export default function GamesPage() {
   }
 
   if (game.kind === 'final_button') {
+    const readyIds = new Set((game.payload.readyPlayerIds as string[]) || [])
+    const readyCount = Number(game.payload.readyCount || readyIds.size)
+    const playerCount = Number(game.payload.playerCount || data.roster?.length || 0)
+    const startedAt = Number(game.payload.startedAt || 0)
+    const results = (game.payload.results as Array<{ playerId: string; playerName: string; count: number; rank: number }>) || []
+
+    if (game.payload.finished && results.length) {
+      return (
+        <div className="space-y-4 animate-rise">
+          <p className="text-center tracking-[0.3em] text-soft">FINAL GAME RESULT</p>
+          <h1 className="text-center font-display text-3xl font-bold">按鈕大賽排名</h1>
+          {results.map((row) => (
+            <div key={row.playerId} className="card flex items-center justify-between">
+              <div><span className="mr-3 font-display text-2xl font-bold">#{row.rank}</span>{row.playerName}</div>
+              <span className="font-semibold tabular-nums">{row.count} 下</span>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    if (!startedAt) {
+      const mineReady = readyIds.has(data.player.id)
+      return (
+        <div className="flex min-h-[65vh] flex-col items-center justify-center gap-6 text-center animate-rise">
+          <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
+          <h1 className="font-display text-4xl font-bold">按鈕大賽</h1>
+          <p className="text-soft">全員準備後，統一倒數 10 秒開始</p>
+          <p className="font-display text-3xl font-bold tabular-nums">{readyCount} / {playerCount}</p>
+          <button type="button" className="btn-primary max-w-xs" disabled={mineReady || busy} onClick={readyFinal}>
+            {mineReady ? '✓ 已準備' : '我準備好了'}
+          </button>
+          {mineReady ? <p className="text-soft">等待其他玩家…</p> : null}
+        </div>
+      )
+    }
+
     return (
       <div className="flex min-h-[65vh] flex-col items-center justify-center gap-6 text-center animate-rise">
         <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
