@@ -1,4 +1,4 @@
-import type { BingoCategory } from '@/types'
+import type { BingoCategory } from '../types'
 
 export interface BingoPrompt {
   id: string

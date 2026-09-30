@@ -83,7 +83,7 @@ export default function AdminPage() {
         <h1 className="font-display text-3xl font-bold">管理員</h1>
         <p className="text-soft">輸入管理員 PIN（預設 2468）</p>
         <PinPad value={pin} onChange={setPin} />
-        {error ? <p className="text-sm text-ember">{error}</p> : null}
+        {error ? <p className="text-sm leading-relaxed text-ember">{error}</p> : null}
       </main>
     )
   }
