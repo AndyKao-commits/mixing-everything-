@@ -133,13 +133,12 @@ export default function GamesPage() {
   async function flushClicks() {
     const token = getPlayerToken()
     if (!token || sendingClicksRef.current || pendingClicksRef.current <= 0) return
-    const batch = pendingClicksRef.current
     pendingClicksRef.current = 0
     setPendingClicks(0)
     sendingClicksRef.current = true
     setSendingClicks(true)
     try {
-      await api.finalClick(token, Date.now(), batch)
+      await api.finalClick(token, Date.now(), clicks)
     } catch {
       // A batch arriving after the server deadline is intentionally ignored.
     } finally {
@@ -171,7 +170,7 @@ export default function GamesPage() {
     const id = window.setTimeout(async () => {
       try {
         // Flush this device once more before asking the server to rank everyone.
-        if (pendingClicksRef.current > 0) await flushClicks()
+        await api.finalClick(token, Date.now(), clicks)
         setData(await api.finalFinish(token))
       } catch {
         await refresh()
