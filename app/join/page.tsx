@@ -50,10 +50,10 @@ export default function JoinPage() {
           return
         }
         const res = await api.setPin(selected.id, pin, confirm)
-        setPlayerSession(res.token, res.player.id, res.player.name)
+        setPlayerSession(res.token)
       } else {
         const res = await api.login(selected.id, pin)
-        setPlayerSession(res.token, res.player.id, res.player.name)
+        setPlayerSession(res.token)
       }
       router.replace('/play')
     } catch (e) {
