@@ -617,6 +617,7 @@ export const gameStore = {
     const event = requireEvent()
     const cleanName = name.trim().slice(0, 16)
     if (!cleanName) throw new Error('玩家名稱不可空白')
+    if (store().players.size >= 15) throw new Error('玩家人數上限為 15 人')
     if ([...store().players.values()].some((p) => p.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
       throw new Error('玩家名稱不可重複')
     }
