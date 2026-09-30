@@ -20,7 +20,7 @@ function errorMessage(data: any, status: number, fallback = '請求失敗') {
   return fallback
 }
 
-async function req<T>(url: string, init?: RequestInit, retryConflict = true): Promise<T> {
+async function req<T>(url: string, init?: RequestInit, retriesLeft = 3): Promise<T> {
   let res: Response
   try {
     res = await fetch(url, {
@@ -45,9 +45,9 @@ async function req<T>(url: string, init?: RequestInit, retryConflict = true): Pr
   }
 
   const data = await res.json().catch(() => ({}))
-  if (res.status === 409 && retryConflict) {
-    await new Promise((resolve) => setTimeout(resolve, 180 + Math.random() * 220))
-    return req<T>(url, init, false)
+  if (res.status === 409 && retriesLeft > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 160 + (3 - retriesLeft) * 140 + Math.random() * 220))
+    return req<T>(url, init, retriesLeft - 1)
   }
   if (!res.ok) throw new Error(errorMessage(data, res.status))
   return data as T
