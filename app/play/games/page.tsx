@@ -258,20 +258,13 @@ export default function GamesPage() {
     const prompts = (game.payload.prompts as string[]) || []
     const prompt = prompts[game.round - 1] || prompts[0]
     return (
-      <div className="space-y-4 animate-rise">
+      <div className="space-y-5 text-center animate-rise">
         <p className="text-sm text-soft">不要跟我一樣 · 第 {game.round} 題</p>
         <h1 className="font-display text-3xl font-bold leading-snug">{prompt}</h1>
-        <input
-          className="field"
-          value={text}
-          placeholder="你的答案"
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button type="button" className="btn-primary" disabled={busy} onClick={sendDontCopy}>
-          送出
-        </button>
-        <p className="text-sm text-soft">答案唯一才得分。主持人會公布。</p>
-        {error ? <p className="text-sm text-ember">{error}</p> : null}
+        <div className="card space-y-2">
+          <p className="font-semibold">不用打字，直接一起喊答案。</p>
+          <p className="text-sm text-soft">答案唯一的人由主持人勾選得分。</p>
+        </div>
       </div>
     )
   }
