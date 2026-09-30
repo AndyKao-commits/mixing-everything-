@@ -40,9 +40,14 @@ export default function GamesPage() {
 
   useEffect(() => {
     if (event?.status !== 'settlement' || !event.donation_ends_at) return
-    const id = window.setInterval(() => {
+
+    // The final-button game also uses `left`. Reset it before the settlement
+    // timer takes ownership so the two phases can never flash each other's value.
+    const tick = () => {
       setLeft(Math.max(0, Math.ceil((new Date(event.donation_ends_at).getTime() - Date.now()) / 1000)))
-    }, 200)
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
   }, [event?.status, event?.donation_ends_at])
 
@@ -191,6 +196,9 @@ export default function GamesPage() {
 
   if (event.status === 'settlement' || event.status === 'finished') {
     const rank = data.myRank
+    const settlementLeft = event.donation_ends_at
+      ? Math.max(0, Math.ceil((new Date(event.donation_ends_at).getTime() - Date.now()) / 1000))
+      : 0
     if (!rank) return <p className="text-soft">等待排名…</p>
     const isTop = rank.rank <= 3
     const isSecond = rank.rank === 2
@@ -223,8 +231,8 @@ export default function GamesPage() {
             <p className="text-soft">
               {data.donors ? `${data.donors} 個人救了你` : '還沒有人救你'}
             </p>
-            {left !== null ? <p className="text-sm">倒數 {left}s</p> : null}
-            {event.status === 'finished' || left === 0 ? (
+            <p className="text-sm">倒數 {settlementLeft}s</p>
+            {event.status === 'finished' || settlementLeft === 0 ? (
               <p className="font-semibold">
                 TIME&apos;S UP · 最終獎金 NT${data.donationTotal}
                 <br />
@@ -236,8 +244,8 @@ export default function GamesPage() {
         {canDonate ? (
           <div className="space-y-3">
             <p className="text-4xl font-bold text-red-400">NT$10</p>
-            {left !== null && left > 0 && !data.prizeDecision?.choice ? (
-              <p className="text-white/70">{left} 秒內決定</p>
+            {settlementLeft > 0 && !data.prizeDecision?.choice ? (
+              <p className="text-white/70">{settlementLeft} 秒內決定</p>
             ) : null}
             {data.prizeDecision?.choice ? (
               <p className="rounded-2xl bg-white/10 p-4">
