@@ -478,20 +478,27 @@ function safeGroupGame(viewerPlayerId?: string): GroupGame | null {
   const currentId = game.payload.currentAnswerId as string | null
   const current = currentId ? answers.find((a) => a.id === currentId) : undefined
   const payload: Record<string, unknown> = {
-    prompt: game.payload.prompt,
+    prompt: viewerPlayerId
+      ? ((game.payload.promptsByPlayer as Record<string, string> | undefined)?.[viewerPlayerId] || game.payload.prompt)
+      : game.payload.prompt,
     answerCount: answers.length,
     mySubmitted: viewerPlayerId ? answers.some((a) => a.player_id === viewerPlayerId) : false,
     revealedPlayerIds: game.payload.revealedPlayerIds || [],
   }
   if (game.status === 'voting' && current) {
-    payload.currentAnswer = { id: current.id, text: current.text }
+    payload.currentAnswer = { id: current.id, text: current.text, prompt: (current as any).prompt || game.payload.prompt }
     payload.isCurrentAuthor = viewerPlayerId === current.player_id
   }
   if (game.status === 'round_result' && game.payload.reveal) {
-    const reveal = game.payload.reveal as { player_id: string; text: string }
-    payload.reveal = viewerPlayerId
-      ? reveal
-      : { text: reveal.text, player_name: store().players.get(reveal.player_id)?.name || '未知玩家' }
+    const reveal = game.payload.reveal as { player_id: string; text: string; prompt?: string }
+    payload.reveal = {
+      text: reveal.text,
+      prompt: reveal.prompt || game.payload.prompt,
+      player_name: store().players.get(reveal.player_id)?.name || '未知玩家',
+    }
+  }
+  if (game.status === 'finished') {
+    payload.results = game.payload.results || []
   }
   return { ...game, payload }
 }
@@ -991,11 +998,14 @@ export const gameStore = {
       status: 'playing',
       round: 1,
       payload: {
-        prompt: pick(WHO_WROTE_PROMPTS),
-        answers: [] as Array<{ id: string; player_id: string; text: string; revealed: boolean }>,
+        prompt: '每個人的題目都不同',
+        promptsByPlayer: Object.fromEntries(
+          [...store().players.keys()].map((playerId) => [playerId, pick(WHO_WROTE_PROMPTS)]),
+        ),
+        answers: [] as Array<{ id: string; player_id: string; prompt: string; text: string; revealed: boolean }>,
         currentAnswerId: null,
         votes: {} as Record<string, string>,
-        revealedPlayerIds: [] as string[],
+        correctCounts: Object.fromEntries([...store().players.keys()].map((playerId) => [playerId, 0])),
       },
       created_at: nowIso(),
       updated_at: nowIso(),
@@ -1026,6 +1036,7 @@ export const gameStore = {
     answers.push({
       id: uid(),
       player_id: player.id,
+      prompt: ((game.payload.promptsByPlayer as Record<string, string>) || {})[player.id] || String(game.payload.prompt),
       text: cleaned,
       revealed: false,
     })
@@ -1047,7 +1058,13 @@ export const gameStore = {
     }>
     const pool = answers.filter((a) => !a.revealed)
     if (!pool.length) {
+      const correct = (game.payload.correctCounts as Record<string, number>) || {}
+      game.payload.results = [...store().players.values()]
+        .map((p) => ({ playerId: p.id, playerName: p.name, correct: Number(correct[p.id] || 0) }))
+        .sort((a, b) => b.correct - a.correct || a.playerName.localeCompare(b.playerName))
+        .map((row, index) => ({ ...row, rank: index + 1 }))
       game.status = 'finished'
+      game.updated_at = nowIso()
       return game
     }
     const drawn = pick(pool)
@@ -1066,11 +1083,8 @@ export const gameStore = {
     if (!game || game.kind !== 'who_wrote_it' || game.status !== 'voting') {
       throw new Error('目前無法投票')
     }
-    const revealed = (game.payload.revealedPlayerIds as string[]) || []
     if (player.id === game.payload.currentAuthorId) throw new Error('這題是你的答案，不需投票')
     if (!store().players.has(guessedPlayerId)) throw new Error('玩家不存在')
-    if (guessedPlayerId === player.id) throw new Error('不能猜自己')
-    if (revealed.includes(guessedPlayerId)) throw new Error('此玩家已揭曉')
     const votes = (game.payload.votes as Record<string, string>) || {}
     if (votes[player.id]) throw new Error('已投票')
     votes[player.id] = guessedPlayerId
@@ -1106,13 +1120,13 @@ export const gameStore = {
     for (const [voterId, guess] of Object.entries(votes)) {
       if (guess === answer.player_id) {
         addScore(event, voterId, 'who_wrote_it', `${game.id}_${currentId}_${voterId}`, 1, '猜對作者')
+        const correct = (game.payload.correctCounts as Record<string, number>) || {}
+        correct[voterId] = Number(correct[voterId] || 0) + 1
+        game.payload.correctCounts = correct
       }
     }
     answer.revealed = true
-    const revealed = (game.payload.revealedPlayerIds as string[]) || []
-    if (!revealed.includes(answer.player_id)) revealed.push(answer.player_id)
-    game.payload.revealedPlayerIds = revealed
-    game.payload.reveal = { player_id: answer.player_id, text: answer.text }
+    game.payload.reveal = { player_id: answer.player_id, prompt: (answer as any).prompt, text: answer.text }
     game.status = 'round_result'
     game.updated_at = nowIso()
     return game
@@ -1270,7 +1284,7 @@ export const gameStore = {
       playerName: store().players.get(row.playerId)?.name || '未知玩家',
     }))
     event.active_group_game = 'none'
-    event.status = 'final_game'
+    event.status = 'active'
     touch(event)
     return game
   },
