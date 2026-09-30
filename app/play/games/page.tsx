@@ -528,7 +528,7 @@ export default function GamesPage() {
             <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-card">
               {/* The photo itself is the game surface. Only discrete clicks count; holding never repeats. */}
               <img
-                src={chestHit ? '/zeze-chest-hit.png' : '/zeze-chest-idle.jpg'}
+                src={chestHit ? '/zeze-chest-hit.jpg.png' : '/zeze-chest-idle.jpg.jpg'}
                 alt="澤澤"
                 draggable={false}
                 className={`block h-auto w-full select-none transition-transform duration-75 ${chestHit ? 'scale-[1.025]' : 'scale-100'}`}
