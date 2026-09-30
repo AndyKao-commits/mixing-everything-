@@ -559,6 +559,7 @@ export const gameStore = {
       settlement: store().settlement,
       prizeDecisions: [...store().prizeDecisions.values()],
       messages: [...store().messages.values()],
+      ties: this.topTies(),
     }
   },
 
@@ -1206,6 +1207,8 @@ export const gameStore = {
     const event = requireEvent()
     if (!event.score_locked) throw new Error('請先鎖定積分')
     if (event.status !== 'message') throw new Error('請先開啟「留一句話」階段')
+    const unresolvedTies = this.topTies()
+    if (unresolvedTies.length && !tieBreakOrder?.length) throw new Error('前三名有同分，請先決定同分順序')
     let ranked = rankings()
 
     // apply optional tie-break for top3 conflicts
