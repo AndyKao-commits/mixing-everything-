@@ -517,7 +517,6 @@ export const gameStore = {
       },
       players: publicPlayers(),
       groupGame: safeGroupGame(),
-      settlement: store().settlement,
     }
   },
 
@@ -771,7 +770,6 @@ export const gameStore = {
       groupGame: safeGroupGame(player.id),
       messageSubmitted: [...store().messages.values()].some((m) => m.player_id === player.id),
       prizeDecision: store().prizeDecisions.get(player.id) || null,
-      settlement: store().settlement,
       myRank:
         store().settlement?.rankings.find((r) => r.player_id === player.id) || null,
       donationTotal: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length * 10,
