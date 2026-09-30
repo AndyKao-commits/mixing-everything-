@@ -368,7 +368,7 @@ function DontCopyScorer({
   onScore,
 }: {
   players: any[]
-   onScore: (ids: string[]) => void
+  onScore: (ids: string[]) => void
 }) {
   const [picked, setPicked] = useState<string[]>([])
   return (
