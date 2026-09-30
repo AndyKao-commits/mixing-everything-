@@ -772,7 +772,7 @@ export const gameStore = {
     if (cell.mystery && !cell.revealed) throw new Error('請先揭曉神秘任務')
     if (cell.completed) throw new Error('此格已完成')
     if (!photoDataUrl?.startsWith('data:image/')) throw new Error('請上傳照片')
-    if (photoDataUrl.length > 1_800_000) throw new Error('照片太大，請壓縮後再傳')
+    if (photoDataUrl.length > 4_000_000) throw new Error('照片太大，請壓縮後再傳')
     // one photo per cell uniqueness soft-check
     if (card.cells.some((c) => c.photo_data_url === photoDataUrl)) {
       throw new Error('這張照片已使用過')
