@@ -342,7 +342,7 @@ function getSession(token?: string | null): PlayerSession | null {
   const verified = verifyPlayerToken(token)
   if (!verified) return null
   const event = store().event
-  if (!event) return null
+  if (!event || verified.eventId !== event.id) return null
   const session: PlayerSession = {
     id: uid(),
     event_id: event.id,
@@ -714,7 +714,7 @@ export const gameStore = {
     const player = store().players.get(playerId)
     if (!player || !player.pin_hash || !player.pin_salt) throw new Error('請先設定 PIN')
     if (!verifyPin(pin, player.pin_hash, player.pin_salt)) throw new Error('PIN 錯誤')
-    const token = signPlayerToken(player.id)
+    const token = signPlayerToken(player.id, event.id)
     const verified = verifyPlayerToken(token)!
     const session: PlayerSession = {
       id: uid(),
