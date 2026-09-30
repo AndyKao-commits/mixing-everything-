@@ -36,7 +36,6 @@ export async function routeApiRequest(input: {
         data: gameStore.loginPlayer(String(body.playerId), String(body.pin)),
       }
     } else if (method === 'GET' && path === 'me') {
-      gameStore.finalizeDonationDefaults()
       result = { status: 200, data: gameStore.getPlayerView(playerToken) }
     } else if (method === 'POST' && path === 'bingo/reveal') {
       result = { status: 200, data: { cell: gameStore.revealMystery(playerToken, String(body.cellId)) } }
@@ -79,7 +78,6 @@ export async function routeApiRequest(input: {
       result = { status: 200, data: gameStore.adminLogin(String(body.pin || '')) }
     } else if (method === 'GET' && path === 'admin/state') {
       gameStore.requireAdmin(adminToken)
-      gameStore.finalizeDonationDefaults()
       result = { status: 200, data: gameStore.getAdminState() }
     } else if (method === 'POST' && path === 'admin/action') {
       const action = String(body.action || '')
