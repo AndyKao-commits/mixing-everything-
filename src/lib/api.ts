@@ -109,11 +109,11 @@ export const api = {
       headers: { 'x-player-token': token },
       body: JSON.stringify({ guessedPlayerId }),
     }),
-  finalClick: (token: string, clientTs: number) =>
+  finalClick: (token: string, clientTs: number, clickCount = 1) =>
     req<any>('/api/games/final-button/click', {
       method: 'POST',
       headers: { 'x-player-token': token },
-      body: JSON.stringify({ clientTs }),
+      body: JSON.stringify({ clientTs, clickCount }),
     }),
   submitMessage: (token: string, text: string) =>
     req<any>('/api/messages', {
