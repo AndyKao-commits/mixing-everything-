@@ -179,18 +179,29 @@ export default function GamesPage() {
     if (game?.kind !== 'final_button' || game.payload.finished || left !== 0) return
     const token = getPlayerToken()
     if (!token) return
-    // Give every device time to flush its last click batch before anyone
-    // snapshots the shared results. During this window the UI shows settling.
-    const id = window.setTimeout(async () => {
+    // Upload this device's locked visible score immediately, then repeatedly
+    // ask the server to finalize. The server owns the grace-period gate, so
+    // polling/rerenders can no longer strand the UI on "結算中".
+    let cancelled = false
+    let timer: number | undefined
+    const finish = async () => {
       try {
-        // Flush this device once more before asking the server to rank everyone.
         await api.finalClick(token, Date.now(), clicksRef.current)
+      } catch {
+        // A late upload may be rejected after another device has finalized.
+      }
+      if (cancelled) return
+      try {
         setData(await api.finalFinish(token))
       } catch {
-        await refresh()
+        if (!cancelled) timer = window.setTimeout(() => void finish(), 750)
       }
-    }, 11_000)
-    return () => window.clearTimeout(id)
+    }
+    timer = window.setTimeout(() => void finish(), 2_100)
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
   }, [game?.id, game?.kind, game?.payload.finished, left, refresh, setData])
 
   async function readyFinal() {
