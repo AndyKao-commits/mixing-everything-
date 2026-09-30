@@ -181,8 +181,8 @@ function takeUnique(prompts: BingoPrompt[], used: Set<string>, n: number): Bingo
 
 function buildBingoCard(eventId: string, playerId: string, playerNames: string[]): BingoCard {
   const used = new Set<string>()
-  const food = takeUnique(FOOD_PROMPTS, used, 2)
-  const object = takeUnique(OBJECT_PROMPTS, used, 2)
+  const food = takeUnique(FOOD_PROMPTS, used, 1)
+  const object = takeUnique(OBJECT_PROMPTS, used, 1)
   const people = takeUnique(PEOPLE_PROMPTS, used, 2)
   const moment = takeUnique(MOMENT_PROMPTS, used, 1)
   const creative = takeUnique(CREATIVE_PROMPTS, used, 1)
@@ -208,7 +208,7 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
     ...creative,
     named,
     ...mystery,
-  ]).slice(0, 9)
+  ])
 
   while (selected.length < 9) {
     selected.push(pick(OBJECT_PROMPTS))
