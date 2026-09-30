@@ -1043,6 +1043,9 @@ export const gameStore = {
     })
     game.payload.answers = answers
     game.updated_at = nowIso()
+    // Everyone has answered: enter the first guessing round automatically.
+    const playerCount = [...store().players.values()].filter((p) => p.event_id === game.event_id).length
+    if (answers.length >= playerCount) this.drawWhoWroteAnswer()
     return true
   },
 
