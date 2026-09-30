@@ -3,14 +3,14 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
-import { getStoredPlayer } from '@/lib/client-session'
+import { getPlayerToken } from '@/lib/client-session'
 
 export default function LandingPage() {
   const [eventName, setEventName] = useState('今晚誰會贏？')
   const [hasSession, setHasSession] = useState(false)
 
   useEffect(() => {
-    setHasSession(Boolean(getStoredPlayer()))
+    setHasSession(Boolean(getPlayerToken()))
     api.state().then((s) => setEventName(s.event?.name || '今晚誰會贏？')).catch(() => {})
   }, [])
 

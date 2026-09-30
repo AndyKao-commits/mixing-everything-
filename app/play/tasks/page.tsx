@@ -8,20 +8,23 @@ import { usePlayerView } from '@/hooks/usePlayerView'
 
 type Tab = 'bingo' | 'secret' | 'bounty'
 
-function compressImage(file: File, max = 1600): Promise<string> {
+function cropSquareImage(file: File, offsetX = 50, offsetY = 50, zoom = 1): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = reject
     reader.onload = () => {
       const img = new Image()
       img.onload = () => {
-        const scale = Math.min(1, max / Math.max(img.width, img.height))
+        const base = Math.min(img.width, img.height) / zoom
+        const maxX = img.width - base
+        const maxY = img.height - base
+        const sx = maxX * (offsetX / 100)
+        const sy = maxY * (offsetY / 100)
         const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * scale)
-        canvas.height = Math.round(img.height * scale)
-        const ctx = canvas.getContext('2d')!
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.92))
+        canvas.width = 1600
+        canvas.height = 1600
+        canvas.getContext('2d')!.drawImage(img, sx, sy, base, base, 0, 0, 1600, 1600)
+        resolve(canvas.toDataURL('image/jpeg', 0.94))
       }
       img.onerror = reject
       img.src = String(reader.result)
@@ -37,8 +40,14 @@ export default function TasksPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [cropUrl, setCropUrl] = useState('')
+  const [cropX, setCropX] = useState(50)
+  const [cropY, setCropY] = useState(50)
+  const [cropZoom, setCropZoom] = useState(1)
   const cameraInput = useRef<HTMLInputElement>(null)
   const libraryInput = useRef<HTMLInputElement>(null)
+  const cropDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
 
   const cells = data?.bingo?.cells || []
 
@@ -64,15 +73,27 @@ export default function TasksPage() {
 
   async function onPhoto(file: File | null) {
     if (!file || !activeCell) return
+    setCropFile(file)
+    setCropUrl(URL.createObjectURL(file))
+  }
+
+  async function confirmCrop() {
+    if (!cropFile || !activeCell) return
     const token = getPlayerToken()
     if (!token) return
     setBusy(true)
     setError('')
     try {
-      const photo = await compressImage(file)
+      const photo = await cropSquareImage(cropFile, cropX, cropY, cropZoom)
       const view = await api.completeBingo(token, activeCell.id, photo)
       setData(view)
       setActiveCell(null)
+      URL.revokeObjectURL(cropUrl)
+      setCropFile(null)
+      setCropUrl('')
+      setCropX(50)
+      setCropY(50)
+      setCropZoom(1)
       setMsg('+1 分')
       setTimeout(() => setMsg(''), 1500)
     } catch (e) {
@@ -261,6 +282,48 @@ export default function TasksPage() {
               )}
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {cropFile ? (
+        <div className="fixed inset-0 z-[60] flex items-end bg-black/70 p-4">
+          <div className="card w-full space-y-4">
+            <div>
+              <p className="text-sm text-soft">調整照片</p>
+              <p className="text-xl font-semibold">選好要放進九宮格的 1:1 範圍</p>
+            </div>
+            <div
+              className="aspect-square touch-none overflow-hidden rounded-2xl bg-black"
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                cropDrag.current = { x: e.clientX, y: e.clientY, startX: cropX, startY: cropY }
+              }}
+              onPointerMove={(e) => {
+                const drag = cropDrag.current
+                if (!drag) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                setCropX(Math.max(0, Math.min(100, drag.startX - ((e.clientX - drag.x) / rect.width) * 100)))
+                setCropY(Math.max(0, Math.min(100, drag.startY - ((e.clientY - drag.y) / rect.height) * 100)))
+              }}
+              onPointerUp={() => { cropDrag.current = null }}
+              onPointerCancel={() => { cropDrag.current = null }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={cropUrl}
+                alt="裁切預覽"
+                draggable={false}
+                className="h-full w-full select-none object-cover"
+                style={{ objectPosition: `${cropX}% ${cropY}%`, transform: `scale(${cropZoom})` }}
+              />
+            </div>
+            <p className="text-center text-sm text-soft">直接拖曳照片調整上下左右，再用滑桿縮放</p>
+            <label className="block text-sm">縮放 <input className="w-full" type="range" min="1" max="3" step="0.05" value={cropZoom} onChange={(e) => setCropZoom(Number(e.target.value))} /></label>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="btn-ghost" onClick={() => { URL.revokeObjectURL(cropUrl); setCropFile(null); setCropUrl('') }}>重選</button>
+              <button type="button" className="btn-primary" disabled={busy} onClick={() => void confirmCrop()}>使用這個範圍</button>
+            </div>
+          </div>
         </div>
       ) : null}
 

@@ -18,6 +18,9 @@ export default function GamesPage() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [settlementCountdown, setSettlementCountdown] = useState<number | null>(null)
   const [left, setLeft] = useState<number | null>(null)
+  const [chestHit, setChestHit] = useState(false)
+  const chestHitTimer = useRef<number | null>(null)
+  const chestPointerDownAt = useRef(0)
 
   const game = data?.groupGame
   const event = data?.event
@@ -65,11 +68,6 @@ export default function GamesPage() {
     return () => window.clearInterval(id)
   }, [event?.status, event?.settlement_started_at])
 
-  const revealedIds = useMemo(
-    () => new Set((game?.payload?.revealedPlayerIds as string[]) || []),
-    [game],
-  )
-
   async function sendDontCopy() {
     const token = getPlayerToken()
     if (!token || !text.trim()) return
@@ -115,10 +113,13 @@ export default function GamesPage() {
   }
 
   function tap() {
-    if (left === 0) return
+    if (left === 0 || left === null) return
     setClicks((n) => n + 1)
     pendingClicksRef.current += 1
     setPendingClicks(pendingClicksRef.current)
+    setChestHit(true)
+    if (chestHitTimer.current) window.clearTimeout(chestHitTimer.current)
+    chestHitTimer.current = window.setTimeout(() => setChestHit(false), 90)
   }
 
   async function flushClicks() {
@@ -152,6 +153,20 @@ export default function GamesPage() {
     if (game?.kind === 'final_button' && left === 0 && pendingClicksRef.current > 0) void flushClicks()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left, game?.kind])
+
+  useEffect(() => {
+    if (game?.kind !== 'final_button' || game.payload.finished || left !== 0) return
+    const token = getPlayerToken()
+    if (!token) return
+    const id = window.setTimeout(async () => {
+      try {
+        setData(await api.finalFinish(token))
+      } catch {
+        await refresh()
+      }
+    }, 250)
+    return () => window.clearTimeout(id)
+  }, [game?.kind, game?.payload.finished, left, refresh, setData])
 
   async function readyFinal() {
     const token = getPlayerToken()
@@ -395,8 +410,8 @@ export default function GamesPage() {
   if (game.kind === 'who_wrote_it') {
     const mine = Boolean(game.payload.mySubmitted)
     const answerCount = Number(game.payload.answerCount || 0)
-    const reveal = game.payload.reveal as { player_id: string; text: string } | undefined
-    const current = game.payload.currentAnswer as { id: string; text: string } | undefined
+    const reveal = game.payload.reveal as { text: string; prompt: string; player_name: string } | undefined
+    const current = game.payload.currentAnswer as { id: string; text: string; prompt: string } | undefined
 
     if (game.status === 'playing') {
       return (
@@ -422,19 +437,23 @@ export default function GamesPage() {
       return (
         <div className="space-y-4 animate-rise">
           <h1 className="font-display text-3xl font-bold">這是誰寫的？</h1>
-          <div className="card text-xl font-medium">「{current.text}」</div>
+          <div className="card space-y-2 text-left">
+            <p className="text-sm text-soft">題目是？</p>
+            <p className="text-lg font-semibold">{current.prompt}</p>
+            <p className="pt-2 text-sm text-soft">回答是？</p>
+            <p className="text-xl font-medium">「{current.text}」</p>
+          </div>
           {game.payload.isCurrentAuthor ? (
             <div className="card">這題是你的答案，等大家猜就好。</div>
           ) : (
           <div className="space-y-2">
             {(data.roster || []).map((p: any) => {
-              const disabled = revealedIds.has(p.id) || p.id === data.player.id
               return (
                 <button
                   key={p.id}
                   type="button"
-                  disabled={disabled || busy}
-                  className={`btn-secondary ${disabled ? 'line-through opacity-40' : ''}`}
+                  disabled={busy}
+                  className="btn-secondary"
                   onClick={() => vote(p.id)}
                 >
                   {p.name}
@@ -452,9 +471,30 @@ export default function GamesPage() {
       return (
         <div className="space-y-4 animate-rise">
           <h1 className="font-display text-3xl font-bold">揭曉</h1>
-          <div className="card text-xl">「{reveal.text}」</div>
-          <p className="text-2xl font-semibold">作者已標記為揭曉</p>
+          <div className="card space-y-2 text-left">
+            <p className="text-sm text-soft">題目是？</p>
+            <p className="font-semibold">{reveal.prompt}</p>
+            <p className="pt-2 text-sm text-soft">回答是？</p>
+            <p className="text-xl">「{reveal.text}」</p>
+            <p className="pt-2 text-sm text-soft">誰寫的？</p>
+            <p className="text-2xl font-bold">{reveal.player_name}</p>
+          </div>
           <p className="text-soft">等待主持人抽下一則…</p>
+        </div>
+      )
+    }
+
+    if (game.status === 'finished') {
+      const results = (game.payload.results as Array<{ playerId: string; playerName: string; correct: number; rank: number }>) || []
+      return (
+        <div className="space-y-3 animate-rise">
+          <h1 className="text-center font-display text-3xl font-bold">誰寫的 · 最終排名</h1>
+          {results.map((row) => (
+            <div key={row.playerId} className="card flex items-center justify-between">
+              <div><span className="mr-3 font-display text-2xl font-bold">#{row.rank}</span>{row.playerName}</div>
+              <span className="font-semibold">{row.correct} 題</span>
+            </div>
+          ))}
         </div>
       )
     }
@@ -471,7 +511,7 @@ export default function GamesPage() {
       return (
         <div className="space-y-4 animate-rise">
           <p className="text-center tracking-[0.3em] text-soft">FINAL GAME RESULT</p>
-          <h1 className="text-center font-display text-3xl font-bold">按鈕大賽排名</h1>
+          <h1 className="text-center font-display text-3xl font-bold">快點擊澤澤的胸肌賺分數排名</h1>
           {results.map((row) => (
             <div key={row.playerId} className="card flex items-center justify-between">
               <div><span className="mr-3 font-display text-2xl font-bold">#{row.rank}</span>{row.playerName}</div>
@@ -486,10 +526,7 @@ export default function GamesPage() {
       const mineReady = readyIds.has(data.player.id)
       return (
         <div className="flex min-h-[65vh] flex-col items-center justify-center gap-6 text-center animate-rise">
-          <p className="tracking-[0.3em] text-soft">FINAL GAME</p>
-          <h1 className="font-display text-4xl font-bold">按鈕大賽</h1>
-          <p className="text-soft">全員準備後，統一倒數 10 秒開始</p>
-          <p className="font-display text-3xl font-bold tabular-nums">{readyCount} / {playerCount}</p>
+          <h1 className="font-display text-4xl font-bold">按鈕大戰</h1>
           <button type="button" className="btn-primary max-w-xs" disabled={mineReady || busy} onClick={readyFinal}>
             {mineReady ? '✓ 已準備' : '我準備好了'}
           </button>
@@ -505,15 +542,31 @@ export default function GamesPage() {
           <p className="font-display text-7xl font-bold">{countdown || 'GO'}</p>
         ) : (
           <>
+            <h1 className="font-display text-3xl font-bold leading-tight">快點擊澤澤的胸肌賺分數!!</h1>
             <p className="text-soft">剩餘 {left ?? 0} 秒</p>
-            <button
-              type="button"
-              className="btn-primary max-w-xs text-2xl active:scale-95"
-              onClick={tap}
-              disabled={left === 0}
-            >
-              狂按
-            </button>
+            <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-card">
+              {/* The photo itself is the game surface. Only discrete clicks count; holding never repeats. */}
+              <img
+                src="/zeze-chest-hit.jpg.png"
+                alt="澤澤"
+                draggable={false}
+                className={`block h-auto w-full select-none transition-transform duration-75 ${chestHit ? 'scale-[1.025]' : 'scale-100'}`}
+              />
+              <button
+                type="button"
+                aria-label="點擊澤澤的胸肌"
+                disabled={left === 0}
+                onPointerDown={() => { chestPointerDownAt.current = Date.now() }}
+                onPointerUp={() => {
+                  const held = Date.now() - chestPointerDownAt.current
+                  chestPointerDownAt.current = 0
+                  if (held <= 280) tap()
+                }}
+                onPointerCancel={() => { chestPointerDownAt.current = 0 }}
+                onContextMenu={(e) => e.preventDefault()}
+                className="absolute left-[18%] top-[22%] h-[45%] w-[64%] touch-manipulation select-none rounded-[45%] bg-transparent disabled:pointer-events-none"
+              />
+            </div>
             <p className="font-display text-4xl font-bold tabular-nums">{clicks}</p>
           </>
         )}

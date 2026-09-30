@@ -7,29 +7,24 @@ export async function exportBingoImage(opts: {
   completed: number
 }): Promise<Blob> {
   const width = 1080
-  const height = 1350
+  const height = 1254
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')!
   ctx.fillStyle = '#1c1917'
   ctx.fillRect(0, 0, width, height)
-  ctx.fillStyle = '#fffaf5'
-  ctx.font = 'bold 54px sans-serif'
-  ctx.fillText(opts.eventName, 60, 90)
-  ctx.font = '40px sans-serif'
-  ctx.fillText(opts.playerName, 60, 150)
-  ctx.fillText(`完成 ${opts.completed}/9 · ${new Date().toLocaleDateString('zh-TW')}`, 60, 200)
 
-  const gap = 18
-  const size = (width - 60 * 2 - gap * 2) / 3
-  const startY = 240
+  const gap = 8
+  const labelHeight = 58
+  const size = (width - gap * 2) / 3
+  const startY = 0
 
   for (let i = 0; i < 9; i += 1) {
     const col = i % 3
     const row = Math.floor(i / 3)
-    const x = 60 + col * (size + gap)
-    const y = startY + row * (size + gap + 48)
+    const x = col * (size + gap)
+    const y = startY + row * (size + labelHeight + gap)
     ctx.fillStyle = '#292524'
     ctx.fillRect(x, y, size, size)
     const cell = opts.cells[i]
@@ -38,7 +33,7 @@ export async function exportBingoImage(opts: {
       ctx.drawImage(img, x, y, size, size)
     }
     ctx.fillStyle = '#fffaf5'
-    drawSingleLine(ctx, cell?.text || '', x + 8, y + size + 30, size - 16)
+    drawSingleLine(ctx, cell?.text || '', x + 8, y + size + 34, size - 16)
   }
 
   return new Promise((resolve, reject) => {
@@ -72,25 +67,15 @@ function loadImageElement(src: string) {
   })
 }
 
-function drawSingleLine(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-) {
+function drawSingleLine(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number) {
   let fontSize = 22
   ctx.font = fontSize + 'px sans-serif'
-  while (fontSize > 15 && ctx.measureText(text).width > maxWidth) {
+  while (fontSize > 14 && ctx.measureText(text).width > maxWidth) {
     fontSize -= 1
     ctx.font = fontSize + 'px sans-serif'
   }
   let output = text
-  if (ctx.measureText(output).width > maxWidth) {
-    while (output.length > 1 && ctx.measureText(output + '…').width > maxWidth) {
-      output = output.slice(0, -1)
-    }
-    output += '…'
-  }
+  while (output.length > 1 && ctx.measureText(output).width > maxWidth) output = output.slice(0, -1)
+  if (output !== text) output += '…'
   ctx.fillText(output, x, y)
 }

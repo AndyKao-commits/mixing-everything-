@@ -118,6 +118,11 @@ export const api = {
       method: 'POST',
       headers: { 'x-player-token': token },
     }),
+  finalFinish: (token: string) =>
+    req<any>('/api/games/final-button/finish', {
+      method: 'POST',
+      headers: { 'x-player-token': token },
+    }),
   finalClick: (token: string, clientTs: number, clickCount = 1) =>
     req<any>('/api/games/final-button/click', {
       method: 'POST',
