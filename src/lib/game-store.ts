@@ -1139,7 +1139,7 @@ export const gameStore = {
     })
     game.payload.results = ranked
     event.active_group_game = 'none'
-    event.status = 'message'
+    event.status = 'final_game'
     touch(event)
     return game
   },
@@ -1147,8 +1147,8 @@ export const gameStore = {
   submitMessage(token: string, text: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
-    if (event.status !== 'message' && event.status !== 'active' && event.status !== 'final_game') {
-      // allow during message phase primarily
+    if (event.status !== 'message') {
+      throw new Error('尚未開啟留言')
     }
     if ([...store().messages.values()].some((m) => m.player_id === player.id)) {
       throw new Error('已送出')
@@ -1168,6 +1168,7 @@ export const gameStore = {
   openMessages(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
+    if (!event.score_locked || event.status !== 'score_locked') throw new Error('請先鎖定積分')
     event.status = 'message'
     touch(event)
     return [...store().messages.values()]
