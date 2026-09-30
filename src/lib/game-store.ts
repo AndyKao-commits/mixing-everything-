@@ -647,6 +647,8 @@ export const gameStore = {
 
   renamePlayer(adminToken: string, playerId: string, name: string) {
     requireAdmin(adminToken)
+    const event = requireEvent()
+    if (event.status !== 'setup') throw new Error('活動開始後不可更改玩家名稱')
     const player = store().players.get(playerId)
     if (!player) throw new Error('玩家不存在')
     const cleanName = name.trim().slice(0, 16)
@@ -664,7 +666,10 @@ export const gameStore = {
     if (event.status !== 'setup') throw new Error('活動開始後不可刪除玩家')
     store().players.delete(playerId)
     store().bingoCards.delete(playerId)
-    store().targets.delete(playerId)
+    store().targets.clear()
+    for (const [id, session] of store().sessions) {
+      if (session.player_id === playerId) store().sessions.delete(id)
+    }
     for (const [id, t] of store().secretTasks) {
       if (t.player_id === playerId) store().secretTasks.delete(id)
     }
