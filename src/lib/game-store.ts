@@ -576,7 +576,11 @@ export const gameStore = {
       groupGame: activeGroupGame(),
       settlement: store().settlement,
       prizeDecisions: [...store().prizeDecisions.values()],
-      messages: [...store().messages.values()],
+      messageCount: store().messages.size,
+      messages:
+        store().players.size > 0 && store().messages.size >= store().players.size
+          ? [...store().messages.values()].map((m) => ({ id: m.id, text: m.text, created_at: m.created_at }))
+          : [],
       ties: this.topTies(),
     }
   },
