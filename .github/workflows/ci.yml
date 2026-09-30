@@ -15,12 +15,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Generate Next.js 15.5.26 lockfile artifact
+      - name: Validate Next.js 15.5.26 security release
         run: |
-          npm install next@15.5.26 --save-exact --package-lock-only --ignore-scripts
-          cp package-lock.json /tmp/package-lock.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: next-15.5.26-lockfile
-          path: /tmp/package-lock.json
-      - run: npm run build
+          npm install next@15.5.26 --save-exact
+          npm audit --omit=dev
+          npm run build
