@@ -1,5 +1,5 @@
 import { beginPersistenceRequest } from './persist'
-import { gameStore } from './game-store'
+import { beginGameStoreRequest, gameStore } from './game-store'
 
 type HeadersLike = {
   get(name: string): string | null
@@ -12,6 +12,7 @@ export async function routeApiRequest(input: {
   body: any
 }): Promise<{ status: number; data: unknown }> {
   beginPersistenceRequest()
+  beginGameStoreRequest()
   const method = input.method.toUpperCase()
   const path = input.path.replace(/^\/+|\/+$/g, '')
   const playerToken = input.headers.get('x-player-token') || ''
