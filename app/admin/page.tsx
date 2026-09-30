@@ -343,7 +343,7 @@ export default function AdminPage() {
             <TieBreakControls
               ties={state.ties}
               players={players}
-              busy={busy}
+              busy={busy || event?.status !== 'message'}
               onStart={(tieBreakOrder) => act('start_settlement', { tieBreakOrder })}
             />
           ) : (
