@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
-import { getStoredPlayer } from '@/lib/client-session'
+import { getPlayerToken } from '@/lib/client-session'
 
 export default function LandingPage() {
   const [eventName, setEventName] = useState('今晚誰會贏？')
