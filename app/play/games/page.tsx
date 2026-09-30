@@ -542,6 +542,7 @@ export default function GamesPage() {
           <p className="font-display text-7xl font-bold">{countdown || 'GO'}</p>
         ) : (
           <>
+            <h1 className="font-display text-3xl font-bold leading-tight">快點擊澤澤的胸肌賺分數!!</h1>
             <p className="text-soft">剩餘 {left ?? 0} 秒</p>
             <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-card">
               {/* The photo itself is the game surface. Only discrete clicks count; holding never repeats. */}
