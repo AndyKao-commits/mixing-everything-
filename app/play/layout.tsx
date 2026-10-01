@@ -4,8 +4,9 @@ import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { BottomNav } from '@/components/BottomNav'
 import { usePlayerView } from '@/hooks/usePlayerView'
+import { PlayerViewProvider } from '@/components/PlayerViewProvider'
 
-export default function PlayLayout({ children }: { children: React.ReactNode }) {
+function PlayLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { data } = usePlayerView(2000)
@@ -30,4 +31,8 @@ export default function PlayLayout({ children }: { children: React.ReactNode }) 
       <BottomNav />
     </div>
   )
+}
+
+export default function PlayLayout({ children }: { children: React.ReactNode }) {
+  return <PlayerViewProvider><PlayLayoutInner>{children}</PlayLayoutInner></PlayerViewProvider>
 }

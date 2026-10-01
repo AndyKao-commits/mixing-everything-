@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
+import { PlayerViewContext } from './player-view-context'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { clearPlayerSession, getPlayerToken } from '@/lib/client-session'
 
-export function usePlayerView(pollMs = 3000) {
+export function usePlayerViewSource(pollMs = 2000) {
   const router = useRouter()
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
@@ -60,4 +61,10 @@ export function usePlayerView(pollMs = 3000) {
   }, [refresh, pollMs])
 
   return { data, error, loading, refresh, setData }
+}
+
+export function usePlayerView(_pollMs = 2000) {
+  const shared = useContext(PlayerViewContext)
+  if (!shared) throw new Error('usePlayerView must be used inside PlayerViewProvider')
+  return shared
 }
