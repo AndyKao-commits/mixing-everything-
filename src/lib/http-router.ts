@@ -20,7 +20,8 @@ export async function routeApiRequest(input: {
   const body = input.body || {}
 
   try {
-    const hadDurableState = await gameStore.load({ hydratePhotos: method === 'GET' && path === 'me' })
+    // Player polling must stay lightweight. Bingo photo URLs are loaded lazily only when requested.
+    const hadDurableState = await gameStore.load()
     let result: { status: number; data: unknown }
 
     if (method === 'GET' && path === 'state') {
