@@ -884,6 +884,22 @@ export const gameStore = {
     }
   },
 
+  async getPlayerBingoPhotos(token: string) {
+    const { player } = requirePlayerSession(token, { touch: false })
+    const event = requireEvent()
+    const card = store().bingoCards.get(player.id)
+    if (!card) return { eventId: event.id, playerId: player.id, photos: {} as Record<string, string> }
+    const photos: Record<string, string> = {}
+    await Promise.all(card.cells.map(async (cell) => {
+      // Authorization is derived from the signed player token and this player's
+      // own card. Clients never submit another player id, so photos cannot cross players.
+      if (!cell.completed || !cell.photo_ref) return
+      const url = await persistGetPhoto(cell.id)
+      if (url) photos[cell.id] = url
+    }))
+    return { eventId: event.id, playerId: player.id, photos }
+  },
+
   revealMystery(token: string, cellId: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()

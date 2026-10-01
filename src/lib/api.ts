@@ -67,6 +67,8 @@ export const api = {
     }),
   me: (token: string) =>
     req<any>('/api/me', { headers: { 'x-player-token': token } }),
+  bingoPhotos: (token: string) =>
+    req<{ eventId: string; playerId: string; photos: Record<string, string> }>('/api/bingo/photos', { headers: { 'x-player-token': token } }),
   revealMystery: (token: string, cellId: string) =>
     req<any>('/api/bingo/reveal', {
       method: 'POST',
