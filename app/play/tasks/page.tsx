@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { exportBingoImage } from '@/lib/bingo-export'
 import { getPlayerToken } from '@/lib/client-session'
@@ -48,6 +48,7 @@ export default function TasksPage() {
   const [cropX, setCropX] = useState(50)
   const [cropY, setCropY] = useState(50)
   const [cropZoom, setCropZoom] = useState(1)
+  const [bingoPhotos, setBingoPhotos] = useState<Record<string, string>>({})
   const cameraInput = useRef<HTMLInputElement>(null)
   const libraryInput = useRef<HTMLInputElement>(null)
   const cropDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
@@ -58,6 +59,23 @@ export default function TasksPage() {
     () => (data?.bounties || []).slice().sort((a: any, b: any) => Number(a.completed) - Number(b.completed)),
     [data],
   )
+
+
+  async function loadBingoPhotos() {
+    const token = getPlayerToken()
+    if (!token) return {}
+    const result = await api.bingoPhotos(token)
+    if (result.eventId !== data?.event?.id || result.playerId !== data?.player?.id) return {}
+    setBingoPhotos(result.photos)
+    return result.photos
+  }
+
+  useEffect(() => {
+    if (tab !== 'bingo' || !data?.bingo) return
+    void loadBingoPhotos().catch(() => {})
+    // Load photos only when the bingo tab is actually shown, never in global polling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, data?.event?.id, data?.player?.id, data?.bingo?.id])
 
   async function onReveal(cellId: string) {
     const token = getPlayerToken()
@@ -88,8 +106,11 @@ export default function TasksPage() {
     setError('')
     try {
       const photo = await cropSquareImage(cropFile, cropX, cropY, cropZoom)
-      const view = await api.completeBingo(token, activeCell.id, photo)
+      const cellId = activeCell.id
+      const view = await api.completeBingo(token, cellId, photo)
       setData(view)
+      // Keep the just-captured image visible instantly while Storage remains authoritative.
+      setBingoPhotos((current) => ({ ...current, [cellId]: photo }))
       setActiveCell(null)
       URL.revokeObjectURL(cropUrl)
       setCropFile(null)
@@ -149,10 +170,16 @@ export default function TasksPage() {
     if (!data?.bingo) return
     setBusy(true)
     try {
+      // Export always refreshes this authenticated player's Storage URLs first.
+      const latestPhotos = await loadBingoPhotos()
+      const exportCells = data.bingo.cells.map((cell: any) => ({
+        ...cell,
+        photo_data_url: latestPhotos[cell.id] || bingoPhotos[cell.id] || null,
+      }))
       const blob = await exportBingoImage({
         eventName: data.event.name,
         playerName: data.player.name,
-        cells: data.bingo.cells,
+        cells: exportCells,
         completed: data.completedBingo,
       })
       const file = new File([blob], 'bingo.png', { type: 'image/png' })
@@ -208,9 +235,9 @@ export default function TasksPage() {
                 className="aspect-square overflow-hidden rounded-2xl bg-white shadow-card"
                 onClick={() => setActiveCell(cell)}
               >
-                {cell.completed && cell.photo_data_url ? (
+                {cell.completed && (bingoPhotos[cell.id] || cell.photo_data_url) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cell.photo_data_url} alt="" className="h-full w-full object-cover" />
+                  <img src={bingoPhotos[cell.id] || cell.photo_data_url} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center p-2 text-center">
                     <span className="text-xl">{cell.mystery && !cell.revealed ? '？' : '📷'}</span>
