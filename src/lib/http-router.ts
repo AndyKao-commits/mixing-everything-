@@ -38,6 +38,8 @@ export async function routeApiRequest(input: {
       }
     } else if (method === 'GET' && path === 'me') {
       result = { status: 200, data: gameStore.getPlayerView(playerToken) }
+    } else if (method === 'GET' && path === 'bingo/photos') {
+      result = { status: 200, data: await gameStore.getPlayerBingoPhotos(playerToken) }
     } else if (method === 'POST' && path === 'bingo/reveal') {
       result = { status: 200, data: { cell: gameStore.revealMystery(playerToken, String(body.cellId)) } }
     } else if (method === 'POST' && path === 'bingo/complete') {
