@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { clearPlayerSession, getPlayerToken } from '@/lib/client-session'
 
-function usePlayerViewSource(pollMs = 2000) {
+export function usePlayerViewSource(pollMs = 2000) {
   const router = useRouter()
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
@@ -63,8 +63,8 @@ function usePlayerViewSource(pollMs = 2000) {
   return { data, error, loading, refresh, setData }
 }
 
-export function usePlayerView(pollMs = 2000) {
+export function usePlayerView(_pollMs = 2000) {
   const shared = useContext(PlayerViewContext)
-  const local = usePlayerViewSource(shared ? 60_000 : pollMs)
-  return shared || local
+  if (!shared) throw new Error('usePlayerView must be used inside PlayerViewProvider')
+  return shared
 }
