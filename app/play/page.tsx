@@ -9,12 +9,30 @@ export default function PlayHomePage() {
     return <p className="py-20 text-center text-soft">載入中…</p>
   }
 
+  const nextAction =
+    data.event.status === 'setup'
+      ? { title: '等待活動開始', detail: '主持人開始後，任務會自動發放。', href: null }
+      : data.event.status === 'message'
+        ? { title: '現在：留一句話', detail: '活動進入最後階段。', href: '/play/games' }
+        : data.event.status === 'settlement' || data.event.status === 'finished'
+          ? { title: '現在：查看結果', detail: '排名與獎金已進入結算。', href: '/play/games' }
+          : data.event.active_group_game && data.event.active_group_game !== 'none'
+            ? { title: '現在：團體遊戲', detail: '跟著主持人的節奏一起玩。', href: '/play/games' }
+            : { title: '現在：自由完成任務', detail: '吃、聊、拍照，順手把任務完成。', href: '/play/tasks' }
+
   return (
     <div className="space-y-5 animate-rise">
       <header>
         <h1 className="font-display text-3xl font-bold">嗨，{data.player.name} 👋</h1>
         <p className="mt-1 text-soft">今天就好好玩。</p>
       </header>
+
+      <section className="card border border-ember/20">
+        <p className="text-xs font-semibold tracking-[0.16em] text-soft">現在要做什麼</p>
+        <p className="mt-2 text-xl font-bold">{nextAction.title}</p>
+        <p className="mt-1 text-sm text-soft">{nextAction.detail}</p>
+        {nextAction.href ? <a href={nextAction.href} className="btn-primary mt-4">前往</a> : null}
+      </section>
 
       <section className="card text-center">
         <p className="text-sm text-soft">目前積分</p>
