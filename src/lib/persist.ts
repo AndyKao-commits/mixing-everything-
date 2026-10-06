@@ -172,14 +172,14 @@ export async function persistSetFinalButtonScore(sessionKey: string, playerKey: 
   const count = Math.max(0, Math.floor(clickCount || 0))
   if (!isSupabaseConfigured()) return count
   const supabase = getSupabaseAdmin()
-  const { error } = await supabase.from('final_button_click_counts').upsert({
-    session_key: sessionKey,
-    player_key: playerKey,
-    click_count: count,
-    last_at_ms: Date.now(),
-  }, { onConflict: 'session_key,player_key' })
+  const { data, error } = await supabase.rpc('set_final_button_score_max', {
+    p_session_key: sessionKey,
+    p_player_key: playerKey,
+    p_click_count: count,
+    p_now_ms: Date.now(),
+  })
   if (error) throw new Error('Final button score save failed: ' + error.message)
-  return count
+  return Number(data ?? count)
 }
 
 export async function persistGetFinalButtonResults(sessionKey: string): Promise<Array<{ playerId: string; count: number }>> {
