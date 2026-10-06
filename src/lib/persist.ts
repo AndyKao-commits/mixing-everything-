@@ -112,6 +112,65 @@ function dataUrlToUpload(dataUrl: string): { bytes: Uint8Array; contentType: str
   return { bytes: Uint8Array.from(Buffer.from(match[2], 'base64')), contentType: match[1] }
 }
 
+export async function persistGetPushPublicKey(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('web_push_config')
+    .select('public_key')
+    .eq('singleton', true)
+    .maybeSingle()
+  if (error) throw new Error('Push config read failed: ' + error.message)
+  return data?.public_key ? String(data.public_key) : null
+}
+
+export async function persistSavePushSubscription(
+  eventId: string,
+  playerId: string,
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('web_push_subscriptions').upsert({
+    event_id: eventId,
+    player_id: playerId,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.keys.p256dh,
+    auth: subscription.keys.auth,
+  }, { onConflict: 'endpoint' })
+  if (error) throw new Error('Push subscription save failed: ' + error.message)
+}
+
+export async function persistSendPush(
+  eventId: string,
+  title: string,
+  body: string,
+  url = '/play/games',
+): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.functions.invoke('send-party-push', {
+    body: { eventId, title, body, url },
+  })
+  if (error) throw new Error('Push send failed: ' + error.message)
+}
+
+
+export async function persistDeletePushPlayer(playerId: string): Promise<void> {
+  if (!isSupabaseConfigured() || !playerId) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('web_push_subscriptions').delete().eq('player_id', playerId)
+  if (error) throw new Error('Push subscription cleanup failed: ' + error.message)
+}
+
+export async function persistClearPushSubscriptions(): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('web_push_subscriptions').delete().neq('endpoint', '')
+  if (error) throw new Error('Push subscription cleanup failed: ' + error.message)
+}
+
+
 export async function persistGetPhoto(cellId: string): Promise<string | null> {
   if (!isSupabaseConfigured()) {
     const value = memory.get('photo:' + cellId)
@@ -152,6 +211,26 @@ export async function persistClearPhotos(): Promise<void> {
   if (!paths.length) return
   const { error: removeError } = await supabase.storage.from(BINGO_BUCKET).remove(paths)
   if (removeError) throw new Error('Bingo photo cleanup failed: ' + removeError.message)
+}
+
+
+export async function persistDeletePhotos(cellIds: string[]): Promise<void> {
+  const ids = [...new Set(cellIds.filter(Boolean))]
+  if (!ids.length) return
+  if (!isSupabaseConfigured()) {
+    for (const id of ids) memory.delete('photo:' + id)
+    return
+  }
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.storage.from(BINGO_BUCKET).remove(ids.map((id) => id + '.jpg'))
+  if (error) throw new Error('Bingo photo cleanup failed: ' + error.message)
+}
+
+export async function persistDeleteFinalButtonPlayer(playerKey: string): Promise<void> {
+  if (!isSupabaseConfigured() || !playerKey) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('final_button_click_counts').delete().eq('player_key', playerKey)
+  if (error) throw new Error('Final button player cleanup failed: ' + error.message)
 }
 
 

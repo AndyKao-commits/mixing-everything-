@@ -279,8 +279,11 @@ export default function GamesPage() {
   if (event.status === 'settlement' && settlementCountdown !== null && settlementCountdown > 0) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center text-center animate-rise">
-        <p className="mb-4 tracking-[0.3em] text-soft">FINAL RESULT</p>
-        <p className="font-display text-8xl font-bold tabular-nums">{settlementCountdown}</p>
+        <div className="w-full max-w-md rounded-[2rem] bg-ink px-6 py-12 text-white shadow-card">
+          <p className="mb-5 text-sm tracking-[0.35em] text-white/60">FINAL RESULT</p>
+          <p className="font-display text-9xl font-bold tabular-nums text-ember animate-pulseNum">{settlementCountdown}</p>
+          <p className="mt-5 text-sm text-white/60">排名即將揭曉</p>
+        </div>
       </div>
     )
   }
@@ -296,22 +299,26 @@ export default function GamesPage() {
     const canDonate = rank.rank >= 4
 
     return (
-      <div className={`space-y-5 animate-rise ${rank.rank > 3 ? 'rounded-3xl bg-ink p-5 text-white' : ''}`}>
-        {isTop ? <p className="text-4xl" aria-hidden="true">🎉</p> : null}
-        <p className="text-sm opacity-70">你的排名</p>
-        <h1 className={`font-display font-bold ${rank.rank > 3 ? 'text-6xl text-red-500' : 'text-5xl text-ink'}`}>
+      <div className="space-y-5 animate-rise">
+        <section className={`rounded-[2rem] p-6 text-center shadow-card ${isTop ? 'bg-cream text-ink' : 'bg-ink text-white'}`}>
+          {isTop ? <p className="text-5xl" aria-hidden="true">{rank.rank === 1 ? '🏆' : rank.rank === 2 ? '🥈' : '🥉'}</p> : null}
+          <p className="mt-2 text-xs font-semibold tracking-[0.2em] opacity-60">YOUR RESULT</p>
+          <h1 className={`mt-3 font-display font-bold ${isTop ? 'text-5xl text-ink' : 'text-6xl text-ember'}`}>
           {rank.rank === 1 ? '🏆 第一名' : rank.rank === 2 ? '第二名' : rank.rank === 3 ? '第三名' : `第 ${rank.rank} 名`}
-        </h1>
-        <p className="text-2xl font-semibold">{data.player.name}</p>
-        {rank.rank === 1 ? (
-          <p className="font-display text-4xl font-bold text-ember">NT$1,069</p>
-        ) : null}
-        {rank.rank === 3 ? (
-          <div>
-            <p className="font-display text-4xl font-bold text-ember">NT$69</p>
-            <p className="text-soft">安慰獎</p>
-          </div>
-        ) : null}
+          </h1>
+          <p className="mt-3 text-xl font-semibold">{data.player.name}</p>
+          <p className="mt-1 text-sm opacity-60">{rank.score} 分</p>
+          {rank.rank === 1 ? (
+            <p className="mt-5 font-display text-5xl font-bold text-ember">NT$1,069</p>
+          ) : null}
+          {rank.rank === 3 ? (
+            <div className="mt-5">
+              <p className="font-display text-5xl font-bold text-ember">NT$69</p>
+              <p className="text-soft">安慰獎</p>
+            </div>
+          ) : null}
+          {rank.rank > 3 ? <p className="mt-5 font-display text-5xl font-bold text-ember">NT$10</p> : null}
+        </section>
         {isSecond ? (
           <div className="card space-y-2 text-ink">
             <p>差一點就是第一。所以你沒有。</p>
@@ -432,9 +439,12 @@ export default function GamesPage() {
     const prompts = (game.payload.prompts as string[]) || []
     const prompt = prompts[game.round - 1] || prompts[0]
     return (
-      <div className="space-y-5 text-center animate-rise">
-        <p className="text-sm text-soft">不要跟我一樣 · 第 {game.round} 題</p>
-        <h1 className="font-display text-3xl font-bold leading-snug">{prompt}</h1>
+      <div className="flex min-h-[65vh] flex-col justify-center space-y-5 text-center animate-rise">
+        <p className="text-xs font-semibold tracking-[0.2em] text-soft">不要跟我一樣 · ROUND {game.round}</p>
+        <div className="rounded-[2rem] bg-ink px-5 py-10 text-white shadow-card">
+          <p className="mb-3 text-sm text-white/50">本題</p>
+          <h1 className="font-display text-4xl font-bold leading-snug">{prompt}</h1>
+        </div>
         <div className="card space-y-2">
           <p className="font-semibold">不用打字，直接一起喊答案。</p>
           <p className="text-sm text-soft">答案唯一的人由主持人勾選得分。</p>
@@ -452,8 +462,11 @@ export default function GamesPage() {
     if (game.status === 'playing') {
       return (
         <div className="space-y-4 animate-rise">
-          <h1 className="font-display text-3xl font-bold">誰寫的</h1>
-          <p className="text-lg">{String(game.payload.prompt)}</p>
+          <p className="text-xs font-semibold tracking-[0.2em] text-soft">WHO WROTE IT · 作答</p>
+          <div className="rounded-[2rem] bg-ink p-6 text-white shadow-card">
+            <p className="mb-2 text-sm text-white/50">你的題目</p>
+            <h1 className="font-display text-3xl font-bold leading-snug">{String(game.payload.prompt)}</h1>
+          </div>
           {mine ? (
             <div className="card">已送出，等待其他人… {answerCount} 人完成</div>
           ) : (
@@ -472,11 +485,12 @@ export default function GamesPage() {
     if (game.status === 'voting' && current) {
       return (
         <div className="space-y-4 animate-rise">
+          <p className="text-xs font-semibold tracking-[0.2em] text-soft">WHO WROTE IT · 猜作者</p>
           <h1 className="font-display text-3xl font-bold">這是誰寫的？</h1>
-          <div className="card space-y-2 text-left">
-            <p className="text-sm text-soft">題目是？</p>
+          <div className="rounded-[2rem] bg-ink p-6 text-left text-white shadow-card">
+            <p className="text-sm text-white/50">題目是？</p>
             <p className="text-lg font-semibold">{current.prompt}</p>
-            <p className="pt-2 text-sm text-soft">回答是？</p>
+            <p className="pt-3 text-sm text-white/50">回答是？</p>
             <p className="text-xl font-medium">「{current.text}」</p>
           </div>
           {game.payload.isCurrentAuthor ? (
@@ -506,8 +520,9 @@ export default function GamesPage() {
     if (game.status === 'round_result' && reveal) {
       return (
         <div className="space-y-4 animate-rise">
+          <p className="text-xs font-semibold tracking-[0.2em] text-soft">WHO WROTE IT · REVEAL</p>
           <h1 className="font-display text-3xl font-bold">揭曉</h1>
-          <div className="card space-y-2 text-left">
+          <div className="rounded-[2rem] bg-moss p-6 text-left text-white shadow-card">
             <p className="text-sm text-soft">題目是？</p>
             <p className="font-semibold">{reveal.prompt}</p>
             <p className="pt-2 text-sm text-soft">回答是？</p>
@@ -556,10 +571,12 @@ export default function GamesPage() {
     if (game.payload.finished && results.length) {
       return (
         <div className="space-y-4 animate-rise">
-          <p className="text-center tracking-[0.3em] text-soft">FINAL GAME RESULT</p>
-          <h1 className="text-center font-display text-3xl font-bold">快點擊澤澤的胸肌賺分數排名</h1>
+          <div className="rounded-[2rem] bg-ink px-5 py-7 text-center text-white shadow-card">
+            <p className="tracking-[0.3em] text-white/50">FINAL GAME RESULT</p>
+            <h1 className="mt-3 font-display text-3xl font-bold">按鈕大戰排名</h1>
+          </div>
           {results.map((row) => (
-            <div key={row.playerId} className="card flex items-center justify-between">
+            <div key={row.playerId} className={`card flex items-center justify-between ${row.rank <= 3 ? 'border border-ember/20' : ''}`}>
               <div><span className="mr-3 font-display text-2xl font-bold">#{row.rank}</span>{row.playerName}</div>
               <span className="font-semibold tabular-nums">{row.count} 下</span>
             </div>
@@ -576,7 +593,8 @@ export default function GamesPage() {
           <button type="button" className="btn-primary max-w-xs" disabled={mineReady || busy} onClick={readyFinal}>
             {mineReady ? '✓ 已準備' : '我準備好了'}
           </button>
-          {mineReady ? <p className="text-soft">等待其他玩家…</p> : null}
+          <p className="text-soft">已準備 {readyCount} / {playerCount}</p>
+          {mineReady ? <p className="text-sm text-soft">你可以先把手機放著，全部到齊會自動開始 20 秒準備倒數。</p> : null}
         </div>
       )
     }
@@ -589,8 +607,10 @@ export default function GamesPage() {
         ) : (
           <>
             <h1 className="font-display text-3xl font-bold leading-tight">快點擊澤澤的胸肌賺分數!!</h1>
-            <p className="text-soft">剩餘 {left ?? 0} 秒</p>
-            <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-card">
+            <p className={`font-display font-bold tabular-nums ${left !== null && left <= 3 ? 'text-5xl text-ember animate-pulseNum' : 'text-lg text-soft'}`}>
+              剩餘 {left ?? 0} 秒
+            </p>
+            <div className={`relative mx-auto w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-card ${left !== null && left <= 3 ? 'ring-4 ring-ember' : ''}`}>
               {/* The photo itself is the game surface. Only discrete clicks count; holding never repeats. */}
               <img
                 src="/zeze-chest-hit.jpg.png"
@@ -598,6 +618,11 @@ export default function GamesPage() {
                 draggable={false}
                 className={`block h-auto w-full select-none transition-transform duration-75 ${chestHit ? 'scale-[1.025]' : 'scale-100'}`}
               />
+              {left !== null && left > 0 && left <= 3 ? (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/20">
+                  <span className="font-display text-9xl font-bold text-white drop-shadow-lg animate-pulseNum">{left}</span>
+                </div>
+              ) : null}
               <button
                 type="button"
                 aria-label="點擊澤澤的胸肌"

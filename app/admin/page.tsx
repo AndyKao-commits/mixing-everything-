@@ -311,17 +311,23 @@ export default function AdminPage() {
 
       {tab === 'games' ? (
         <div className="space-y-3">
-          <div className="card space-y-3">
-            <p className="font-semibold">要不要來一場？</p>
-            <div className="space-y-2">
-              <button type="button" className="btn-primary" disabled={busy} onClick={() => act('start_dont_copy')}>
-                開始「不要跟我一樣」· 約 5 分
-              </button>
-              <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('start_who_wrote')}>
-                開始「誰寫的」· 約 10–15 分
-              </button>
+          {event?.status === 'active' && event?.active_group_game === 'none' ? (
+            <div className="card space-y-3">
+              <p className="font-semibold">選擇下一個團康</p>
+              <p className="text-sm text-soft">開始後其他無關操作會先收起來，避免主持時按錯。</p>
+              <div className="space-y-2">
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => act('start_dont_copy')}>
+                  開始「不要跟我一樣」· 約 5 分
+                </button>
+                <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('start_who_wrote')}>
+                  開始「誰寫的」· 約 10–15 分
+                </button>
+                <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('start_final_button')}>
+                  開始最後按鈕大戰
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {game?.kind === 'dont_copy_me' ? (
             <div className="card space-y-3">
@@ -360,23 +366,21 @@ export default function AdminPage() {
             </div>
           ) : null}
 
-          <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('start_final_button')}>
-            開始最後按鈕大戰
-          </button>
-          <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('finish_final_button')}>
-            強制結束按鈕大戰
-          </button>
-          <button type="button" className="btn-secondary" disabled={busy} onClick={() => act('open_messages')}>
-            開啟「留一句話」
-          </button>
-          <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('end_group_game')}>
-            結束目前團康
-          </button>
+          {game?.kind === 'final_button' ? (
+            <div className="card space-y-2 border border-ember/20">
+              <p className="font-semibold">按鈕大戰進行中</p>
+              <p className="text-sm text-soft">只有需要中止現場流程時才使用強制結束。</p>
+              <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('finish_final_button')}>
+                強制結束按鈕大戰
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {tab === 'settle' ? (
         <div className="space-y-3">
+          {event?.status === 'active' ? (
           <button
             type="button"
             className="btn-primary"
@@ -387,6 +391,12 @@ export default function AdminPage() {
           >
             鎖定積分
           </button>
+          ) : null}
+          {event?.status === 'score_locked' ? (
+            <button type="button" className="btn-primary" disabled={busy} onClick={() => act('open_messages')}>
+              開啟「留一句話」
+            </button>
+          ) : null}
           {(state?.ties || []).length ? (
             <TieBreakControls
               ties={state.ties}

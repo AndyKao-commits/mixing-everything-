@@ -67,6 +67,14 @@ export const api = {
     }),
   me: (token: string) =>
     req<any>('/api/me', { headers: { 'x-player-token': token } }),
+  pushConfig: (token: string) =>
+    req<{ publicKey: string | null }>('/api/push/config', { headers: { 'x-player-token': token } }),
+  pushSubscribe: (token: string, subscription: PushSubscriptionJSON) =>
+    req<{ ok: true }>('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'x-player-token': token },
+      body: JSON.stringify({ subscription }),
+    }),
   bingoPhotos: (token: string) =>
     req<{ eventId: string; playerId: string; photos: Record<string, string> }>('/api/bingo/photos', { headers: { 'x-player-token': token } }),
   revealMystery: (token: string, cellId: string) =>

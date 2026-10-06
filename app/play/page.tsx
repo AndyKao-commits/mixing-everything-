@@ -1,6 +1,7 @@
 'use client'
 
 import { usePlayerView } from '@/hooks/usePlayerView'
+import { NotificationControl } from '@/components/NotificationControl'
 
 export default function PlayHomePage() {
   const { data, loading } = usePlayerView()
@@ -33,6 +34,8 @@ export default function PlayHomePage() {
         <p className="mt-1 text-sm text-soft">{nextAction.detail}</p>
         {nextAction.href ? <a href={nextAction.href} className="btn-primary mt-4">前往</a> : null}
       </section>
+
+      <NotificationControl />
 
       <section className="card text-center">
         <p className="text-sm text-soft">目前積分</p>
