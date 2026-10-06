@@ -680,6 +680,9 @@ export const gameStore = {
     const player = store().players.get(playerId)
     if (!player || player.event_id !== event.id) throw new Error('玩家不存在')
     const activePlayers = [...store().players.values()].filter((p) => p.event_id === event.id)
+    if (['score_locked', 'message', 'settlement', 'finished'].includes(event.status)) {
+      throw new Error('積分鎖定後不可退出玩家，以免改變最終排名')
+    }
     if (event.status !== 'setup' && activePlayers.length <= 2) throw new Error('活動進行中至少保留 2 位玩家')
 
     // Setup deletion can safely regenerate every assignment. Mid-game exit must
@@ -744,6 +747,10 @@ export const gameStore = {
           game.payload.currentAnswerId = null
           game.payload.currentAuthorId = null
           game.status = 'round_result'
+        } else if (game.status === 'voting') {
+          const eligibleVoterIds = remaining.map((p) => p.id).filter((id) => id !== game.payload.currentAuthorId)
+          const validVoteCount = Object.keys(votes).filter((id) => eligibleVoterIds.includes(id)).length
+          if (validVoteCount >= eligibleVoterIds.length) this.revealWhoWroteAnswer()
         }
       } else if (game?.kind === 'final_button' && !game.payload.finished) {
         const ready = ((game.payload.readyPlayerIds as string[]) || []).filter((id) => id !== playerId)
