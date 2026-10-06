@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { BottomNav } from '@/components/BottomNav'
 import { usePlayerView } from '@/hooks/usePlayerView'
 import { PlayerViewProvider } from '@/components/PlayerViewProvider'
+import { ConnectionBanner } from '@/components/ConnectionBanner'
 
 function PlayLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -32,6 +33,7 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={immersive ? 'shell min-h-dvh py-5' : 'shell pb-24 pt-5'}>
+      <ConnectionBanner />
       {children}
       {!immersive ? <BottomNav /> : null}
     </div>
