@@ -723,16 +723,19 @@ export const gameStore = {
       const successorId = departingTarget?.target_player_id && store().players.has(departingTarget.target_player_id)
         ? departingTarget.target_player_id
         : null
-      if (successorId) {
-        const successor = store().players.get(successorId)!
-        for (const target of store().targets.values()) {
-          if (!target.completed && target.target_player_id === playerId) {
-            target.target_player_id = successorId
-            target.text = target.text.includes(player.name)
-              ? target.text.replace(player.name, successor.name)
-              : pick(TARGET_TASKS).text.replace('目標', successor.name)
-          }
-        }
+      for (const target of store().targets.values()) {
+        if (target.completed || target.target_player_id !== playerId) continue
+        const fallback = remaining.filter((p) => p.id !== target.player_id)
+        const replacement = successorId && successorId !== target.player_id
+          ? store().players.get(successorId) || null
+          : fallback.length
+            ? pick(fallback)
+            : null
+        if (!replacement) continue
+        target.target_player_id = replacement.id
+        target.text = target.text.includes(player.name)
+          ? target.text.replace(player.name, replacement.name)
+          : pick(TARGET_TASKS).text.replace('目標', replacement.name)
       }
       store().messages.delete(playerId)
       store().prizeDecisions.delete(playerId)
