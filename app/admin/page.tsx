@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [noticeTitle, setNoticeTitle] = useState('')
   const [noticeBody, setNoticeBody] = useState('')
   const [noticeSent, setNoticeSent] = useState('')
+  const [noticePlayerIds, setNoticePlayerIds] = useState<string[]>([])
 
   const refresh = useCallback(async (t = token) => {
     if (!t) return
@@ -450,23 +451,85 @@ export default function AdminPage() {
               placeholder="通知內容"
               onChange={(e) => setNoticeBody(e.target.value)}
             />
+
+            <div className="space-y-2 rounded-2xl bg-paper p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold">發送對象</p>
+                  <p className="text-xs text-soft">可單選或多選；只有已開啟通知的裝置會收到。</p>
+                </div>
+                <span className="shrink-0 text-sm font-semibold">
+                  {noticePlayerIds.length} / {players.length}
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-ghost !min-h-9 !px-3 text-sm"
+                  onClick={() => setNoticePlayerIds(players.map((p: any) => p.id))}
+                >
+                  全選
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost !min-h-9 !px-3 text-sm"
+                  onClick={() => setNoticePlayerIds([])}
+                >
+                  取消全選
+                </button>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {players.map((p: any) => {
+                  const selected = noticePlayerIds.includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition ${
+                        selected ? 'border-moss bg-moss text-white' : 'border-black/10 bg-white'
+                      }`}
+                      onClick={() =>
+                        setNoticePlayerIds((prev) =>
+                          prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id],
+                        )
+                      }
+                    >
+                      <span className="mr-2">{selected ? '✓' : '○'}</span>
+                      {p.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             <button
               type="button"
               className="btn-primary"
-              disabled={busy || !noticeTitle.trim() || !noticeBody.trim()}
+              disabled={busy || !noticeTitle.trim() || !noticeBody.trim() || noticePlayerIds.length === 0}
               onClick={() => {
                 const title = noticeTitle.trim()
                 const body = noticeBody.trim()
-                if (!confirm(`確定發送給所有已開啟通知的玩家？\n\n${title}\n${body}`)) return
+                const names = players
+                  .filter((p: any) => noticePlayerIds.includes(p.id))
+                  .map((p: any) => p.name)
+                  .join('、')
+                if (!confirm(`確定發送給 ${noticePlayerIds.length} 人？\n${names}\n\n${title}\n${body}`)) return
                 setNoticeSent('')
-                void act('send_notification', { title, body, url: '/play/games' }).then(() => {
-                  setNoticeSent('自訂通知已送出')
+                void act('send_notification', {
+                  title,
+                  body,
+                  url: '/play/games',
+                  playerIds: noticePlayerIds,
+                }).then(() => {
+                  setNoticeSent(`已送出給 ${noticePlayerIds.length} 位指定玩家`)
                   setNoticeTitle('')
                   setNoticeBody('')
                 })
               }}
             >
-              發送自訂通知
+              發送給已選玩家（{noticePlayerIds.length}）
             </button>
             {noticeSent ? <p className="text-sm font-semibold text-moss">{noticeSent}</p> : null}
           </div>
