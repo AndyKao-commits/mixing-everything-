@@ -25,7 +25,7 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistClearFinalButtonClicks, persistClearPhotos, persistSetFinalButtonScore, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistSetFinalButtonScore, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
@@ -674,7 +674,7 @@ export const gameStore = {
     return player
   },
 
-  deletePlayer(adminToken: string, playerId: string) {
+  async deletePlayer(adminToken: string, playerId: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
     const player = store().players.get(playerId)
@@ -692,6 +692,9 @@ export const gameStore = {
       store().players.delete(playerId)
       resetSetupAssignments()
     } else {
+      const departingCard = store().bingoCards.get(playerId)
+      const departingPhotoIds = departingCard?.cells.filter((cell) => cell.photo_ref || cell.photo_data_url).map((cell) => cell.id) || []
+      const departingTarget = store().targets.get(playerId)
       store().players.delete(playerId)
       store().scores = store().scores.filter((s) => s.player_id !== playerId)
       store().bingoCards.delete(playerId)
@@ -714,23 +717,29 @@ export const gameStore = {
       }
       store().targets.delete(playerId)
       const remaining = [...store().players.values()].filter((p) => p.event_id === event.id)
-      if (remaining.length >= 2) {
-        const pairs = buildTargetCycle(remaining.map((p) => p.id))
-        for (const [from, to] of pairs) {
-          const current = store().targets.get(from)
-          if (current?.completed && current.target_player_id !== playerId) continue
-          const tpl = pick(TARGET_TASKS)
-          const targetPlayer = store().players.get(to)!
-          store().targets.set(from, {
-            id: uid(), event_id: event.id, player_id: from, target_player_id: to,
-            text: tpl.text.replace('目標', targetPlayer.name), points: tpl.points,
-            completed: false, completed_at: null,
-          })
+      // Repair only the broken edge(s) that pointed at the departing player.
+      // Everyone else's unfinished target remains unchanged.
+      const successorId = departingTarget?.target_player_id && store().players.has(departingTarget.target_player_id)
+        ? departingTarget.target_player_id
+        : null
+      if (successorId) {
+        const successor = store().players.get(successorId)!
+        for (const target of store().targets.values()) {
+          if (!target.completed && target.target_player_id === playerId) {
+            target.target_player_id = successorId
+            target.text = target.text.includes(player.name)
+              ? target.text.replace(player.name, successor.name)
+              : pick(TARGET_TASKS).text.replace('目標', successor.name)
+          }
         }
       }
       store().messages.delete(playerId)
       store().prizeDecisions.delete(playerId)
       store().finalClicks.delete(playerId)
+      await Promise.all([
+        persistDeletePhotos(departingPhotoIds),
+        persistDeleteFinalButtonPlayer(playerId),
+      ])
 
       const game = activeGroupGame()
       if (game?.kind === 'who_wrote_it') {
@@ -1101,9 +1110,13 @@ export const gameStore = {
       round: 1,
       payload: {
         prompt: '每個人的題目都不同',
-        promptsByPlayer: Object.fromEntries(
-          [...store().players.keys()].map((playerId) => [playerId, pick(WHO_WROTE_PROMPTS)]),
-        ),
+        promptsByPlayer: (() => {
+          const playerIds = [...store().players.keys()]
+          const shuffled = shuffle(WHO_WROTE_PROMPTS)
+          return Object.fromEntries(
+            playerIds.map((playerId, index) => [playerId, shuffled[index % shuffled.length]]),
+          )
+        })(),
         answers: [] as Array<{ id: string; player_id: string; prompt: string; text: string; revealed: boolean }>,
         currentAnswerId: null,
         votes: {} as Record<string, string>,
