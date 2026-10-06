@@ -115,6 +115,23 @@ export default function AdminPage() {
   const rankings = state?.rankings || []
   const players = state?.players || []
   const game = state?.groupGame
+  const canExitPlayer = event?.status === 'setup' || event?.status === 'active'
+  const nextAdminStep =
+    event?.status === 'setup'
+      ? '確認玩家後開始活動'
+      : event?.status === 'active' && event?.active_group_game !== 'none'
+        ? '目前正在團康，控制本輪或結束團康'
+        : event?.status === 'active'
+          ? '自由活動中，可開始團康或讓提早離場玩家退出本場'
+          : event?.status === 'score_locked'
+            ? '積分已鎖定，接下來開啟最後留言'
+            : event?.status === 'message'
+              ? '等待所有人留言完成後開始結算'
+              : event?.status === 'settlement'
+                ? '結算進行中，等待贈與倒數完成'
+                : event?.status === 'finished'
+                  ? '活動已完成，可保留回顧或清除本場資料'
+                  : '依目前狀態進行'
 
   return (
     <main className="shell min-h-dvh space-y-4 py-5 pb-10">
@@ -160,6 +177,11 @@ export default function AdminPage() {
 
       {tab === 'overview' ? (
         <div className="space-y-3">
+          <div className="card border border-ember/20">
+            <p className="text-xs font-semibold tracking-[0.16em] text-soft">現在該做什麼</p>
+            <p className="mt-2 text-lg font-semibold">{nextAdminStep}</p>
+          </div>
+
           <div className="card grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-soft">玩家</p>
@@ -259,7 +281,7 @@ export default function AdminPage() {
                 <button
                   type="button"
                   className="btn-ghost text-ember"
-                  disabled={busy || (event?.status !== 'setup' && players.length <= 2)}
+                  disabled={busy || !canExitPlayer || (event?.status !== 'setup' && players.length <= 2)}
                   onClick={() => {
                     const setup = event?.status === 'setup'
                     const message = setup
@@ -268,7 +290,7 @@ export default function AdminPage() {
                     if (confirm(message)) void act('delete_player', { playerId: p.id })
                   }}
                 >
-                  {event?.status === 'setup' ? '刪除' : '退出本場'}
+                  {event?.status === 'setup' ? '刪除' : canExitPlayer ? '退出本場' : '已鎖定'}
                 </button>
               </div>
             </div>

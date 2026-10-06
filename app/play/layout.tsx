@@ -25,10 +25,15 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
     if (forceGames && pathname !== '/play/games') router.replace('/play/games')
   }, [data?.event?.status, data?.event?.active_group_game, pathname, router])
 
+  const immersive =
+    data?.event?.status === 'message' ||
+    data?.event?.status === 'settlement' ||
+    (data?.event?.active_group_game && data.event.active_group_game !== 'none')
+
   return (
-    <div className="shell pb-24 pt-5">
+    <div className={immersive ? 'shell min-h-dvh py-5' : 'shell pb-24 pt-5'}>
       {children}
-      <BottomNav />
+      {!immersive ? <BottomNav /> : null}
     </div>
   )
 }
