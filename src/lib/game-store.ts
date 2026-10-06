@@ -1132,7 +1132,7 @@ export const gameStore = {
       status: 'playing',
       round: 1,
       payload: {
-        prompt: '每個人的題目都不同',
+        prompt: '題庫會先不重複發放，用完後才重新使用',
         promptsByPlayer: (() => {
           const playerIds = [...store().players.keys()]
           const shuffled = shuffle(WHO_WROTE_PROMPTS)
