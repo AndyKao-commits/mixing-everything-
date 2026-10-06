@@ -149,6 +149,16 @@ export async function routeApiRequest(input: {
         case 'end_group_game':
           result = { status: 200, data: { ok: gameStore.endGroupGame(adminToken) } }
           break
+        case 'force_end_group_game': {
+          gameStore.requireAdmin(adminToken)
+          const current = gameStore.getAdminState().event.active_group_game
+          if (current === 'none') throw new Error('目前沒有進行中的團康')
+          result =
+            current === 'final_button'
+              ? { status: 200, data: await gameStore.finishFinalButton(adminToken) }
+              : { status: 200, data: { ok: gameStore.endGroupGame(adminToken) } }
+          break
+        }
         case 'start_final_button':
           result = { status: 200, data: gameStore.startFinalButton(adminToken) }
           pushNotice = { title: '🔥 按鈕大戰準備中', body: '回到遊戲頁按 Ready，等大家集合。' }
