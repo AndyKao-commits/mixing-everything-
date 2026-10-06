@@ -25,7 +25,7 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistClearFinalButtonClicks, persistClearPhotos, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistGetFinalButtonResults, persistGetPhoto, persistGetPushPublicKey, persistGetState, persistSavePushSubscription, persistSetFinalButtonScore, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistClearPushSubscriptions, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistDeletePushPlayer, persistGetFinalButtonResults, persistGetPhoto, persistGetPushPublicKey, persistGetState, persistSavePushSubscription, persistSetFinalButtonScore, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
@@ -612,6 +612,7 @@ export const gameStore = {
     requireAdmin(adminToken)
     await persistClearPhotos()
     await persistClearFinalButtonClicks()
+    await persistClearPushSubscriptions()
     const currentAdminSessions = new Set(store().adminSessions)
     store().event = null
     store().players.clear()
@@ -739,6 +740,7 @@ export const gameStore = {
       await Promise.all([
         persistDeletePhotos(departingPhotoIds),
         persistDeleteFinalButtonPlayer(playerId),
+        persistDeletePushPlayer(playerId),
       ])
 
       const game = activeGroupGame()
