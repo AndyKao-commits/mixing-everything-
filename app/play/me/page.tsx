@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { SOURCE_LABEL } from '@/lib/scoring'
 import { clearPlayerSession } from '@/lib/client-session'
 import { usePlayerView } from '@/hooks/usePlayerView'
+import { NotificationControl } from '@/components/NotificationControl'
 
 export default function MePage() {
   const { data } = usePlayerView(3000)
@@ -38,6 +39,8 @@ export default function MePage() {
           ))
         )}
       </section>
+
+      <NotificationControl />
 
       <button type="button" className="btn-secondary" onClick={() => setShowAll((v) => !v)}>
         {showAll ? '收起詳細紀錄' : '查看詳細紀錄'}
