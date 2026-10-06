@@ -84,6 +84,7 @@ export default function TasksPage() {
     setError('')
     try {
       await api.revealMystery(token, cellId)
+      setActiveCell(null)
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : '失敗')
