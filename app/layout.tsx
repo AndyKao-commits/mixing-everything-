@@ -4,6 +4,12 @@ import './globals.css'
 export const metadata: Metadata = {
   title: '今晚誰會贏？',
   description: '烤肉聚會積分遊戲 — 吃飯聊天，偷偷累積分',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: '今晚誰會贏？',
+    statusBarStyle: 'default',
+  },
 }
 
 export const viewport: Viewport = {
