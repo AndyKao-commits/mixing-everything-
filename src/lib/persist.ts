@@ -155,6 +155,26 @@ export async function persistClearPhotos(): Promise<void> {
 }
 
 
+export async function persistDeletePhotos(cellIds: string[]): Promise<void> {
+  const ids = [...new Set(cellIds.filter(Boolean))]
+  if (!ids.length) return
+  if (!isSupabaseConfigured()) {
+    for (const id of ids) memory.delete('photo:' + id)
+    return
+  }
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.storage.from(BINGO_BUCKET).remove(ids.map((id) => id + '.jpg'))
+  if (error) throw new Error('Bingo photo cleanup failed: ' + error.message)
+}
+
+export async function persistDeleteFinalButtonPlayer(playerKey: string): Promise<void> {
+  if (!isSupabaseConfigured() || !playerKey) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('final_button_click_counts').delete().eq('player_key', playerKey)
+  if (error) throw new Error('Final button player cleanup failed: ' + error.message)
+}
+
+
 export async function persistFinalButtonClicks(sessionKey: string, playerKey: string, clickCount: number, nowMs: number): Promise<number> {
   if (!isSupabaseConfigured()) return clickCount
   const supabase = getSupabaseAdmin()
