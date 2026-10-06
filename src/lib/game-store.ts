@@ -25,7 +25,7 @@ import {
   verifyPin,
   verifyPlayerToken,
 } from './crypto'
-import { persistClearFinalButtonClicks, persistClearPhotos, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistSetFinalButtonScore, persistGetFinalButtonResults, persistGetPhoto, persistGetState, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistGetFinalButtonResults, persistGetPhoto, persistGetPushPublicKey, persistGetState, persistSavePushSubscription, persistSetFinalButtonScore, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
@@ -898,6 +898,24 @@ export const gameStore = {
           : [],
       messagesReady: store().messages.size >= store().players.size && store().players.size > 0,
     }
+  },
+
+  async getPushConfig(token: string) {
+    requirePlayerSession(token, { touch: false })
+    return { publicKey: await persistGetPushPublicKey() }
+  },
+
+  async savePushSubscription(
+    token: string,
+    subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+  ) {
+    const { player } = requirePlayerSession(token, { touch: false })
+    const event = requireEvent()
+    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      throw new Error('通知訂閱資料不完整')
+    }
+    await persistSavePushSubscription(event.id, player.id, subscription)
+    return { ok: true }
   },
 
   async getPlayerBingoPhotos(token: string) {
