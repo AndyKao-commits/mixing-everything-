@@ -130,40 +130,57 @@ export default function TasksPage() {
 
   async function completeSecret() {
     const token = getPlayerToken()
-    if (!token) return
-    setBusy(true)
+    if (!token || !data?.secret || data.secret.completed) return
+    const previous = data
+    setError('')
+    setData({
+      ...data,
+      score: Number(data.score || 0) + Number(data.secret.points || 0),
+      secret: { ...data.secret, completed: true },
+    })
     try {
       setData(await api.completeSecret(token))
     } catch (e) {
+      setData(previous)
       setError(e instanceof Error ? e.message : '失敗')
-    } finally {
-      setBusy(false)
     }
   }
 
   async function completeTarget() {
     const token = getPlayerToken()
-    if (!token) return
-    setBusy(true)
+    if (!token || !data?.target || data.target.completed) return
+    const previous = data
+    setError('')
+    setData({
+      ...data,
+      score: Number(data.score || 0) + Number(data.target.points || 0),
+      target: { ...data.target, completed: true },
+    })
     try {
       setData(await api.completeTarget(token))
     } catch (e) {
+      setData(previous)
       setError(e instanceof Error ? e.message : '失敗')
-    } finally {
-      setBusy(false)
     }
   }
 
   async function completeBounty(id: string) {
     const token = getPlayerToken()
-    if (!token) return
-    setBusy(true)
+    const bounty = (data?.bounties || []).find((item: any) => item.id === id)
+    if (!token || !bounty || bounty.completed) return
+    const previous = data
+    setError('')
+    setData({
+      ...data,
+      score: Number(data.score || 0) + Number(bounty.points || 0),
+      bountyRemaining: Math.max(0, Number(data.bountyRemaining || 0) - 1),
+      bounties: data.bounties.map((item: any) => item.id === id ? { ...item, completed: true } : item),
+    })
     try {
       setData(await api.completeBounty(token, id))
     } catch (e) {
+      setData(previous)
       setError(e instanceof Error ? e.message : '失敗')
-    } finally {
-      setBusy(false)
     }
   }
 
