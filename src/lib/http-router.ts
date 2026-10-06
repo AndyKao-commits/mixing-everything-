@@ -23,7 +23,7 @@ export async function routeApiRequest(input: {
     // Player polling must stay lightweight. Bingo photo URLs are loaded lazily only when requested.
     const hadDurableState = await gameStore.load()
     let result: { status: number; data: unknown }
-    let pushNotice: { title: string; body: string; url?: string } | null = null
+    let pushNotice: { title: string; body: string; url?: string; playerIds?: string[] } | null = null
 
     if (method === 'GET' && path === 'state') {
       result = { status: 200, data: gameStore.getPublicState() }
@@ -101,8 +101,11 @@ export async function routeApiRequest(input: {
           const url = String(body.url || '/play/games')
           if (!title || !message) throw new Error('通知標題與內容不可空白')
           if (!url.startsWith('/')) throw new Error('通知連結格式錯誤')
-          pushNotice = { title, body: message, url }
-          result = { status: 200, data: { ok: true } }
+          const playerIds = Array.isArray(body.playerIds)
+            ? [...new Set(body.playerIds.map((id: unknown) => String(id)).filter(Boolean))]
+            : []
+          pushNotice = { title, body: message, url, playerIds }
+          result = { status: 200, data: { ok: true, targetedPlayers: playerIds.length } }
           break
         }
         case 'clear_event_data':
@@ -219,7 +222,13 @@ export async function routeApiRequest(input: {
     }
     if (pushNotice) {
       const eventId = gameStore.getPublicState().event.id
-      await persistSendPush(eventId, pushNotice.title, pushNotice.body, pushNotice.url || '/play/games').catch(() => {})
+      await persistSendPush(
+        eventId,
+        pushNotice.title,
+        pushNotice.body,
+        pushNotice.url || '/play/games',
+        pushNotice.playerIds || [],
+      ).catch(() => {})
     }
     return result
   } catch (error) {
