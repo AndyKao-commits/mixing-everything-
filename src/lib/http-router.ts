@@ -105,7 +105,7 @@ export async function routeApiRequest(input: {
           }
           break
         case 'delete_player':
-          result = { status: 200, data: { ok: gameStore.deletePlayer(adminToken, String(body.playerId)) } }
+          result = { status: 200, data: { ok: await gameStore.deletePlayer(adminToken, String(body.playerId)) } }
           break
         case 'adjust_score':
           result = {
