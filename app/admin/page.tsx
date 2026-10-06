@@ -5,7 +5,7 @@ import { PinPad } from '@/components/PinPad'
 import { api } from '@/lib/api'
 import { clearAdminToken, getAdminToken, setAdminToken } from '@/lib/client-session'
 
-type Tab = 'overview' | 'players' | 'tasks' | 'games' | 'settle'
+type Tab = 'overview' | 'players' | 'tasks' | 'games' | 'notify' | 'settle'
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null)
@@ -15,6 +15,9 @@ export default function AdminPage() {
   const [error, setError] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [noticeTitle, setNoticeTitle] = useState('')
+  const [noticeBody, setNoticeBody] = useState('')
+  const [noticeSent, setNoticeSent] = useState('')
 
   const refresh = useCallback(async (t = token) => {
     if (!t) return
@@ -159,6 +162,7 @@ export default function AdminPage() {
             ['players', '玩家'],
             ['tasks', '任務'],
             ['games', '團康'],
+            ['notify', '通知'],
             ['settle', '結算'],
           ] as const
         ).map(([id, label]) => (
@@ -392,6 +396,80 @@ export default function AdminPage() {
               </button>
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {tab === 'notify' ? (
+        <div className="space-y-3">
+          <div className="card space-y-3">
+            <div>
+              <p className="font-semibold">一鍵通知所有人</p>
+              <p className="mt-1 text-sm text-soft">只會送給已開啟活動通知的玩家。</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                ['🎮 遊戲要開始囉', '快回來集合，團康準備開始！'],
+                ['🔥 快回來烤肉', '大家在等你，快回來吃東西！'],
+                ['📣 集合囉', '請大家回到活動區集合一下～'],
+                ['🏆 要公布結果囉', '快回來看看今晚誰是冠軍！'],
+              ].map(([title, body]) => (
+                <button
+                  key={title}
+                  type="button"
+                  className="btn-secondary text-left"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!confirm(`確定發送通知？\n\n${title}\n${body}`)) return
+                    setNoticeSent('')
+                    void act('send_notification', { title, body, url: '/play/games' }).then(() => setNoticeSent(`已送出：${title}`))
+                  }}
+                >
+                  <span className="block font-semibold">{title}</span>
+                  <span className="mt-1 block text-xs font-normal text-soft">{body}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card space-y-3">
+            <div>
+              <p className="font-semibold">自訂通知</p>
+              <p className="mt-1 text-sm text-soft">標題最多 40 字，內容最多 160 字。</p>
+            </div>
+            <input
+              className="field"
+              maxLength={40}
+              value={noticeTitle}
+              placeholder="通知標題"
+              onChange={(e) => setNoticeTitle(e.target.value)}
+            />
+            <textarea
+              className="field min-h-28 resize-y"
+              maxLength={160}
+              value={noticeBody}
+              placeholder="通知內容"
+              onChange={(e) => setNoticeBody(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy || !noticeTitle.trim() || !noticeBody.trim()}
+              onClick={() => {
+                const title = noticeTitle.trim()
+                const body = noticeBody.trim()
+                if (!confirm(`確定發送給所有已開啟通知的玩家？\n\n${title}\n${body}`)) return
+                setNoticeSent('')
+                void act('send_notification', { title, body, url: '/play/games' }).then(() => {
+                  setNoticeSent('自訂通知已送出')
+                  setNoticeTitle('')
+                  setNoticeBody('')
+                })
+              }}
+            >
+              發送自訂通知
+            </button>
+            {noticeSent ? <p className="text-sm font-semibold text-moss">{noticeSent}</p> : null}
+          </div>
         </div>
       ) : null}
 
