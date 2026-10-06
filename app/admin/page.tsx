@@ -360,18 +360,35 @@ export default function AdminPage() {
                   抽下一則答案
                 </button>
               )}
-              <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('end_group_game')}>
-                結束團康
-              </button>
             </div>
           ) : null}
 
           {game?.kind === 'final_button' ? (
             <div className="card space-y-2 border border-ember/20">
               <p className="font-semibold">按鈕大戰進行中</p>
-              <p className="text-sm text-soft">只有需要中止現場流程時才使用強制結束。</p>
-              <button type="button" className="btn-ghost" disabled={busy} onClick={() => act('finish_final_button')}>
-                強制結束按鈕大戰
+              <p className="text-sm text-soft">倒數與點擊結果會照目前已收到的資料結算。</p>
+            </div>
+          ) : null}
+
+          {event?.active_group_game && event.active_group_game !== 'none' ? (
+            <div className="card space-y-3 border border-ember/40">
+              <div>
+                <p className="font-semibold text-ember">主持人控制</p>
+                <p className="mt-1 text-sm text-soft">
+                  緊急中止目前團康。所有玩家下一次同步後會離開本輪，已完成的計分會保留。
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost text-ember"
+                disabled={busy}
+                onClick={() => {
+                  if (confirm('確定要強制結束目前團康？已完成的計分會保留，未完成流程會直接停止。')) {
+                    void act('force_end_group_game')
+                  }
+                }}
+              >
+                強制結束目前團康
               </button>
             </div>
           ) : null}
