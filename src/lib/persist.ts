@@ -146,11 +146,12 @@ export async function persistSendPush(
   title: string,
   body: string,
   url = '/play/games',
+  playerIds: string[] = [],
 ): Promise<void> {
   if (!isSupabaseConfigured()) return
   const supabase = getSupabaseAdmin()
   const { error } = await supabase.functions.invoke('send-party-push', {
-    body: { eventId, title, body, url },
+    body: { eventId, title, body, url, playerIds },
   })
   if (error) throw new Error('Push send failed: ' + error.message)
 }
