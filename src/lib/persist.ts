@@ -156,6 +156,21 @@ export async function persistSendPush(
 }
 
 
+export async function persistDeletePushPlayer(playerId: string): Promise<void> {
+  if (!isSupabaseConfigured() || !playerId) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('web_push_subscriptions').delete().eq('player_id', playerId)
+  if (error) throw new Error('Push subscription cleanup failed: ' + error.message)
+}
+
+export async function persistClearPushSubscriptions(): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('web_push_subscriptions').delete().neq('endpoint', '')
+  if (error) throw new Error('Push subscription cleanup failed: ' + error.message)
+}
+
+
 export async function persistGetPhoto(cellId: string): Promise<string | null> {
   if (!isSupabaseConfigured()) {
     const value = memory.get('photo:' + cellId)
