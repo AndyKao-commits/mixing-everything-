@@ -43,6 +43,10 @@ export function NotificationControl() {
       try {
         const registration = await navigator.serviceWorker.register('/sw.js')
         const existing = await registration.pushManager.getSubscription()
+        if (existing) {
+          const token = getPlayerToken()
+          if (token) await api.pushSubscribe(token, existing.toJSON()).catch(() => {})
+        }
         if (!cancelled) setState(existing ? 'enabled' : 'ready')
       } catch {
         if (!cancelled) setState('error')
