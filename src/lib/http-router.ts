@@ -94,6 +94,17 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'admin/action') {
       const action = String(body.action || '')
       switch (action) {
+        case 'send_notification': {
+          gameStore.requireAdmin(adminToken)
+          const title = String(body.title || '').trim().slice(0, 40)
+          const message = String(body.body || '').trim().slice(0, 160)
+          const url = String(body.url || '/play/games')
+          if (!title || !message) throw new Error('通知標題與內容不可空白')
+          if (!url.startsWith('/')) throw new Error('通知連結格式錯誤')
+          pushNotice = { title, body: message, url }
+          result = { status: 200, data: { ok: true } }
+          break
+        }
         case 'clear_event_data':
           result = { status: 200, data: await gameStore.clearEventData(adminToken) }
           break
