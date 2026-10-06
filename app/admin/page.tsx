@@ -182,7 +182,6 @@ export default function AdminPage() {
             <p className="mt-2 text-lg font-semibold">{nextAdminStep}</p>
           </div>
 
-        <div className="space-y-3">
           <div className="card grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-soft">玩家</p>
