@@ -1,4 +1,4 @@
-import { beginPersistenceRequest } from './persist'
+import { beginPersistenceRequest, persistSendPush } from './persist'
 import { beginGameStoreRequest, gameStore } from './game-store'
 
 type HeadersLike = {
@@ -23,6 +23,7 @@ export async function routeApiRequest(input: {
     // Player polling must stay lightweight. Bingo photo URLs are loaded lazily only when requested.
     const hadDurableState = await gameStore.load()
     let result: { status: number; data: unknown }
+    let pushNotice: { title: string; body: string; url?: string } | null = null
 
     if (method === 'GET' && path === 'state') {
       result = { status: 200, data: gameStore.getPublicState() }
@@ -38,6 +39,10 @@ export async function routeApiRequest(input: {
       }
     } else if (method === 'GET' && path === 'me') {
       result = { status: 200, data: gameStore.getPlayerView(playerToken) }
+    } else if (method === 'GET' && path === 'push/config') {
+      result = { status: 200, data: await gameStore.getPushConfig(playerToken) }
+    } else if (method === 'POST' && path === 'push/subscribe') {
+      result = { status: 200, data: await gameStore.savePushSubscription(playerToken, body.subscription) }
     } else if (method === 'GET' && path === 'bingo/photos') {
       result = { status: 200, data: await gameStore.getPlayerBingoPhotos(playerToken) }
     } else if (method === 'POST' && path === 'bingo/reveal') {
@@ -120,6 +125,7 @@ export async function routeApiRequest(input: {
           break
         case 'start_dont_copy':
           result = { status: 200, data: gameStore.startDontCopyMe(adminToken) }
+          pushNotice = { title: '🎮 不要跟我一樣開始了', body: '回來一起玩，主持人已經開題。' }
           break
         case 'score_dont_copy':
           result = {
@@ -132,6 +138,7 @@ export async function routeApiRequest(input: {
           break
         case 'start_who_wrote':
           result = { status: 200, data: gameStore.startWhoWroteIt(adminToken) }
+          pushNotice = { title: '✍️ 誰寫的開始了', body: '打開遊戲頁，先完成你的匿名回答。' }
           break
         case 'draw_who_wrote':
           result = { status: 200, data: gameStore.drawWhoWroteAnswer(adminToken) }
@@ -144,12 +151,14 @@ export async function routeApiRequest(input: {
           break
         case 'start_final_button':
           result = { status: 200, data: gameStore.startFinalButton(adminToken) }
+          pushNotice = { title: '🔥 按鈕大戰準備中', body: '回到遊戲頁按 Ready，等大家集合。' }
           break
         case 'finish_final_button':
           result = { status: 200, data: await gameStore.finishFinalButton(adminToken) }
           break
         case 'open_messages':
           result = { status: 200, data: gameStore.openMessages(adminToken) }
+          pushNotice = { title: '💬 最後留言開始', body: '活動快結束了，回來留一句話。' }
           break
         case 'lock_scores':
           result = { status: 200, data: gameStore.lockScores(adminToken) }
@@ -159,6 +168,7 @@ export async function routeApiRequest(input: {
             status: 200,
             data: gameStore.startSettlement(adminToken, body.tieBreakOrder as string[] | undefined),
           }
+          pushNotice = { title: '🏆 最終排名準備公布', body: '回來看今晚的結果。' }
           break
         case 'finish_event':
           result = { status: 200, data: gameStore.finishEvent(adminToken) }
@@ -185,6 +195,10 @@ export async function routeApiRequest(input: {
         }
       }
       await gameStore.save()
+    }
+    if (pushNotice) {
+      const eventId = gameStore.getPublicState().event.id
+      await persistSendPush(eventId, pushNotice.title, pushNotice.body, pushNotice.url || '/play/games').catch(() => {})
     }
     return result
   } catch (error) {
