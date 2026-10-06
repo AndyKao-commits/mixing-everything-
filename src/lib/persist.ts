@@ -112,6 +112,50 @@ function dataUrlToUpload(dataUrl: string): { bytes: Uint8Array; contentType: str
   return { bytes: Uint8Array.from(Buffer.from(match[2], 'base64')), contentType: match[1] }
 }
 
+export async function persistGetPushPublicKey(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('web_push_config')
+    .select('public_key')
+    .eq('singleton', true)
+    .maybeSingle()
+  if (error) throw new Error('Push config read failed: ' + error.message)
+  return data?.public_key ? String(data.public_key) : null
+}
+
+export async function persistSavePushSubscription(
+  eventId: string,
+  playerId: string,
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.from('web_push_subscriptions').upsert({
+    event_id: eventId,
+    player_id: playerId,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.keys.p256dh,
+    auth: subscription.keys.auth,
+  }, { onConflict: 'endpoint' })
+  if (error) throw new Error('Push subscription save failed: ' + error.message)
+}
+
+export async function persistSendPush(
+  eventId: string,
+  title: string,
+  body: string,
+  url = '/play/games',
+): Promise<void> {
+  if (!isSupabaseConfigured()) return
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase.functions.invoke('send-party-push', {
+    body: { eventId, title, body, url },
+  })
+  if (error) throw new Error('Push send failed: ' + error.message)
+}
+
+
 export async function persistGetPhoto(cellId: string): Promise<string | null> {
   if (!isSupabaseConfigured()) {
     const value = memory.get('photo:' + cellId)
