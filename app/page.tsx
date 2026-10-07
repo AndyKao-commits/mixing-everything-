@@ -3,7 +3,11 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
-import { getPlayerToken } from '@/lib/client-session'
+import {
+  clearTestAccessToken,
+  getPlayerToken,
+  setTestAccessToken,
+} from '@/lib/client-session'
 
 const IOS_GUIDE_KEY = 'ios-home-screen-guide-dismissed-v1'
 
@@ -128,6 +132,12 @@ export default function LandingPage() {
   const [eventName, setEventName] = useState('今晚誰會贏？')
   const [hasSession, setHasSession] = useState(false)
   const [entryLocked, setEntryLocked] = useState<boolean | null>(null)
+  const [testAccess, setTestAccess] = useState(false)
+  const [testAccessEnabled, setTestAccessEnabled] = useState(false)
+  const [showTestLogin, setShowTestLogin] = useState(false)
+  const [testPin, setTestPin] = useState('')
+  const [testError, setTestError] = useState('')
+  const [testBusy, setTestBusy] = useState(false)
 
   useEffect(() => {
     setHasSession(Boolean(getPlayerToken()))
@@ -141,6 +151,9 @@ export default function LandingPage() {
         if (stopped) return
         setEventName(s.event?.name || '今晚誰會贏？')
         setEntryLocked(Boolean(s.event?.entry_locked))
+        setTestAccess(Boolean(s.testAccess))
+        setTestAccessEnabled(Boolean(s.event?.test_access_enabled))
+        if (!s.testAccess) clearTestAccessToken()
       } catch {
         if (!stopped) setEntryLocked(false)
       }
@@ -162,7 +175,7 @@ export default function LandingPage() {
     <>
       <IOSHomeScreenGuide />
 
-      {entryLocked ? (
+      {entryLocked && !testAccess ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-white/35 px-6 backdrop-blur-xl">
           <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-white/10 to-white/35" />
 
@@ -180,6 +193,20 @@ export default function LandingPage() {
               <span className="h-2 w-2 animate-pulse rounded-full bg-ember" />
               等待主持人開放
             </div>
+
+            {testAccessEnabled ? (
+              <button
+                type="button"
+                className="mt-5 text-xs font-semibold text-ink/40 underline underline-offset-4"
+                onClick={() => {
+                  setTestError('')
+                  setTestPin('')
+                  setShowTestLogin(true)
+                }}
+              >
+                內部測試
+              </button>
+            ) : null}
           </div>
 
           <Link
@@ -188,6 +215,68 @@ export default function LandingPage() {
           >
             管理員
           </Link>
+        </div>
+      ) : null}
+
+      {showTestLogin ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-5">
+          <div className="w-full max-w-sm rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="text-center">
+              <p className="text-xs font-bold tracking-[0.18em] text-ember">INTERNAL TEST</p>
+              <h2 className="mt-2 text-2xl font-bold text-ink">輸入測試 PIN</h2>
+              <p className="mt-2 text-sm text-soft">通過後只有這台裝置能進入測試，對外仍維持鎖定。</p>
+            </div>
+
+            <input
+              autoFocus
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={testPin}
+              onChange={(e) => setTestPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="4 位數 PIN"
+              className="field mt-5 text-center text-2xl tracking-[0.35em]"
+            />
+
+            {testError ? <p className="mt-3 text-center text-sm text-ember">{testError}</p> : null}
+
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={testBusy}
+                onClick={() => setShowTestLogin(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={testBusy || testPin.length !== 4}
+                onClick={() => {
+                  void (async () => {
+                    setTestBusy(true)
+                    setTestError('')
+                    try {
+                      const res = await api.testAccess(testPin)
+                      setTestAccessToken(res.token)
+                      const state = await api.state()
+                      if (!state.testAccess) throw new Error('測試通行證驗證失敗')
+                      setTestAccess(true)
+                      setShowTestLogin(false)
+                    } catch (e) {
+                      clearTestAccessToken()
+                      setTestError(e instanceof Error ? e.message : '測試登入失敗')
+                    } finally {
+                      setTestBusy(false)
+                    }
+                  })()
+                }}
+              >
+                進入測試
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
