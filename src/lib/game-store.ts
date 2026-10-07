@@ -519,6 +519,7 @@ export const gameStore = {
       active_group_game: 'none',
       group_game_id: null,
       score_locked: false,
+      entry_locked: false,
       settlement_started_at: null,
       donation_ends_at: null,
       created_at: now,
@@ -538,6 +539,7 @@ export const gameStore = {
         status: event.status,
         active_group_game: event.active_group_game,
         score_locked: event.score_locked,
+        entry_locked: Boolean(event.entry_locked),
         donation_ends_at: event.donation_ends_at,
         settlement_started_at: event.settlement_started_at,
         last_group_game_at: event.last_group_game_at,
@@ -786,6 +788,14 @@ export const gameStore = {
     return true
   },
 
+  setEntryLocked(adminToken: string, locked: boolean) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    event.entry_locked = Boolean(locked)
+    touch(event)
+    return this.getAdminState()
+  },
+
   adjustScore(adminToken: string, playerId: string, points: number, note: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
@@ -865,6 +875,7 @@ export const gameStore = {
         status: event.status,
         active_group_game: event.active_group_game,
         score_locked: event.score_locked,
+        entry_locked: Boolean(event.entry_locked),
         donation_ends_at: event.donation_ends_at,
         settlement_started_at: event.settlement_started_at,
       },
