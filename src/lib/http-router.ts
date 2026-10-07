@@ -101,8 +101,8 @@ export async function routeApiRequest(input: {
           const url = String(body.url || '/play/games')
           if (!title || !message) throw new Error('通知標題與內容不可空白')
           if (!url.startsWith('/')) throw new Error('通知連結格式錯誤')
-          const playerIds = Array.isArray(body.playerIds)
-            ? [...new Set(body.playerIds.map((id: unknown) => String(id)).filter(Boolean))]
+          const playerIds: string[] = Array.isArray(body.playerIds)
+            ? Array.from(new Set<string>(body.playerIds.map((id: unknown) => String(id)).filter(Boolean)))
             : []
           pushNotice = { title, body: message, url, playerIds }
           result = { status: 200, data: { ok: true, targetedPlayers: playerIds.length } }
