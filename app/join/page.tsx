@@ -23,7 +23,13 @@ export default function JoinPage() {
   useEffect(() => {
     api
       .state()
-      .then((s) => setPlayers(s.players || []))
+      .then((s) => {
+        if (s.event?.entry_locked) {
+          router.replace('/')
+          return
+        }
+        setPlayers(s.players || [])
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingList(false))
   }, [])
