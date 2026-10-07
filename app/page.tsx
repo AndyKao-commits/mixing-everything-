@@ -128,32 +128,66 @@ export default function LandingPage() {
   const [eventName, setEventName] = useState('今晚誰會贏？')
   const [hasSession, setHasSession] = useState(false)
   const [entryLocked, setEntryLocked] = useState<boolean | null>(null)
-  const [showLockedNotice, setShowLockedNotice] = useState(false)
 
   useEffect(() => {
     setHasSession(Boolean(getPlayerToken()))
-    api.state()
-      .then((s) => {
+
+    let stopped = false
+    let timer: number | undefined
+
+    const refreshState = async () => {
+      try {
+        const s = await api.state()
+        if (stopped) return
         setEventName(s.event?.name || '今晚誰會贏？')
         setEntryLocked(Boolean(s.event?.entry_locked))
-      })
-      .catch(() => setEntryLocked(false))
+      } catch {
+        if (!stopped) setEntryLocked(false)
+      }
+    }
+
+    void refreshState()
+
+    timer = window.setInterval(() => {
+      void refreshState()
+    }, 2000)
+
+    return () => {
+      stopped = true
+      if (timer) window.clearInterval(timer)
+    }
   }, [])
 
   return (
     <>
       <IOSHomeScreenGuide />
 
-      {showLockedNotice ? (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 p-5">
-          <div className="w-full max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-2xl">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-ember/10 text-2xl">🔒</div>
-            <h2 className="mt-4 text-2xl font-bold text-ink">活動尚未開始</h2>
-            <p className="mt-2 text-sm leading-6 text-soft">請先留在這個頁面，主持人開放後就可以加入遊戲。</p>
-            <button type="button" className="btn-primary mt-5" onClick={() => setShowLockedNotice(false)}>
-              知道了
-            </button>
+      {entryLocked ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-white/35 px-6 backdrop-blur-xl">
+          <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-white/10 to-white/35" />
+
+          <div className="relative z-10 -mt-8 text-center">
+            <p className="text-xs font-semibold tracking-[0.34em] text-ink/45">PARTY GAME</p>
+            <h2 className="mt-4 font-display text-5xl font-bold tracking-tight text-ink sm:text-6xl">
+              COMING SOON…
+            </h2>
+            <p className="mt-5 text-lg font-semibold text-ink/70">活動尚未開始</p>
+            <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-ink/50">
+              請先留在這個頁面，主持人開放後會自動解除。
+            </p>
+
+            <div className="mx-auto mt-6 flex w-fit items-center gap-2 rounded-full border border-white/70 bg-white/45 px-4 py-2 text-xs font-medium text-ink/55 shadow-sm">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-ember" />
+              等待主持人開放
+            </div>
           </div>
+
+          <Link
+            href="/admin"
+            className="absolute bottom-7 right-5 z-10 text-xs font-medium text-ink/45 underline-offset-2 hover:underline"
+          >
+            管理員
+          </Link>
         </div>
       ) : null}
 
