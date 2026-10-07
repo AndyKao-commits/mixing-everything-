@@ -15,7 +15,7 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!data?.event) return
 
-    if (data.event.entry_locked) {
+    if (data.event.entry_locked && !data.testAccess) {
       router.replace('/')
       return
     }
@@ -29,7 +29,7 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
       (data.event.active_group_game && data.event.active_group_game !== 'none')
 
     if (forceGames && pathname !== '/play/games') router.replace('/play/games')
-  }, [data?.event?.status, data?.event?.active_group_game, data?.event?.entry_locked, pathname, router])
+  }, [data?.event?.status, data?.event?.active_group_game, data?.event?.entry_locked, data?.testAccess, pathname, router])
 
   const immersive =
     data?.event?.status === 'message' ||
