@@ -138,9 +138,13 @@ export default function LandingPage() {
   const [testPin, setTestPin] = useState('')
   const [testError, setTestError] = useState('')
   const [testBusy, setTestBusy] = useState(false)
+  const [iosInstallRequired, setIosInstallRequired] = useState(false)
+  const [iosSafari, setIosSafari] = useState(true)
 
   useEffect(() => {
     setHasSession(Boolean(getPlayerToken()))
+    setIosInstallRequired(isIOS() && !isStandalone())
+    setIosSafari(isSafari())
 
     let stopped = false
     let timer: number | undefined
@@ -173,40 +177,104 @@ export default function LandingPage() {
 
   return (
     <>
-      <IOSHomeScreenGuide />
-
       {entryLocked && !testAccess ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-white/35 px-6 backdrop-blur-xl">
           <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-white/10 to-white/35" />
 
-          <div className="relative z-10 -mt-8 text-center">
+          <div className="relative z-10 w-full max-w-md text-center">
             <p className="text-xs font-semibold tracking-[0.34em] text-ink/45">PARTY GAME</p>
-            <h2 className="mt-4 font-display text-5xl font-bold tracking-tight text-ink sm:text-6xl">
+            <h2 className="mt-3 font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl">
               COMING SOON…
             </h2>
-            <p className="mt-5 text-lg font-semibold text-ink/70">活動尚未開始</p>
-            <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-ink/50">
-              請先留在這個頁面，主持人開放後會自動解除。
-            </p>
 
-            <div className="mx-auto mt-6 flex w-fit items-center gap-2 rounded-full border border-white/70 bg-white/45 px-4 py-2 text-xs font-medium text-ink/55 shadow-sm">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-ember" />
-              等待主持人開放
-            </div>
+            {iosInstallRequired ? (
+              <div className="mt-5 rounded-[2rem] border border-white/70 bg-white/60 p-5 text-left shadow-sm backdrop-blur-md">
+                <div className="text-center">
+                  <p className="text-xs font-bold tracking-[0.16em] text-ember">iPHONE 玩家先完成設定</p>
+                  <h3 className="mt-2 text-xl font-bold text-ink">請先把網站加入主畫面</h3>
+                  <p className="mt-2 text-sm leading-6 text-ink/60">
+                    之後活動通知會從主畫面版本接收。這一步完成後，請回到桌面從新圖示重新開啟。
+                  </p>
+                </div>
 
-            {testAccessEnabled ? (
-              <button
-                type="button"
-                className="mt-5 text-xs font-semibold text-ink/40 underline underline-offset-4"
-                onClick={() => {
-                  setTestError('')
-                  setTestPin('')
-                  setShowTestLogin(true)
-                }}
-              >
-                內部測試
-              </button>
-            ) : null}
+                {!iosSafari ? (
+                  <div className="mt-4 rounded-2xl border border-ember/20 bg-ember/5 px-4 py-3 text-sm font-semibold text-ember">
+                    請先改用 Safari 開啟這個網站，再依照下方步驟操作。
+                  </div>
+                ) : null}
+
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center gap-3 rounded-2xl bg-white/70 p-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper">
+                      <svg viewBox="0 0 24 24" className="h-6 w-6 text-ink" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                        <path d="M12 16V3m0 0 4 4m-4-4L8 7" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M7 10H5.8A1.8 1.8 0 0 0 4 11.8v7.4A1.8 1.8 0 0 0 5.8 21h12.4a1.8 1.8 0 0 0 1.8-1.8v-7.4a1.8 1.8 0 0 0-1.8-1.8H17" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-ember">1</p>
+                      <p className="text-sm font-semibold text-ink">點 Safari 的「分享」按鈕</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 rounded-2xl bg-white/70 p-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper">
+                      <svg viewBox="0 0 24 24" className="h-6 w-6 text-ink" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                        <rect x="4" y="4" width="16" height="16" rx="3" />
+                        <path d="M12 8v8M8 12h8" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-ember">2</p>
+                      <p className="text-sm font-semibold text-ink">選擇「加入主畫面」</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 rounded-2xl bg-white/70 p-3">
+                    <div className="grid h-10 w-10 shrink-0 grid-cols-2 gap-1 rounded-xl bg-paper p-2" aria-hidden="true">
+                      <span className="rounded bg-ember/90" />
+                      <span className="rounded bg-ink/70" />
+                      <span className="rounded bg-moss/80" />
+                      <span className="rounded bg-ink/20" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-ember">3</p>
+                      <p className="text-sm font-semibold text-ink">回桌面，從新圖示開啟</p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-center text-xs font-semibold text-ink/50">
+                  加入完成後請直接關閉 Safari，從主畫面圖示重新開啟
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="mt-5 text-lg font-semibold text-ink/70">活動尚未開始</p>
+                <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-ink/50">
+                  請先留在這個頁面，主持人開放後會自動解除。
+                </p>
+
+                <div className="mx-auto mt-6 flex w-fit items-center gap-2 rounded-full border border-white/70 bg-white/45 px-4 py-2 text-xs font-medium text-ink/55 shadow-sm">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-ember" />
+                  等待主持人開放
+                </div>
+
+                {testAccessEnabled ? (
+                  <button
+                    type="button"
+                    className="mt-5 text-xs font-semibold text-ink/40 underline underline-offset-4"
+                    onClick={() => {
+                      setTestError('')
+                      setTestPin('')
+                      setShowTestLogin(true)
+                    }}
+                  >
+                    內部測試
+                  </button>
+                ) : null}
+              </>
+            )}
           </div>
 
           <Link
