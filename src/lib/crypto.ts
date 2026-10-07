@@ -93,3 +93,27 @@ export function verifyPlayerToken(
   if (!safeEqualHex(sig, sign(payload))) return null
   return { eventId, playerId, expiresAt }
 }
+
+
+/** Stateless internal-test token. Invalidated server-side when test access is disabled. */
+export function signTestToken(eventId: string, ttlMs = 1000 * 60 * 60 * 12): string {
+  const exp = Date.now() + ttlMs
+  const nonce = randomBytes(8).toString('hex')
+  const payload = `t:${eventId}:${exp}:${nonce}`
+  return `${payload}:${sign(payload)}`
+}
+
+export function verifyTestToken(
+  token: string | null | undefined,
+): { eventId: string; expiresAt: number } | null {
+  if (!token) return null
+  const parts = token.split(':')
+  if (parts.length !== 5 || parts[0] !== 't') return null
+  const [, eventId, expRaw, nonce, sig] = parts
+  if (!eventId || !/^\d+$/.test(expRaw) || !nonce || !sig) return null
+  const expiresAt = Number(expRaw)
+  if (expiresAt < Date.now()) return null
+  const payload = `t:${eventId}:${expRaw}:${nonce}`
+  if (!safeEqualHex(sig, sign(payload))) return null
+  return { eventId, expiresAt }
+}
