@@ -20,10 +20,12 @@ import {
   nowIso,
   signAdminToken,
   signPlayerToken,
+  signTestToken,
   uid,
   verifyAdminToken,
   verifyPin,
   verifyPlayerToken,
+  verifyTestToken,
 } from './crypto'
 import { persistClearFinalButtonClicks, persistClearPhotos, persistClearPushSubscriptions, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistDeletePushPlayer, persistGetFinalButtonResults, persistGetPhoto, persistGetPushPublicKey, persistGetState, persistSavePushSubscription, persistSetFinalButtonScore, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
@@ -436,6 +438,14 @@ function serializeStore(): SerializedStore {
 function hydrateStore(data: SerializedStore) {
   const next = store()
   next.event = data.event
+    ? {
+        ...data.event,
+        entry_locked: Boolean(data.event.entry_locked),
+        test_access_enabled: Boolean(data.event.test_access_enabled),
+        test_pin_hash: data.event.test_pin_hash || null,
+        test_pin_salt: data.event.test_pin_salt || null,
+      }
+    : null
   next.players = new Map((data.players || []).map((p) => [p.id, p]))
   next.sessions = new Map((data.sessions || []).map((s) => [s.id, s]))
   next.scores = data.scores || []
@@ -520,6 +530,9 @@ export const gameStore = {
       group_game_id: null,
       score_locked: false,
       entry_locked: false,
+      test_access_enabled: false,
+      test_pin_hash: null,
+      test_pin_salt: null,
       settlement_started_at: null,
       donation_ends_at: null,
       created_at: now,
@@ -540,6 +553,7 @@ export const gameStore = {
         active_group_game: event.active_group_game,
         score_locked: event.score_locked,
         entry_locked: Boolean(event.entry_locked),
+        test_access_enabled: Boolean(event.test_access_enabled),
         donation_ends_at: event.donation_ends_at,
         settlement_started_at: event.settlement_started_at,
         last_group_game_at: event.last_group_game_at,
@@ -586,7 +600,13 @@ export const gameStore = {
 
   getAdminState() {
     const event = requireEvent()
-    const { admin_pin_hash: _h, admin_pin_salt: _s, ...safeEvent } = event
+    const {
+      admin_pin_hash: _h,
+      admin_pin_salt: _s,
+      test_pin_hash: _th,
+      test_pin_salt: _ts,
+      ...safeEvent
+    } = event
     return {
       event: safeEvent,
       players: [...store().players.values()].map((p) => ({
@@ -794,6 +814,46 @@ export const gameStore = {
     event.entry_locked = Boolean(locked)
     touch(event)
     return this.getAdminState()
+  },
+
+  setTestAccess(adminToken: string, enabled: boolean, pin?: string) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+
+    if (!enabled) {
+      event.test_access_enabled = false
+      event.test_pin_hash = null
+      event.test_pin_salt = null
+      touch(event)
+      return this.getAdminState()
+    }
+
+    const cleanPin = String(pin || '').trim()
+    if (!/^\d{4}$/.test(cleanPin)) throw new Error('測試 PIN 需為 4 位數字')
+    const { hash, salt } = hashPin(cleanPin)
+    event.test_access_enabled = true
+    event.test_pin_hash = hash
+    event.test_pin_salt = salt
+    touch(event)
+    return this.getAdminState()
+  },
+
+  createTestAccessToken(pin: string) {
+    const event = requireEvent()
+    if (!event.test_access_enabled || !event.test_pin_hash || !event.test_pin_salt) {
+      throw new Error('目前未開放內部測試')
+    }
+    if (!verifyPin(String(pin || ''), event.test_pin_hash, event.test_pin_salt)) {
+      throw new Error('測試 PIN 錯誤')
+    }
+    return { token: signTestToken(event.id) }
+  },
+
+  hasValidTestAccess(token?: string | null) {
+    const event = requireEvent()
+    if (!event.test_access_enabled) return false
+    const verified = verifyTestToken(token)
+    return Boolean(verified && verified.eventId === event.id)
   },
 
   adjustScore(adminToken: string, playerId: string, points: number, note: string) {
