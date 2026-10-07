@@ -22,6 +22,19 @@ export async function routeApiRequest(input: {
   try {
     // Player polling must stay lightweight. Bingo photo URLs are loaded lazily only when requested.
     const hadDurableState = await gameStore.load()
+
+    const entryLocked = Boolean(gameStore.getPublicState().event.entry_locked)
+    const allowedWhileEntryLocked =
+      (method === 'GET' && path === 'state') ||
+      (method === 'GET' && path === 'me') ||
+      path === 'admin/login' ||
+      path === 'admin/state' ||
+      path === 'admin/action'
+
+    if (entryLocked && !allowedWhileEntryLocked) {
+      return { status: 423, data: { error: '活動尚未開始' } }
+    }
+
     let result: { status: number; data: unknown }
     let pushNotice: { title: string; body: string; url?: string; playerIds?: string[] } | null = null
 
@@ -108,6 +121,9 @@ export async function routeApiRequest(input: {
           result = { status: 200, data: { ok: true, targetedPlayers: playerIds.length } }
           break
         }
+        case 'set_entry_lock':
+          result = { status: 200, data: gameStore.setEntryLocked(adminToken, Boolean(body.locked)) }
+          break
         case 'clear_event_data':
           result = { status: 200, data: await gameStore.clearEventData(adminToken) }
           break
