@@ -24,7 +24,7 @@ export default function JoinPage() {
     api
       .state()
       .then((s) => {
-        if (s.event?.entry_locked) {
+        if (s.event?.entry_locked && !s.testAccess) {
           router.replace('/')
           return
         }
