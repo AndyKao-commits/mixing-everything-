@@ -187,6 +187,50 @@ export default function AdminPage() {
             <p className="mt-2 text-lg font-semibold">{nextAdminStep}</p>
           </div>
 
+          <div className={`card space-y-3 border ${event?.entry_locked ? 'border-ember/40' : 'border-moss/30'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">玩家入口</p>
+                <p className="mt-1 text-sm text-soft">
+                  {event?.entry_locked
+                    ? '目前已鎖定。玩家只能停留在首頁，無法加入或操作遊戲。'
+                    : '目前已開放。玩家可以加入並進入遊戲。'}
+                </p>
+              </div>
+              <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${event?.entry_locked ? 'bg-ember/10 text-ember' : 'bg-moss/10 text-moss'}`}>
+                {event?.entry_locked ? '已鎖定' : '已開放'}
+              </span>
+            </div>
+
+            {event?.entry_locked ? (
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => {
+                  if (confirm('確定要解除玩家入口鎖定？玩家將可以加入並進入遊戲。')) {
+                    void act('set_entry_lock', { locked: false })
+                  }
+                }}
+              >
+                解除鎖定・開放玩家
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-ghost text-ember"
+                disabled={busy}
+                onClick={() => {
+                  if (confirm('確定要鎖定玩家入口？所有玩家會被送回首頁，暫時無法加入或操作遊戲。')) {
+                    void act('set_entry_lock', { locked: true })
+                  }
+                }}
+              >
+                鎖定玩家入口
+              </button>
+            )}
+          </div>
+
           <div className="card grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-soft">玩家</p>
