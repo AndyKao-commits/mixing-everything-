@@ -127,15 +127,35 @@ function IOSHomeScreenGuide() {
 export default function LandingPage() {
   const [eventName, setEventName] = useState('今晚誰會贏？')
   const [hasSession, setHasSession] = useState(false)
+  const [entryLocked, setEntryLocked] = useState<boolean | null>(null)
+  const [showLockedNotice, setShowLockedNotice] = useState(false)
 
   useEffect(() => {
     setHasSession(Boolean(getPlayerToken()))
-    api.state().then((s) => setEventName(s.event?.name || '今晚誰會贏？')).catch(() => {})
+    api.state()
+      .then((s) => {
+        setEventName(s.event?.name || '今晚誰會贏？')
+        setEntryLocked(Boolean(s.event?.entry_locked))
+      })
+      .catch(() => setEntryLocked(false))
   }, [])
 
   return (
     <>
       <IOSHomeScreenGuide />
+
+      {showLockedNotice ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 p-5">
+          <div className="w-full max-w-sm rounded-[2rem] bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-ember/10 text-2xl">🔒</div>
+            <h2 className="mt-4 text-2xl font-bold text-ink">活動尚未開始</h2>
+            <p className="mt-2 text-sm leading-6 text-soft">請先留在這個頁面，主持人開放後就可以加入遊戲。</p>
+            <button type="button" className="btn-primary mt-5" onClick={() => setShowLockedNotice(false)}>
+              知道了
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <main className="shell relative flex min-h-dvh flex-col justify-center py-10">
         <div className="animate-rise text-center">
