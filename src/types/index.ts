@@ -37,6 +37,7 @@ export interface Event {
   active_group_game: GroupGameKind
   group_game_id: string | null
   score_locked: boolean
+  entry_locked: boolean
   settlement_started_at: string | null
   donation_ends_at: string | null
   created_at: string
