@@ -19,6 +19,7 @@ export default function AdminPage() {
   const [noticeBody, setNoticeBody] = useState('')
   const [noticeSent, setNoticeSent] = useState('')
   const [noticePlayerIds, setNoticePlayerIds] = useState<string[]>([])
+  const [testPin, setTestPin] = useState('')
 
   const refresh = useCallback(async (t = token) => {
     if (!t) return
@@ -229,6 +230,69 @@ export default function AdminPage() {
                 鎖定玩家入口
               </button>
             )}
+          </div>
+
+          <div className={`card space-y-3 border ${event?.test_access_enabled ? 'border-moss/40' : 'border-black/10'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">內部測試</p>
+                <p className="mt-1 text-sm text-soft">
+                  {event?.test_access_enabled
+                    ? '測試通道已開啟。持有測試 PIN 的裝置可在玩家入口鎖定時正常測試。'
+                    : '對外鎖定時，可另外開一條只給測試裝置使用的通道。'}
+                </p>
+              </div>
+              <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
+                event?.test_access_enabled ? 'bg-moss/10 text-moss' : 'bg-black/5 text-soft'
+              }`}>
+                {event?.test_access_enabled ? '測試中' : '未開啟'}
+              </span>
+            </div>
+
+            <input
+              className="field text-center text-xl tracking-[0.3em]"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={testPin}
+              placeholder={event?.test_access_enabled ? '輸入新 PIN 可重新設定' : '設定 4 位測試 PIN'}
+              onChange={(e) => setTestPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy || testPin.length !== 4}
+                onClick={() => {
+                  const message = event?.test_access_enabled
+                    ? '確定要更新測試 PIN？舊 PIN 將立即失效。'
+                    : '確定要開啟內部測試？對外仍維持目前的玩家入口鎖定狀態。'
+                  if (!confirm(message)) return
+                  void act('set_test_access', { enabled: true, pin: testPin }).then(() => setTestPin(''))
+                }}
+              >
+                {event?.test_access_enabled ? '更新測試 PIN' : '開啟內部測試'}
+              </button>
+
+              <button
+                type="button"
+                className="btn-ghost text-ember"
+                disabled={busy || !event?.test_access_enabled}
+                onClick={() => {
+                  if (confirm('確定關閉內部測試？所有測試裝置的通行證會立即失效。')) {
+                    void act('set_test_access', { enabled: false })
+                    setTestPin('')
+                  }
+                }}
+              >
+                關閉內部測試
+              </button>
+            </div>
+
+            <p className="text-xs leading-5 text-soft">
+              建議正式活動開始前關閉內部測試，或直接解除玩家入口鎖定。
+            </p>
           </div>
 
           <div className="card grid grid-cols-2 gap-3 text-sm">
