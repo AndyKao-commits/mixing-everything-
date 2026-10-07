@@ -15,6 +15,11 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!data?.event) return
 
+    if (data.event.entry_locked) {
+      router.replace('/')
+      return
+    }
+
     // Final phases must take over every player's screen at the same time.
     // Without this redirect, players sitting on Home/Tasks/My never see the
     // settlement countdown because that UI lives on /play/games.
@@ -24,7 +29,7 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
       (data.event.active_group_game && data.event.active_group_game !== 'none')
 
     if (forceGames && pathname !== '/play/games') router.replace('/play/games')
-  }, [data?.event?.status, data?.event?.active_group_game, pathname, router])
+  }, [data?.event?.status, data?.event?.active_group_game, data?.event?.entry_locked, pathname, router])
 
   const immersive =
     data?.event?.status === 'message' ||
