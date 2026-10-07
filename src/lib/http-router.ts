@@ -17,6 +17,7 @@ export async function routeApiRequest(input: {
   const path = input.path.replace(/^\/+|\/+$/g, '')
   const playerToken = input.headers.get('x-player-token') || ''
   const adminToken = input.headers.get('x-admin-token') || ''
+  const testToken = input.headers.get('x-test-token') || ''
   const body = input.body || {}
 
   try {
@@ -24,9 +25,12 @@ export async function routeApiRequest(input: {
     const hadDurableState = await gameStore.load()
 
     const entryLocked = Boolean(gameStore.getPublicState().event.entry_locked)
+    const hasTestAccess = gameStore.hasValidTestAccess(testToken)
     const allowedWhileEntryLocked =
+      hasTestAccess ||
       (method === 'GET' && path === 'state') ||
       (method === 'GET' && path === 'me') ||
+      (method === 'POST' && path === 'test/access') ||
       path === 'admin/login' ||
       path === 'admin/state' ||
       path === 'admin/action'
@@ -39,7 +43,9 @@ export async function routeApiRequest(input: {
     let pushNotice: { title: string; body: string; url?: string; playerIds?: string[] } | null = null
 
     if (method === 'GET' && path === 'state') {
-      result = { status: 200, data: gameStore.getPublicState() }
+      result = { status: 200, data: { ...gameStore.getPublicState(), testAccess: hasTestAccess } }
+    } else if (method === 'POST' && path === 'test/access') {
+      result = { status: 200, data: gameStore.createTestAccessToken(String(body.pin || '')) }
     } else if (method === 'POST' && path === 'auth/pin') {
       result = {
         status: 200,
@@ -51,7 +57,7 @@ export async function routeApiRequest(input: {
         data: gameStore.loginPlayer(String(body.playerId), String(body.pin)),
       }
     } else if (method === 'GET' && path === 'me') {
-      result = { status: 200, data: gameStore.getPlayerView(playerToken) }
+      result = { status: 200, data: { ...gameStore.getPlayerView(playerToken), testAccess: hasTestAccess } }
     } else if (method === 'GET' && path === 'push/config') {
       result = { status: 200, data: await gameStore.getPushConfig(playerToken) }
     } else if (method === 'POST' && path === 'push/subscribe') {
@@ -123,6 +129,12 @@ export async function routeApiRequest(input: {
         }
         case 'set_entry_lock':
           result = { status: 200, data: gameStore.setEntryLocked(adminToken, Boolean(body.locked)) }
+          break
+        case 'set_test_access':
+          result = {
+            status: 200,
+            data: gameStore.setTestAccess(adminToken, Boolean(body.enabled), String(body.pin || '')),
+          }
           break
         case 'clear_event_data':
           result = { status: 200, data: await gameStore.clearEventData(adminToken) }
@@ -225,7 +237,12 @@ export async function routeApiRequest(input: {
     }
 
     const isFinalTap = method === 'POST' && path === 'games/final-button/click'
-    const shouldPersist = result.status < 400 && !isFinalTap && (method !== 'GET' || !hadDurableState)
+    const isTestAccessGrant = method === 'POST' && path === 'test/access'
+    const shouldPersist =
+      result.status < 400 &&
+      !isFinalTap &&
+      !isTestAccessGrant &&
+      (method !== 'GET' || !hadDurableState)
     if (shouldPersist) {
       if (method === 'POST' && path === 'bingo/complete') {
         const completedCell = (result.data as any)?.bingo?.cells?.find((cell: any) => cell.id === String(body.cellId))
