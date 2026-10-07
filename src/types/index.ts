@@ -38,6 +38,9 @@ export interface Event {
   group_game_id: string | null
   score_locked: boolean
   entry_locked: boolean
+  test_access_enabled: boolean
+  test_pin_hash: string | null
+  test_pin_salt: string | null
   settlement_started_at: string | null
   donation_ends_at: string | null
   created_at: string
