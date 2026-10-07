@@ -1,5 +1,7 @@
 'use client'
 
+import { getTestAccessToken } from './client-session'
+
 function errorMessage(data: any, status: number, fallback = '請求失敗') {
   const raw =
     (typeof data?.error === 'string' && data.error) ||
@@ -22,6 +24,7 @@ function errorMessage(data: any, status: number, fallback = '請求失敗') {
 
 async function req<T>(url: string, init?: RequestInit, retriesLeft = 3): Promise<T> {
   let res: Response
+  const testToken = getTestAccessToken()
   try {
     res = await fetch(url, {
       ...init,
@@ -30,6 +33,7 @@ async function req<T>(url: string, init?: RequestInit, retriesLeft = 3): Promise
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        ...(testToken ? { 'x-test-token': testToken } : {}),
         ...(init?.headers || {}),
       },
     })
@@ -55,6 +59,11 @@ async function req<T>(url: string, init?: RequestInit, retriesLeft = 3): Promise
 
 export const api = {
   state: () => req<any>('/api/state'),
+  testAccess: (pin: string) =>
+    req<{ token: string }>('/api/test/access', {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    }),
   setPin: (playerId: string, pin: string, confirm: string) =>
     req<any>('/api/auth/pin', {
       method: 'POST',
