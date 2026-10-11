@@ -20,6 +20,8 @@ export default function AdminPage() {
   const [noticeSent, setNoticeSent] = useState('')
   const [noticePlayerIds, setNoticePlayerIds] = useState<string[]>([])
   const [testPin, setTestPin] = useState('')
+  const [bingoGallery, setBingoGallery] = useState<any>(null)
+  const [bingoLoading, setBingoLoading] = useState(false)
 
   const refresh = useCallback(async (t = token) => {
     if (!t) return
@@ -86,6 +88,19 @@ export default function AdminPage() {
       })()
     }
   }, [pin])
+
+  async function loadBingoGallery() {
+    if (!token) return
+    setBingoLoading(true)
+    setError('')
+    try {
+      setBingoGallery(await api.adminBingoGallery(token))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '九宮格載入失敗')
+    } finally {
+      setBingoLoading(false)
+    }
+  }
 
   async function act(action: string, payload: Record<string, unknown> = {}) {
     if (!token) return
@@ -412,13 +427,53 @@ export default function AdminPage() {
       ) : null}
 
       {tab === 'tasks' ? (
-        <div className="card space-y-2 text-sm text-soft">
-          <p>活動開始後會自動發放：</p>
-          <p>· 九宮格（受控隨機）</p>
-          <p>· 秘密任務</p>
-          <p>· 懸賞牆（20 題）</p>
-          <p>· 懸賞某人（循環配對）</p>
-          <p className="pt-2">任務完成採玩家自行勾選，不需審核。</p>
+        <div className="space-y-3">
+          <div className="card space-y-3">
+            <div>
+              <p className="font-semibold">所有玩家九宮格</p>
+              <p className="mt-1 text-sm text-soft">照片只在你按下載入時取得，不會加入管理員每 3 秒的背景同步。</p>
+            </div>
+            <button type="button" className="btn-primary" disabled={bingoLoading} onClick={() => void loadBingoGallery()}>
+              {bingoLoading ? '正在載入所有九宮格…' : bingoGallery ? '重新整理所有九宮格' : '載入所有人的九宮格'}
+            </button>
+          </div>
+
+          {bingoGallery?.players?.length ? (
+            <div className="space-y-4">
+              {bingoGallery.players.map((entry: any) => (
+                <section key={entry.player.id} className="card space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-display text-xl font-bold">{entry.player.name}</h2>
+                    <span className="rounded-full bg-paper px-3 py-1 text-sm font-semibold">{entry.completed} / 9</span>
+                  </div>
+
+                  {entry.cells.length ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {entry.cells.map((cell: any) => (
+                        <div key={cell.id} className="overflow-hidden rounded-2xl bg-paper">
+                          <div className="aspect-square bg-black/5">
+                            {cell.photoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={cell.photoUrl} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center p-2 text-center text-xs text-soft">
+                                {cell.completed ? '照片載入失敗' : '尚未完成'}
+                              </div>
+                            )}
+                          </div>
+                          <p className="line-clamp-2 min-h-10 px-2 py-1.5 text-[10px] leading-tight text-soft">{cell.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-soft">尚未發放九宮格。</p>
+                  )}
+                </section>
+              ))}
+            </div>
+          ) : bingoGallery ? (
+            <div className="card text-sm text-soft">目前沒有可顯示的玩家九宮格。</div>
+          ) : null}
         </div>
       ) : null}
 
