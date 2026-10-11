@@ -172,6 +172,30 @@ export async function persistClearPushSubscriptions(): Promise<void> {
 }
 
 
+export async function persistGetPhotos(cellIds: string[]): Promise<Record<string, string>> {
+  const ids = [...new Set(cellIds.filter(Boolean))]
+  if (!ids.length) return {}
+  if (!isSupabaseConfigured()) {
+    return Object.fromEntries(
+      ids.flatMap((id) => {
+        const value = memory.get('photo:' + id)
+        return typeof value === 'string' ? [[id, value]] : []
+      }),
+    )
+  }
+  const supabase = getSupabaseAdmin()
+  const paths = ids.map((id) => id + '.jpg')
+  const { data, error } = await supabase.storage.from(BINGO_BUCKET).createSignedUrls(paths, 60 * 60)
+  if (error) throw new Error('Bingo photo batch load failed: ' + error.message)
+  const photos: Record<string, string> = {}
+  for (const item of data || []) {
+    if (!item?.signedUrl || !item?.path) continue
+    const id = String(item.path).replace(/\.jpg$/i, '')
+    photos[id] = item.signedUrl
+  }
+  return photos
+}
+
 export async function persistGetPhoto(cellId: string): Promise<string | null> {
   if (!isSupabaseConfigured()) {
     const value = memory.get('photo:' + cellId)
