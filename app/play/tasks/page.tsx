@@ -54,6 +54,7 @@ export default function TasksPage() {
   const cropDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null)
 
   const cells = data?.bingo?.cells || []
+  const bingoReadOnly = data?.event?.status !== 'active'
 
   const sortedBounties = useMemo(
     () => (data?.bounties || []).slice().sort((a: any, b: any) => Number(a.completed) - Number(b.completed)),
@@ -109,7 +110,9 @@ export default function TasksPage() {
       const photo = await cropSquareImage(cropFile, cropX, cropY, cropZoom)
       const cellId = activeCell.id
       const replacing = Boolean(activeCell.completed)
-      const view = await api.completeBingo(token, cellId, photo)
+      const view = replacing
+        ? await api.replaceBingoPhoto(token, cellId, photo)
+        : await api.completeBingo(token, cellId, photo)
       setData(view)
       // Keep the just-captured image visible instantly while Storage remains authoritative.
       setBingoPhotos((current) => ({ ...current, [cellId]: photo }))
@@ -223,8 +226,13 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-4 animate-rise">
-      <h1 className="font-display text-3xl font-bold">任務</h1>
-      <div className="tab-row">
+      <h1 className="font-display text-3xl font-bold">{bingoReadOnly ? '九宮格回顧' : '任務'}</h1>
+      {bingoReadOnly ? (
+        <div className="card text-sm text-soft">
+          活動已進入結算／結束階段。你仍可以查看、替換已完成格子的照片並匯出九宮格，但不能再完成新任務或取得分數。
+        </div>
+      ) : null}
+      {!bingoReadOnly ? <div className="tab-row">
         {[
           ['bingo', '九宮格'],
           ['secret', '秘密任務'],
@@ -239,7 +247,7 @@ export default function TasksPage() {
             {label}
           </button>
         ))}
-      </div>
+      </div> : null}
 
       {error ? <p className="text-sm text-ember">{error}</p> : null}
       {msg ? <p className="text-sm font-semibold text-moss">{msg}</p> : null}
@@ -394,7 +402,7 @@ export default function TasksPage() {
                 關閉
               </button>
             </div>
-            {activeCell.mystery && !activeCell.revealed ? (
+            {activeCell.mystery && !activeCell.revealed && !bingoReadOnly ? (
               <button
                 type="button"
                 className="btn-primary"
@@ -417,6 +425,8 @@ export default function TasksPage() {
                 <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { const file = e.currentTarget.files?.[0] || null; e.currentTarget.value = ''; void onPhoto(file) }} />
                 <input ref={libraryInput} type="file" accept="image/*" className="sr-only" onChange={(e) => { const file = e.currentTarget.files?.[0] || null; e.currentTarget.value = ''; void onPhoto(file) }} />
               </div>
+            ) : bingoReadOnly ? (
+              <p className="rounded-2xl bg-paper p-3 text-sm text-soft">這格尚未完成，結算後不能再新增任務照片。</p>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" className="btn-primary" disabled={busy} onClick={() => cameraInput.current?.click()}>
