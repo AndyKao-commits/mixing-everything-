@@ -173,6 +173,15 @@ export const api = {
     }),
   adminState: (token: string) =>
     req<any>('/api/admin/state', { headers: { 'x-admin-token': token } }),
+  adminBingoGallery: (token: string) =>
+    req<{
+      eventId: string
+      players: Array<{
+        player: { id: string; name: string }
+        completed: number
+        cells: Array<{ id: string; index: number; text: string; completed: boolean; photoUrl: string | null }>
+      }>
+    }>('/api/admin/bingo-gallery', { headers: { 'x-admin-token': token } }),
   adminAction: (token: string, action: string, payload: Record<string, unknown> = {}) =>
     req<any>('/api/admin/action', {
       method: 'POST',

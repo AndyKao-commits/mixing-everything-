@@ -27,7 +27,7 @@ import {
   verifyPlayerToken,
   verifyTestToken,
 } from './crypto'
-import { persistClearFinalButtonClicks, persistClearPhotos, persistClearPushSubscriptions, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistDeletePushPlayer, persistGetFinalButtonResults, persistGetPhoto, persistGetPushPublicKey, persistGetState, persistSavePushSubscription, persistSetFinalButtonScore, persistSetPhoto, persistSetState } from './persist'
+import { persistClearFinalButtonClicks, persistClearPhotos, persistClearPushSubscriptions, persistDeleteFinalButtonPlayer, persistDeletePhotos, persistDeletePushPlayer, persistGetFinalButtonResults, persistGetPhoto, persistGetPhotos, persistGetPushPublicKey, persistGetState, persistSavePushSubscription, persistSetFinalButtonScore, persistSetPhoto, persistSetState } from './persist'
 import { isSupabaseConfigured } from './supabase-admin'
 import { computeBingoBonuses, totalScore } from './scoring'
 import { buildTargetCycle } from './target-cycle'
@@ -625,6 +625,39 @@ export const gameStore = {
           ? [...store().messages.values()].map((m) => ({ id: m.id, text: m.text, created_at: m.created_at }))
           : [],
       ties: this.topTies(),
+    }
+  },
+
+  async getAdminBingoGallery(adminToken: string) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    const players = [...store().players.values()]
+      .filter((p) => p.event_id === event.id)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    const cards = players.map((player) => ({
+      player,
+      card: store().bingoCards.get(player.id) || null,
+    }))
+    const photoIds = cards.flatMap(({ card }) =>
+      card ? card.cells.filter((cell) => cell.completed && cell.photo_ref).map((cell) => cell.id) : [],
+    )
+    const photos = await persistGetPhotos(photoIds)
+
+    return {
+      eventId: event.id,
+      players: cards.map(({ player, card }) => ({
+        player: { id: player.id, name: player.name },
+        completed: card?.cells.filter((cell) => cell.completed).length || 0,
+        cells: card
+          ? card.cells.map((cell) => ({
+              id: cell.id,
+              index: cell.index,
+              text: cell.mystery && !cell.revealed ? '神秘任務' : cell.text,
+              completed: cell.completed,
+              photoUrl: photos[cell.id] || null,
+            }))
+          : [],
+      })),
     }
   },
 
