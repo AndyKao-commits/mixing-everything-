@@ -20,20 +20,29 @@ function PlayLayoutInner({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // Final phases must take over every player's screen at the same time.
-    // Without this redirect, players sitting on Home/Tasks/My never see the
-    // settlement countdown because that UI lives on /play/games.
+    // Final phases take over every player's screen, but once the 10-second
+    // settlement reveal is over, players may revisit /play/tasks to save their bingo.
+    const settlementRevealDone =
+      data.event.status === 'settlement' &&
+      Boolean(data.event.settlement_started_at) &&
+      Date.now() - new Date(data.event.settlement_started_at).getTime() >= 10_000
+    const postSettlementBingo = pathname === '/play/tasks' && settlementRevealDone
     const forceGames =
       data.event.status === 'message' ||
-      data.event.status === 'settlement' ||
+      (data.event.status === 'settlement' && !postSettlementBingo) ||
       (data.event.active_group_game && data.event.active_group_game !== 'none')
 
     if (forceGames && pathname !== '/play/games') router.replace('/play/games')
-  }, [data?.event?.status, data?.event?.active_group_game, data?.event?.entry_locked, data?.testAccess, pathname, router])
+  }, [data?.event?.status, data?.event?.active_group_game, data?.event?.entry_locked, data?.event?.settlement_started_at, data?.testAccess, pathname, router])
 
+  const settlementRevealDone =
+    data?.event?.status === 'settlement' &&
+    Boolean(data.event.settlement_started_at) &&
+    Date.now() - new Date(data.event.settlement_started_at).getTime() >= 10_000
+  const postSettlementBingo = pathname === '/play/tasks' && settlementRevealDone
   const immersive =
     data?.event?.status === 'message' ||
-    data?.event?.status === 'settlement' ||
+    (data?.event?.status === 'settlement' && !postSettlementBingo) ||
     (data?.event?.active_group_game && data.event.active_group_game !== 'none')
 
   return (

@@ -194,7 +194,7 @@ export async function persistSetPhoto(cellId: string, dataUrl: string): Promise<
   const { error } = await supabase.storage.from(BINGO_BUCKET).upload(cellId + '.jpg', bytes, {
     contentType,
     upsert: true,
-    cacheControl: '3600',
+    cacheControl: '0',
   })
   if (error) throw new Error('Bingo photo upload failed: ' + error.message)
 }

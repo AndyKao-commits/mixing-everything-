@@ -66,6 +66,15 @@ export async function routeApiRequest(input: {
       result = { status: 200, data: await gameStore.getPlayerBingoPhotos(playerToken) }
     } else if (method === 'POST' && path === 'bingo/reveal') {
       result = { status: 200, data: { cell: gameStore.revealMystery(playerToken, String(body.cellId)) } }
+    } else if (method === 'POST' && path === 'bingo/photo') {
+      result = {
+        status: 200,
+        data: gameStore.replaceBingoPhoto(
+          playerToken,
+          String(body.cellId),
+          String(body.photoDataUrl || ''),
+        ),
+      }
     } else if (method === 'POST' && path === 'bingo/complete') {
       result = {
         status: 200,
@@ -244,7 +253,7 @@ export async function routeApiRequest(input: {
       !isTestAccessGrant &&
       (method !== 'GET' || !hadDurableState)
     if (shouldPersist) {
-      if (method === 'POST' && path === 'bingo/complete') {
+      if (method === 'POST' && (path === 'bingo/complete' || path === 'bingo/photo')) {
         const completedCell = (result.data as any)?.bingo?.cells?.find((cell: any) => cell.id === String(body.cellId))
         if (completedCell?.photo_data_url?.startsWith('data:')) {
           const { persistSetPhoto } = await import('./persist')

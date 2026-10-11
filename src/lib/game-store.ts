@@ -1025,6 +1025,23 @@ export const gameStore = {
     return cell
   },
 
+  replaceBingoPhoto(token: string, cellId: string, photoDataUrl: string) {
+    const { player } = requirePlayerSession(token)
+    requireEvent()
+    const card = store().bingoCards.get(player.id)
+    if (!card) throw new Error('尚未取得九宮格')
+    const cell = card.cells.find((c) => c.id === cellId)
+    if (!cell) throw new Error('格子不存在')
+    if (!cell.completed) throw new Error('此格尚未完成，請使用一般完成流程')
+    if (!photoDataUrl?.startsWith('data:image/')) throw new Error('請上傳照片')
+    if (photoDataUrl.length > 4_000_000) throw new Error('照片太大，請壓縮後再傳')
+    if (card.cells.some((c) => c.id !== cell.id && c.photo_data_url === photoDataUrl)) {
+      throw new Error('這張照片已使用過')
+    }
+    cell.photo_data_url = photoDataUrl
+    return this.getPlayerView(token)
+  },
+
   completeBingoCell(token: string, cellId: string, photoDataUrl: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()

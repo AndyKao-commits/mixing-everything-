@@ -364,11 +364,15 @@ export default function GamesPage() {
           </div>
         ) : null}
         {isTop && rank.rank !== 2 ? <p className="text-soft">好好享受這個夜晚。</p> : null}
+        <div className="card space-y-2 text-ink">
+          <h2 className="font-display text-lg font-bold">儲存今晚的九宮格</h2>
+          <p className="text-sm text-soft">排名揭曉後可以回九宮格查看照片、替換已完成格子的照片，或匯出 3×3 合成圖。</p>
+          <a href="/play/tasks" className="btn-secondary">回九宮格儲存照片</a>
+        </div>
         {event.status === 'finished' ? (
           <div className="card space-y-3 text-ink">
             <h2 className="font-display text-xl font-bold">今晚回顧</h2>
             <p className="text-sm text-soft">活動結束後資料仍保留到主持人清除活動。你可以回任務下載九宮格照片，也可以重看全部留言。</p>
-            <a href="/play/tasks" className="btn-secondary">回九宮格下載照片</a>
             {data.messagesReady && data.messagesPublic?.length ? (
               <>
                 <div className="space-y-2">

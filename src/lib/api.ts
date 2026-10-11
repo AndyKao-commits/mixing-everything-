@@ -92,6 +92,12 @@ export const api = {
       headers: { 'x-player-token': token },
       body: JSON.stringify({ cellId }),
     }),
+  replaceBingoPhoto: (token: string, cellId: string, photoDataUrl: string) =>
+    req<any>('/api/bingo/photo', {
+      method: 'POST',
+      headers: { 'x-player-token': token },
+      body: JSON.stringify({ cellId, photoDataUrl }),
+    }),
   completeBingo: (token: string, cellId: string, photoDataUrl: string) =>
     req<any>('/api/bingo/complete', {
       method: 'POST',
