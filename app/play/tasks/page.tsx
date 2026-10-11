@@ -108,6 +108,7 @@ export default function TasksPage() {
     try {
       const photo = await cropSquareImage(cropFile, cropX, cropY, cropZoom)
       const cellId = activeCell.id
+      const replacing = Boolean(activeCell.completed)
       const view = await api.completeBingo(token, cellId, photo)
       setData(view)
       // Keep the just-captured image visible instantly while Storage remains authoritative.
@@ -119,7 +120,7 @@ export default function TasksPage() {
       setCropX(50)
       setCropY(50)
       setCropZoom(1)
-      setMsg('+1 分')
+      setMsg(replacing ? '照片已更新' : '+1 分')
       setTimeout(() => setMsg(''), 1500)
     } catch (e) {
       setError(e instanceof Error ? e.message : '上傳失敗')
@@ -405,9 +406,9 @@ export default function TasksPage() {
             ) : activeCell.completed ? (
               <div className="space-y-3">
                 <p className="text-moss">✓ 已完成</p>
-                {activeCell.photo_data_url ? (
+                {(bingoPhotos[activeCell.id] || activeCell.photo_data_url) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={activeCell.photo_data_url} alt="目前照片" className="aspect-square w-full rounded-2xl object-cover" />
+                  <img src={bingoPhotos[activeCell.id] || activeCell.photo_data_url} alt="目前照片" className="aspect-square w-full rounded-2xl object-cover" />
                 ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" className="btn-primary" disabled={busy} onClick={() => cameraInput.current?.click()}>重新拍照</button>
