@@ -111,7 +111,9 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'messages') {
       gameStore.submitMessage(playerToken, String(body.text || ''))
       result = { status: 200, data: { ok: true } }
-    } else if (method === 'POST' && path === 'settlement/decide') {
+    } else if (method === 'POST' && path === 'settlement/ready') {
+       result = { status: 200, data: gameStore.readySettlement(playerToken) }
+     } else if (method === 'POST' && path === 'settlement/decide') {
       const choice = body.choice === 'donate' ? 'donate' : 'keep'
       result = { status: 200, data: gameStore.decidePrize(playerToken, choice) }
     } else if (method === 'POST' && path === 'admin/login') {
@@ -235,7 +237,10 @@ export async function routeApiRequest(input: {
           }
           pushNotice = { title: '🏆 最終排名準備公布', body: '回來看今晚的結果。' }
           break
-        case 'finish_event':
+        case 'force_settlement_reveal':
+           result = { status: 200, data: gameStore.forceSettlementReveal(adminToken) }
+           break
+         case 'finish_event':
           result = { status: 200, data: gameStore.finishEvent(adminToken) }
           break
         case 'top_ties':
