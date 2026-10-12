@@ -262,6 +262,7 @@ export async function routeApiRequest(input: {
       result.status < 400 &&
       !isFinalTap &&
       !isTestAccessGrant &&
+      (path !== 'player/heartbeat' || Boolean((result.data as any)?.updated)) &&
       (method !== 'GET' || !hadDurableState)
     if (shouldPersist) {
       if (method === 'POST' && (path === 'bingo/complete' || path === 'bingo/photo')) {
