@@ -722,6 +722,7 @@ export const gameStore = {
     const event = requireEvent()
     const cleanName = name.trim().slice(0, 16)
     if (!cleanName) throw new Error('玩家名稱不可空白')
+    if ([...store().players.values()].some((p) => p.is_test_bot)) throw new Error('目前為機器人彩排場，請先清除測試機器人再加入真人')
     if (store().players.size >= 15) throw new Error('玩家人數上限為 15 人')
     if ([...store().players.values()].some((p) => p.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
       throw new Error('玩家名稱不可重複')
@@ -740,6 +741,65 @@ export const gameStore = {
     if (event.status === 'setup') resetSetupAssignments()
     touch(event)
     return player
+  },
+
+  createTestBots(adminToken: string, count: number) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    if (event.status !== 'setup' || !event.test_access_enabled) throw new Error('請先在設定階段啟用內部測試')
+    if (store().players.size !== 0) throw new Error('為保護真人資料，只有空白名單才能建立機器人彩排場')
+    const total = Math.min(15, Math.max(2, Math.floor(count || 12)))
+    for (let i = 1; i <= total; i++) {
+      const bot: Player = {
+        id: uid(), event_id: event.id, name: '🤖 測試' + String(i).padStart(2, '0'),
+        pin_hash: null, pin_salt: null, pin_set: false, is_test_bot: true,
+        created_at: nowIso(), last_seen_at: nowIso(),
+      }
+      store().players.set(bot.id, bot)
+    }
+    resetSetupAssignments()
+    touch(event)
+    return this.getAdminState()
+  },
+
+  clearTestBots(adminToken: string) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    if (event.status !== 'setup') throw new Error('只能在活動尚未開始時清除測試機器人')
+    if ([...store().players.values()].some((p) => !p.is_test_bot)) throw new Error('有真人參與，禁止清除')
+    store().players.clear()
+    resetSetupAssignments()
+    touch(event)
+    return this.getAdminState()
+  },
+
+  simulateTestBots(adminToken: string) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    const bots = [...store().players.values()].filter((p) => p.is_test_bot)
+    if (!bots.length || bots.length !== store().players.size || !event.test_access_enabled) throw new Error('目前不是獨立機器人彩排場')
+    // Every action is a bounded, explicit host request. There are no serverless background workers.
+    if (event.status === 'active' && event.active_group_game === 'none' && !event.score_locked) {
+      const index = Math.floor(Date.now() / 5000) % bots.length
+      addScore(event, bots[index].id, 'admin_adjustment', uid(), (index % 3) + 1, '🤖 自動彩排')
+    } else if (event.status === 'message') {
+      for (const bot of bots) {
+        if (![...store().messages.values()].some((m) => m.player_id === bot.id)) {
+          store().messages.set(bot.id, {
+            id: uid(), event_id: event.id, player_id: bot.id,
+            text: '🤖 自動彩排留言', created_at: nowIso(),
+          })
+        }
+      }
+    } else if (event.status === 'settlement' && !event.settlement_started_at) {
+      const ready = new Set(event.settlement_ready_ids || [])
+      for (const bot of bots) ready.add(bot.id)
+      event.settlement_ready_ids = [...ready]
+      this.beginSettlementReveal(event)
+    }
+    for (const bot of bots) bot.last_seen_at = nowIso()
+    touch(event)
+    return this.getAdminState()
   },
 
   renamePlayer(adminToken: string, playerId: string, name: string) {
@@ -941,6 +1001,7 @@ export const gameStore = {
     if (pin !== confirm) throw new Error('兩次 PIN 不一致')
     const player = store().players.get(playerId)
     if (!player) throw new Error('玩家不存在')
+    if (player.is_test_bot) throw new Error('測試機器人不能使用真人登入')
     if (player.pin_set) throw new Error('此玩家已設定 PIN，請直接登入')
     const { hash, salt } = hashPin(pin)
     player.pin_hash = hash
@@ -953,6 +1014,7 @@ export const gameStore = {
     this.bootstrap()
     const event = requireEvent()
     const player = store().players.get(playerId)
+    if (player?.is_test_bot) throw new Error('測試機器人不能使用真人登入')
     if (!player || !player.pin_hash || !player.pin_salt) throw new Error('請先設定 PIN')
     if (!verifyPin(pin, player.pin_hash, player.pin_salt)) throw new Error('PIN 錯誤')
     const token = signPlayerToken(player.id, event.id)
