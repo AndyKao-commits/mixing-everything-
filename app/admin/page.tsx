@@ -808,6 +808,12 @@ export default function AdminPage() {
           <button type="button" className="btn-ghost" disabled={busy || event?.status !== 'settlement' || !event.settlement_started_at} onClick={() => act('finish_event')}>
             結束活動（關閉 60 秒贈與）
           </button>
+          <div className="card space-y-2">
+            <h2 className="font-semibold">活動健康監控／彩排檢查</h2>
+            <p className="text-sm text-soft">最近 60 秒在線：{state?.presence?.online ?? '—'} / {state?.presence?.total ?? players.length} 位</p>
+            <p className="text-xs text-soft">此處只讀取在線狀態；不會建立假玩家或清除資料。</p>
+            <p className="text-xs text-soft">彩排檢查：多裝置準備、玩家離線、強制開始、共同倒數、照片更換及獎金。</p>
+          </div>
           {state?.settlement ? (
             <div className="card space-y-2">
               <p className="font-semibold">結算排名</p>
