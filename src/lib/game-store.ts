@@ -611,6 +611,7 @@ export const gameStore = {
     } = event
     return {
       event: safeEvent,
+      presence: { online: [...store().players.values()].filter((p) => p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() < 60000).length, total: store().players.size, checkedAt: nowIso() },
       players: [...store().players.values()].map((p) => ({
         ...p,
         pin_hash: null,
