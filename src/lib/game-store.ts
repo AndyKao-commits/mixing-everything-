@@ -1693,6 +1693,11 @@ export const gameStore = {
     return settlement
   },
 
+  heartbeat(token: string) {
+    const { player } = requirePlayerSession(token)
+    return { ok: true, playerId: player.id, serverTime: Date.now() }
+  },
+
   readySettlement(token: string) {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
