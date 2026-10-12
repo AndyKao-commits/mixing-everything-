@@ -16,3 +16,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Isolated end-to-end regression
+        env:
+          ADMIN_PIN: '2468'
+          SESSION_SECRET: 'ci-isolated-party-session-secret-not-production'
+        run: |
+          npm run start -- --port 3100 > /tmp/party-test-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3100/api/state > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/integration-regression.mjs
+
