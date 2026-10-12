@@ -275,6 +275,34 @@ export default function GamesPage() {
 
   if (!data) return <p className="py-20 text-center text-soft">載入中…</p>
 
+  // Gather everyone before the server-owned synchronized reveal.
+  if (event.status === 'settlement' && !event.settlement_started_at) {
+    const readyIds: string[] = event.settlement_ready_ids || []
+    const roster: Array<{ id: string; name: string }> = data.roster || []
+    const mineReady = data.settlementReady || readyIds.includes(data.player.id)
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-5 text-center animate-rise">
+        <p className="tracking-[0.3em] text-soft">FINAL RESULT</p>
+        <h1 className="font-display text-4xl font-bold">全員集合！準備結算</h1>
+        <p className="text-soft">已準備 {readyIds.length} / {roster.length} 人</p>
+        <button type="button" className="btn-primary" disabled={busy || mineReady} onClick={async () => {
+          const token = getPlayerToken()
+          if (!token) return
+          setBusy(true)
+          try { setData(await api.readySettlement(token)) }
+          catch (e) { setError(e instanceof Error ? e.message : '準備失敗') }
+          finally { setBusy(false) }
+        }}>{mineReady ? '✓ 已準備，等待大家' : '我準備好結算了'}</button>
+        <div className="card w-full max-w-md text-left">
+          <p className="mb-2 font-semibold">尚未準備的玩家</p>
+          {roster.filter((p) => !readyIds.includes(p.id)).map((p) => <p key={p.id} className="py-1 text-soft">{p.name}</p>)}
+          {roster.every((p) => readyIds.includes(p.id)) ? <p>全員就緒，即將倒數</p> : null}
+        </div>
+        {error ? <p role="alert" className="text-red-500">{error}</p> : null}
+      </div>
+    )
+  }
+
   // Settlement reveal
   if (event.status === 'settlement' && settlementCountdown !== null && settlementCountdown > 0) {
     return (
