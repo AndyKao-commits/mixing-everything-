@@ -1684,16 +1684,48 @@ export const gameStore = {
       }
     }
     event.status = 'settlement'
-    event.settlement_started_at = nowIso()
-    event.donation_ends_at = new Date(Date.now() + 60_000).toISOString()
+    event.settlement_ready_ids = []
+    event.settlement_started_at = null
+    event.donation_ends_at = null
     touch(event)
     return settlement
+  },
+
+  readySettlement(token: string) {
+    const { player } = requirePlayerSession(token)
+    const event = requireEvent()
+    if (event.status !== 'settlement') throw new Error('尚未進入結算')
+    if (!event.settlement_started_at) {
+      const ready = new Set(event.settlement_ready_ids || [])
+      ready.add(player.id)
+      event.settlement_ready_ids = [...ready]
+      const players = [...store().players.values()].filter((p) => p.event_id === event.id)
+      if (players.length && players.every((p) => ready.has(p.id))) this.beginSettlementReveal(event)
+      touch(event)
+    }
+    return this.getPlayerView(token)
+  },
+
+  beginSettlementReveal(event: Event) {
+    if (event.status !== 'settlement' || event.settlement_started_at) return
+    event.settlement_started_at = nowIso()
+    event.donation_ends_at = new Date(Date.now() + 70_000).toISOString()
+    touch(event)
+  },
+
+  forceSettlementReveal(adminToken: string) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    if (event.status !== 'settlement') throw new Error('尚未進入結算')
+    this.beginSettlementReveal(event)
+    return this.getAdminState()
   },
 
   decidePrize(token: string, choice: 'keep' | 'donate') {
     const { player } = requirePlayerSession(token)
     const event = requireEvent()
-    if (event.status !== 'settlement') throw new Error('尚未開始結算')
+    if (event.status !== 'settlement' || !event.settlement_started_at) throw new Error('尚未公布排名')
+    if (Date.now() < new Date(event.settlement_started_at).getTime() + 10_000) throw new Error('排名揭曉倒數中')
     const decision = store().prizeDecisions.get(player.id)
     if (!decision) throw new Error('你沒有贈與選項')
     if (decision.choice) throw new Error('已決定，不能修改')
@@ -1714,7 +1746,7 @@ export const gameStore = {
   finishEvent(adminToken: string) {
     requireAdmin(adminToken)
     const event = requireEvent()
-    if (event.status !== 'settlement') throw new Error('尚未開始結算')
+    if (event.status !== 'settlement' || !event.settlement_started_at) throw new Error('尚未公布排名')
     const undecided = [...store().prizeDecisions.values()].filter((d) => !d.choice)
     const donationEndsAt = event.donation_ends_at ? new Date(event.donation_ends_at).getTime() : 0
     if (undecided.length && Date.now() < donationEndsAt) {
