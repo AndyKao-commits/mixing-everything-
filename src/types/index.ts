@@ -56,6 +56,7 @@ export interface Player {
   pin_hash: string | null
   pin_salt: string | null
   pin_set: boolean
+  is_test_bot?: boolean
   created_at: string
   last_seen_at: string | null
 }
