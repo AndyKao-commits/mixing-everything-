@@ -18,6 +18,10 @@ export default function GamesPage() {
   const [busy, setBusy] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [settlementCountdown, setSettlementCountdown] = useState<number | null>(null)
+  const serverClock = useRef<{ offset: number; sample: number }>({ offset: 0, sample: 0 })
+  useEffect(() => {
+    if (typeof data?.serverTime === 'number') serverClock.current = { offset: data.serverTime - Date.now(), sample: Date.now() }
+  }, [data?.serverTime])
   const [left, setLeft] = useState<number | null>(null)
   const [chestHit, setChestHit] = useState(false)
   const chestHitTimer = useRef<number | null>(null)
@@ -69,14 +73,14 @@ export default function GamesPage() {
       return
     }
     const tick = () => {
-      const clockOffset = typeof data?.serverTime === 'number' ? data.serverTime - Date.now() : 0
+      const clockOffset = serverClock.current.offset
       const elapsed = Date.now() + clockOffset - new Date(event.settlement_started_at).getTime()
       setSettlementCountdown(elapsed < 10_000 ? Math.max(1, 10 - Math.floor(elapsed / 1000)) : 0)
     }
     tick()
     const id = window.setInterval(tick, 100)
     return () => window.clearInterval(id)
-  }, [event?.status, event?.settlement_started_at, data?.serverTime])
+  }, [event?.status, event?.settlement_started_at])
 
   async function sendDontCopy() {
     const token = getPlayerToken()

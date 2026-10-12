@@ -806,7 +806,7 @@ export default function AdminPage() {
             <div className="card space-y-3 border border-ember/30">
               <h2 className="font-semibold">全員集合 · 結算準備</h2>
               <p>已準備 {(event.settlement_ready_ids || []).length} / {players.length} 位</p>
-              <p className="text-sm text-soft">未準備：{players.filter((p: any) => !(event.settlement_ready_ids || []).includes(p.id)).map((p: any) => p.name).join('、') || '全員已準備'}</p>
+              <p className="text-sm text-soft">未準備：{players.filter((p: any) => !(event.settlement_ready_ids || []).includes(p.id)).map((p: any) => `${p.name}${p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() > 60000 ? '（可能離線）' : ''}`).join('、') || '全員已準備'}</p>
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => { if (confirm('略過未準備玩家，開始同步倒數？')) void act('force_settlement_reveal') }}>主持人強制開始</button>
             </div>
           ) : null}

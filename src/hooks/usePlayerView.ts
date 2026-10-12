@@ -38,7 +38,7 @@ export function usePlayerViewSource(pollMs = 2000) {
     void refresh()
     const beat = async () => { const token = getPlayerToken(); if (token && document.visibilityState === 'visible') await api.heartbeat(token).catch(() => {}) }
     void beat()
-    const heartbeatTimer = window.setInterval(() => { void beat() }, 25000)
+    const heartbeatTimer = window.setInterval(() => { void beat() }, 45000)
     let timer: number | undefined
     let stopped = false
 
