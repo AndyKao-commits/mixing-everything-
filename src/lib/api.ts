@@ -182,6 +182,18 @@ export const api = {
         cells: Array<{ id: string; index: number; text: string; completed: boolean; photoUrl: string | null }>
       }>
     }>('/api/admin/bingo-gallery', { headers: { 'x-admin-token': token } }),
+  adminBingoExport: (token: string, playerId: string) =>
+    req<{
+      eventId: string
+      eventName: string
+      player: { id: string; name: string }
+      completed: number
+      cells: Array<{ id: string; index: number; text: string; completed: boolean; photoUrl: string | null }>
+    }>('/api/admin/bingo-export', {
+      method: 'POST',
+      headers: { 'x-admin-token': token },
+      body: JSON.stringify({ playerId }),
+    }),
   adminAction: (token: string, action: string, payload: Record<string, unknown> = {}) =>
     req<any>('/api/admin/action', {
       method: 'POST',
