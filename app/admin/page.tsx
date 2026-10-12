@@ -198,7 +198,7 @@ export default function AdminPage() {
             : event?.status === 'message'
               ? '等待所有人留言完成後開始結算'
               : event?.status === 'settlement'
-                ? '結算進行中，等待贈與倒數完成'
+                ? '等待全員準備、揭曉及贈與'
                 : event?.status === 'finished'
                   ? '活動已完成，可保留回顧或清除本場資料'
                   : '依目前狀態進行'
@@ -794,10 +794,18 @@ export default function AdminPage() {
                 if (confirm('發起全員結算？玩家都按準備後才會共同倒數揭曉。')) void act('start_settlement')
               }}
             >
-              開始最終結算
+              發起全員集合結算
             </button>
           )}
-          <button type="button" className="btn-ghost" disabled={busy || event?.status !== 'settlement'} onClick={() => act('finish_event')}>
+          {event?.status === 'settlement' && !event.settlement_started_at ? (
+            <div className="card space-y-3 border border-ember/30">
+              <h2 className="font-semibold">全員集合 · 結算準備</h2>
+              <p>已準備 {(event.settlement_ready_ids || []).length} / {players.length} 位</p>
+              <p className="text-sm text-soft">未準備：{players.filter((p: any) => !(event.settlement_ready_ids || []).includes(p.id)).map((p: any) => p.name).join('、') || '全員已準備'}</p>
+              <button type="button" className="btn-secondary" disabled={busy} onClick={() => { if (confirm('略過未準備玩家，開始同步倒數？')) void act('force_settlement_reveal') }}>主持人強制開始</button>
+            </div>
+          ) : null}
+          <button type="button" className="btn-ghost" disabled={busy || event?.status !== 'settlement' || !event.settlement_started_at} onClick={() => act('finish_event')}>
             結束活動（關閉 60 秒贈與）
           </button>
           {state?.settlement ? (
