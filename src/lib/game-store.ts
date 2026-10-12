@@ -989,6 +989,7 @@ export const gameStore = {
     const txs = store().scores.filter((s) => s.player_id === player.id)
     const completedBingo = card?.cells.filter((c) => c.completed).length || 0
     const completedBounties = myBounties.filter((b) => b.completed).length
+    const canReveal = event.status === 'finished' || (event.status === 'settlement' && Boolean(event.settlement_started_at) && Date.now() >= new Date(event.settlement_started_at!).getTime() + 10_000)
     return {
       event: {
         id: event.id,
