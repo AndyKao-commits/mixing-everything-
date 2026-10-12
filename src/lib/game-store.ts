@@ -1694,8 +1694,11 @@ export const gameStore = {
   },
 
   heartbeat(token: string) {
-    const { player } = requirePlayerSession(token)
-    return { ok: true, playerId: player.id, serverTime: Date.now() }
+    const { player } = requirePlayerSession(token, { touch: false })
+    const previous = player.last_seen_at ? new Date(player.last_seen_at).getTime() : 0
+    const updated = Date.now() - previous >= 40_000
+    if (updated) player.last_seen_at = nowIso()
+    return { ok: true, playerId: player.id, serverTime: Date.now(), updated }
   },
 
   readySettlement(token: string) {
