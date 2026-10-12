@@ -160,7 +160,9 @@ export const api = {
       headers: { 'x-player-token': token },
       body: JSON.stringify({ text }),
     }),
-  decidePrize: (token: string, choice: 'keep' | 'donate') =>
+  readySettlement: (token: string) =>
+     req<any>('/api/settlement/ready', { method: 'POST', headers: { 'x-player-token': token } }),
+   decidePrize: (token: string, choice: 'keep' | 'donate') =>
     req<any>('/api/settlement/decide', {
       method: 'POST',
       headers: { 'x-player-token': token },
