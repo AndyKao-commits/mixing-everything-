@@ -121,6 +121,8 @@ export async function routeApiRequest(input: {
       result = { status: 200, data: gameStore.getAdminState() }
     } else if (method === 'GET' && path === 'admin/bingo-gallery') {
       result = { status: 200, data: await gameStore.getAdminBingoGallery(adminToken) }
+    } else if (method === 'POST' && path === 'admin/bingo-export') {
+      result = { status: 200, data: await gameStore.getAdminBingoExport(adminToken, String(body.playerId || '')) }
     } else if (method === 'POST' && path === 'admin/action') {
       const action = String(body.action || '')
       switch (action) {

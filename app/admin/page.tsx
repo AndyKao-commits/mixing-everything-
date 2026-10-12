@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PinPad } from '@/components/PinPad'
 import { api } from '@/lib/api'
+import { exportBingoImage } from '@/lib/bingo-export'
 import { clearAdminToken, getAdminToken, setAdminToken } from '@/lib/client-session'
 
 type Tab = 'overview' | 'players' | 'tasks' | 'games' | 'notify' | 'settle'
@@ -22,6 +23,7 @@ export default function AdminPage() {
   const [testPin, setTestPin] = useState('')
   const [bingoGallery, setBingoGallery] = useState<any>(null)
   const [bingoLoading, setBingoLoading] = useState(false)
+  const [exportingBingoId, setExportingBingoId] = useState<string | null>(null)
 
   const refresh = useCallback(async (t = token) => {
     if (!t) return
@@ -99,6 +101,54 @@ export default function AdminPage() {
       setError(e instanceof Error ? e.message : '九宮格載入失敗')
     } finally {
       setBingoLoading(false)
+    }
+  }
+
+  async function exportPlayerBingo(playerId: string) {
+    if (!token || exportingBingoId) return
+    setExportingBingoId(playerId)
+    setError('')
+    try {
+      // Fetch newly signed URLs for this player only. The gallery may be stale.
+      const card = await api.adminBingoExport(token, playerId)
+      const missingPhotos = card.cells.filter((cell) => cell.completed && !cell.photoUrl)
+      if (missingPhotos.length) throw new Error(`有 ${missingPhotos.length} 張已完成照片無法讀取，請稍後再試`)
+      const cells = [...card.cells]
+        .sort((a, b) => a.index - b.index)
+        .map((cell) => ({
+          text: cell.text,
+          completed: cell.completed,
+          photo_data_url: cell.photoUrl,
+        }))
+      const blob = await exportBingoImage({
+        eventName: card.eventName,
+        playerName: card.player.name,
+        cells,
+        completed: card.completed,
+      })
+      const safeName = card.player.name.replace(/[\\/:*?"<>|]/g, '_')
+      const file = new File([blob], `${safeName}-九宮格.png`, { type: 'image/png' })
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: `${card.player.name} 的九宮格` })
+          return
+        } catch (error) {
+          if ((error as Error)?.name === 'AbortError') return
+          // Browsers with an unreliable share sheet can still download.
+        }
+      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = file.name
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '九宮格匯出失敗')
+    } finally {
+      setExportingBingoId(null)
     }
   }
 
@@ -448,6 +498,15 @@ export default function AdminPage() {
                   </div>
 
                   {entry.cells.length ? (
+                    <>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={exportingBingoId !== null || bingoLoading}
+                      onClick={() => void exportPlayerBingo(entry.player.id)}
+                    >
+                      {exportingBingoId === entry.player.id ? '正在產生九宮格圖片…' : `匯出 ${entry.player.name} 的九宮格`}
+                    </button>
                     <div className="grid grid-cols-3 gap-2">
                       {entry.cells.map((cell: any) => (
                         <div key={cell.id} className="overflow-hidden rounded-2xl bg-paper">
@@ -465,6 +524,7 @@ export default function AdminPage() {
                         </div>
                       ))}
                     </div>
+                    </>
                   ) : (
                     <p className="text-sm text-soft">尚未發放九宮格。</p>
                   )}

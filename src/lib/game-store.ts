@@ -661,6 +661,31 @@ export const gameStore = {
     }
   },
 
+  async getAdminBingoExport(adminToken: string, playerId: string) {
+    requireAdmin(adminToken)
+    const event = requireEvent()
+    const player = store().players.get(playerId)
+    if (!player || player.event_id !== event.id) throw new Error('玩家不存在')
+    const card = store().bingoCards.get(player.id)
+    if (!card) throw new Error('此玩家尚未取得九宮格')
+    // Sign only the selected player's stored photos, not everyone's gallery.
+    const ids = card.cells.filter((cell) => cell.completed && cell.photo_ref).map((cell) => cell.id)
+    const photos = await persistGetPhotos(ids)
+    return {
+      eventId: event.id,
+      eventName: event.name,
+      player: { id: player.id, name: player.name },
+      completed: card.cells.filter((cell) => cell.completed).length,
+      cells: card.cells.map((cell) => ({
+        id: cell.id,
+        index: cell.index,
+        text: cell.mystery && !cell.revealed ? '神秘任務' : cell.text,
+        completed: cell.completed,
+        photoUrl: photos[cell.id] || null,
+      })),
+    }
+  },
+
   requireAdmin,
 
   async clearEventData(adminToken: string) {
