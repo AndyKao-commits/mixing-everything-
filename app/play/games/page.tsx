@@ -328,8 +328,9 @@ export default function GamesPage() {
 
     return (
       <div className="space-y-5 animate-rise">
-        <section className={`rounded-[2rem] p-6 text-center shadow-card ${isTop ? 'bg-cream text-ink' : 'bg-ink text-white'}`}>
-          {isTop ? <p className="text-5xl" aria-hidden="true">{rank.rank === 1 ? '🏆' : rank.rank === 2 ? '🥈' : '🥉'}</p> : null}
+        <section className={`relative overflow-hidden rounded-[2rem] p-6 text-center shadow-card ${isTop ? 'bg-cream text-ink' : 'bg-ink text-white'}`}>
+          {isTop ? <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-amber-300 via-ember to-amber-300" /> : null}
+           {isTop ? <p className="text-5xl animate-bounce" aria-hidden="true">{rank.rank === 1 ? '🏆' : rank.rank === 2 ? '🥈' : '🥉'}</p> : null}
           <p className="mt-2 text-xs font-semibold tracking-[0.2em] opacity-60">YOUR RESULT</p>
           <h1 className={`mt-3 font-display font-bold ${isTop ? 'text-5xl text-ink' : 'text-6xl text-ember'}`}>
           {rank.rank === 1 ? '🏆 第一名' : rank.rank === 2 ? '第二名' : rank.rank === 3 ? '第三名' : `第 ${rank.rank} 名`}
