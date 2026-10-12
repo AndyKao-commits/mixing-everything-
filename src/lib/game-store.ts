@@ -1020,13 +1020,13 @@ export const gameStore = {
       completedBounties,
       groupGame: safeGroupGame(player.id),
       messageSubmitted: [...store().messages.values()].some((m) => m.player_id === player.id),
-      prizeDecision: store().prizeDecisions.get(player.id) || null,
-      myRank:
-        store().settlement?.rankings.find((r) => r.player_id === player.id) || null,
+      serverTime: Date.now(),
+      prizeDecision: canReveal ? store().prizeDecisions.get(player.id) || null : null,
+      myRank: canReveal ? store().settlement?.rankings.find((r) => r.player_id === player.id) || null : null,
       donationTotal:
-        (store().settlement?.rankings.find((r) => r.rank === 2)?.prize || 0) +
-        [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').reduce((sum, d) => sum + d.amount, 0),
-      donors: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length,
+        canReveal ? (store().settlement?.rankings.find((r) => r.rank === 2)?.prize || 0) +
+          [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').reduce((sum, d) => sum + d.amount, 0) : 0,
+      donors: canReveal ? [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length : 0,
       // Names only — never include scores here.
       roster: publicPlayers().map((p) => ({ id: p.id, name: p.name })),
       messagesPublic:
