@@ -791,7 +791,7 @@ export default function AdminPage() {
               className="btn-secondary"
               disabled={busy || event?.status !== 'message' || (state?.messageCount || 0) < players.length}
               onClick={() => {
-                if (confirm('開始最終結算？所有手機將同步進排名揭曉。')) void act('start_settlement')
+                if (confirm('發起全員結算？玩家都按準備後才會共同倒數揭曉。')) void act('start_settlement')
               }}
             >
               開始最終結算
