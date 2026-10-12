@@ -159,6 +159,15 @@ export async function routeApiRequest(input: {
         case 'activate':
           result = { status: 200, data: gameStore.activateEvent(adminToken) }
           break
+        case 'create_test_bots':
+          result = { status: 200, data: gameStore.createTestBots(adminToken, Number(body.count || 12)) }
+          break
+        case 'clear_test_bots':
+          result = { status: 200, data: gameStore.clearTestBots(adminToken) }
+          break
+        case 'simulate_test_bots':
+          result = { status: 200, data: gameStore.simulateTestBots(adminToken) }
+          break
         case 'create_player':
           result = { status: 200, data: gameStore.createPlayer(adminToken, String(body.name || '')) }
           break
