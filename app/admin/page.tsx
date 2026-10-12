@@ -761,6 +761,11 @@ export default function AdminPage() {
 
       {tab === 'settle' ? (
         <div className="space-y-3">
+          <div className="card space-y-2">
+            <p className="text-xs font-semibold tracking-wider text-soft">結算流程</p>
+            <p className="text-sm font-medium">鎖定積分 → 最後留言 → 全員準備 → 倒數揭曉 → 贈與獎金</p>
+            <p className="text-sm text-soft">目前階段：{event?.status === 'active' ? '自由活動' : event?.status === 'score_locked' ? '待開啟留言' : event?.status === 'message' ? '留言收集中' : event?.status === 'settlement' ? (event.settlement_started_at ? '頒獎與贈與' : '等待全員準備') : event?.status === 'finished' ? '已結束' : '活動設定'}</p>
+          </div>
           {event?.status === 'active' ? (
           <button
             type="button"
