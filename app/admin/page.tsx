@@ -21,6 +21,7 @@ export default function AdminPage() {
   const [noticeSent, setNoticeSent] = useState('')
   const [noticePlayerIds, setNoticePlayerIds] = useState<string[]>([])
   const [testPin, setTestPin] = useState('')
+  const [botAuto, setBotAuto] = useState(false)
   const [bingoGallery, setBingoGallery] = useState<any>(null)
   const [bingoLoading, setBingoLoading] = useState(false)
   const [exportingBingoId, setExportingBingoId] = useState<string | null>(null)
@@ -90,6 +91,28 @@ export default function AdminPage() {
       })()
     }
   }, [pin])
+
+  useEffect(() => {
+    if (!botAuto || !token) return
+    let active = true
+    let running = false
+    const timer = window.setInterval(async () => {
+      if (!active || running || document.visibilityState !== 'visible') return
+      running = true
+      try {
+        const result = await api.adminAction(token, 'simulate_test_bots')
+        if (active) setState(result)
+      } catch (e) {
+        if (active) {
+          setBotAuto(false)
+          setError(e instanceof Error ? e.message : '機器人彩排已停止')
+        }
+      } finally {
+        running = false
+      }
+    }, 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [botAuto, token])
 
   async function loadBingoGallery() {
     if (!token) return
@@ -428,7 +451,10 @@ export default function AdminPage() {
             {players.some((p: any) => p.is_test_bot) ? (
               <div className="space-y-2">
                 <button type="button" className="btn-primary" disabled={busy || !event?.test_access_enabled} onClick={() => void act('simulate_test_bots')}>執行一輪機器人模擬</button>
-                <p className="text-xs text-soft">依活動階段自動模擬：自由活動加分、最後留言、全員結算準備。每按一次執行一輪，不會在背景不斷消耗資源。</p>
+                <button type="button" className={botAuto ? 'btn-ghost text-ember w-full' : 'btn-secondary'} disabled={busy || !event?.test_access_enabled} onClick={() => setBotAuto(!botAuto)}>
+                  {botAuto ? '■ 停止自動模擬' : '▶ 啟動自動模擬（每 5 秒）'}
+                </button>
+                <p className="text-xs text-soft">依活動階段自動模擬：自由活動加分、最後留言、全員結算準備。可手動執行，或由後台在頁面開啟時每 5 秒模擬一輪；關閉或切到背景時不會持續執行。</p>
                 <button type="button" className="btn-ghost text-ember" disabled={busy || event?.status !== 'setup'} onClick={() => {
                   if (confirm('清除全部測試機器人？只能在活動開始前進行。')) void act('clear_test_bots')
                 }}>清除測試機器人</button>
