@@ -29,4 +29,5 @@ jobs:
             sleep 1
           done
           node scripts/integration-regression.mjs
+          BASE_URL=http://127.0.0.1:3100 USERS=15 ROUNDS=10 npm run load:test
 
