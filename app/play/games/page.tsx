@@ -329,8 +329,15 @@ export default function GamesPage() {
 
     return (
       <div className="space-y-5 animate-rise">
-        <section className={`relative overflow-hidden rounded-[2rem] p-6 text-center shadow-card ${isTop ? 'bg-cream text-ink' : 'bg-ink text-white'}`}>
+        <section className={`prize-arrive relative overflow-hidden rounded-[2rem] p-6 text-center shadow-card ${isTop ? 'bg-cream text-ink' : 'bg-ink text-white'}`}>
           {isTop ? <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-amber-300 via-ember to-amber-300" /> : null}
+           {isTop ? <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+             {Array.from({ length: 15 }, (_, i) => <span key={i} className="prize-confetti" style={{
+               left: `${(i * 37 + 13) % 94}%`,
+               backgroundColor: ['#E85D04', '#F6C344', '#2A9D8F', '#FFFFFF'][i % 4],
+               animationDelay: `${(i % 7) * 0.11}s`,
+             }} />)}
+           </div> : null}
            {isTop ? <p className="text-5xl animate-bounce" aria-hidden="true">{rank.rank === 1 ? '🏆' : rank.rank === 2 ? '🥈' : '🥉'}</p> : null}
           <p className="mt-2 text-xs font-semibold tracking-[0.2em] opacity-60">YOUR RESULT</p>
           <h1 className={`mt-3 font-display font-bold ${isTop ? 'text-5xl text-ink' : 'text-6xl text-ember'}`}>
