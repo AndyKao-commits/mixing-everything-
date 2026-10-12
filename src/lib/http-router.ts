@@ -111,7 +111,9 @@ export async function routeApiRequest(input: {
     } else if (method === 'POST' && path === 'messages') {
       gameStore.submitMessage(playerToken, String(body.text || ''))
       result = { status: 200, data: { ok: true } }
-    } else if (method === 'POST' && path === 'settlement/ready') {
+    } else if (method === 'POST' && path === 'player/heartbeat') {
+       result = { status: 200, data: gameStore.heartbeat(playerToken) }
+     } else if (method === 'POST' && path === 'settlement/ready') {
        result = { status: 200, data: gameStore.readySettlement(playerToken) }
      } else if (method === 'POST' && path === 'settlement/decide') {
       const choice = body.choice === 'donate' ? 'donate' : 'keep'
