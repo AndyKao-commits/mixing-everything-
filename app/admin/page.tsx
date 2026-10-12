@@ -418,6 +418,28 @@ export default function AdminPage() {
 
       {tab === 'players' ? (
         <div className="space-y-3">
+          <div className="card space-y-3 border border-ember/20">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold">🤖 測試機器人控制台</h2>
+              <span className="text-xs text-soft">僅限獨立彩排場</span>
+            </div>
+            <p className="text-sm text-soft">建立 12 位虛擬玩家，模擬在線、累積分數、最後留言與全員準備。測試角色不會使用真人 PIN。</p>
+            <p className="text-sm">機器人：{players.filter((p: any) => p.is_test_bot).length} 位 · 最近在線：{players.filter((p: any) => p.is_test_bot && p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() < 60000).length} 位</p>
+            {players.some((p: any) => p.is_test_bot) ? (
+              <div className="space-y-2">
+                <button type="button" className="btn-primary" disabled={busy || !event?.test_access_enabled} onClick={() => void act('simulate_test_bots')}>執行一輪機器人模擬</button>
+                <p className="text-xs text-soft">依活動階段自動模擬：自由活動加分、最後留言、全員結算準備。每按一次執行一輪，不會在背景不斷消耗資源。</p>
+                <button type="button" className="btn-ghost text-ember" disabled={busy || event?.status !== 'setup'} onClick={() => {
+                  if (confirm('清除全部測試機器人？只能在活動開始前進行。')) void act('clear_test_bots')
+                }}>清除測試機器人</button>
+              </div>
+            ) : (
+              <button type="button" className="btn-primary" disabled={busy || event?.status !== 'setup' || !event?.test_access_enabled || players.length > 0} onClick={() => {
+                if (confirm('建立 12 位測試機器人？僅限空白玩家名單，請勿在正式活動中使用。')) void act('create_test_bots', { count: 12 })
+              }}>建立 12 位測試機器人</button>
+            )}
+            {!event?.test_access_enabled ? <p className="text-xs text-ember">請先到「總覽」開啟內部測試，才能操作機器人。</p> : null}
+          </div>
           <div className="flex gap-2">
             <input className="field" value={name} placeholder="新玩家名稱" onChange={(e) => setName(e.target.value)} />
             <button
@@ -441,7 +463,7 @@ export default function AdminPage() {
                     if (e.target.value !== p.name) void act('rename_player', { playerId: p.id, name: e.target.value })
                   }}
                 />
-                <span className="shrink-0 text-sm text-soft">{p.pin_set ? 'PIN✓' : '未設PIN'}</span>
+                <span className="shrink-0 text-sm text-soft">{p.is_test_bot ? '🤖 BOT' : p.pin_set ? 'PIN✓' : '未設PIN'}</span>
               </div>
               <div className="flex gap-2">
                 <button
