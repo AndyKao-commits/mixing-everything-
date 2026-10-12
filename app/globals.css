@@ -94,3 +94,22 @@ body {
 .tab-chip.active {
   @apply bg-ink text-white;
 }
+
+/* Brief winner celebration; respects reduced-motion preferences. */
+@keyframes prize-arrive {
+  0% { opacity: 0; transform: translateY(24px) scale(.92); }
+  70% { opacity: 1; transform: translateY(-3px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes prize-confetti {
+  0% { opacity: 0; transform: translateY(-35px) rotate(0deg); }
+  12% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(240px) rotate(500deg); }
+}
+.prize-arrive { animation: prize-arrive .8s ease-out both; }
+.prize-confetti { position: absolute; top: 0; width: 8px; height: 16px; border-radius: 2px; animation: prize-confetti 2.5s ease-in both; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .prize-arrive, .prize-confetti { animation: none !important; }
+  .prize-confetti { display: none; }
+}

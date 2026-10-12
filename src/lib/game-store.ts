@@ -611,6 +611,7 @@ export const gameStore = {
     } = event
     return {
       event: safeEvent,
+      presence: { online: [...store().players.values()].filter((p) => p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() < 60000).length, total: store().players.size, checkedAt: nowIso() },
       players: [...store().players.values()].map((p) => ({
         ...p,
         pin_hash: null,
@@ -988,6 +989,7 @@ export const gameStore = {
     const txs = store().scores.filter((s) => s.player_id === player.id)
     const completedBingo = card?.cells.filter((c) => c.completed).length || 0
     const completedBounties = myBounties.filter((b) => b.completed).length
+    const canReveal = event.status === 'finished' || (event.status === 'settlement' && Boolean(event.settlement_started_at) && Date.now() >= new Date(event.settlement_started_at!).getTime() + 10_000)
     return {
       event: {
         id: event.id,
@@ -1020,13 +1022,13 @@ export const gameStore = {
       completedBounties,
       groupGame: safeGroupGame(player.id),
       messageSubmitted: [...store().messages.values()].some((m) => m.player_id === player.id),
-      prizeDecision: store().prizeDecisions.get(player.id) || null,
-      myRank:
-        store().settlement?.rankings.find((r) => r.player_id === player.id) || null,
+      serverTime: Date.now(),
+      prizeDecision: canReveal ? store().prizeDecisions.get(player.id) || null : null,
+      myRank: canReveal ? store().settlement?.rankings.find((r) => r.player_id === player.id) || null : null,
       donationTotal:
-        (store().settlement?.rankings.find((r) => r.rank === 2)?.prize || 0) +
-        [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').reduce((sum, d) => sum + d.amount, 0),
-      donors: [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length,
+        canReveal ? (store().settlement?.rankings.find((r) => r.rank === 2)?.prize || 0) +
+          [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').reduce((sum, d) => sum + d.amount, 0) : 0,
+      donors: canReveal ? [...store().prizeDecisions.values()].filter((d) => d.choice === 'donate').length : 0,
       // Names only — never include scores here.
       roster: publicPlayers().map((p) => ({ id: p.id, name: p.name })),
       messagesPublic:
@@ -1689,6 +1691,11 @@ export const gameStore = {
     event.donation_ends_at = null
     touch(event)
     return settlement
+  },
+
+  heartbeat(token: string) {
+    const { player } = requirePlayerSession(token)
+    return { ok: true, playerId: player.id, serverTime: Date.now() }
   },
 
   readySettlement(token: string) {

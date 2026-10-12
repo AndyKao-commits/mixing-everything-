@@ -36,6 +36,9 @@ export function usePlayerViewSource(pollMs = 2000) {
 
   useEffect(() => {
     void refresh()
+    const beat = async () => { const token = getPlayerToken(); if (token && document.visibilityState === 'visible') await api.heartbeat(token).catch(() => {}) }
+    void beat()
+    const heartbeatTimer = window.setInterval(() => { void beat() }, 25000)
     let timer: number | undefined
     let stopped = false
 
@@ -56,6 +59,7 @@ export function usePlayerViewSource(pollMs = 2000) {
     return () => {
       stopped = true
       if (timer) window.clearTimeout(timer)
+      window.clearInterval(heartbeatTimer)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [refresh, pollMs])
