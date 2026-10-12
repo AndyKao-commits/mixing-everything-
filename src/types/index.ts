@@ -41,6 +41,7 @@ export interface Event {
   test_access_enabled: boolean
   test_pin_hash: string | null
   test_pin_salt: string | null
+  settlement_ready_ids?: string[]
   settlement_started_at: string | null
   donation_ends_at: string | null
   created_at: string
