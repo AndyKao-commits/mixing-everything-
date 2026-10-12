@@ -69,13 +69,14 @@ export default function GamesPage() {
       return
     }
     const tick = () => {
-      const elapsed = Date.now() - new Date(event.settlement_started_at).getTime()
+      const clockOffset = typeof data?.serverTime === 'number' ? data.serverTime - Date.now() : 0
+      const elapsed = Date.now() + clockOffset - new Date(event.settlement_started_at).getTime()
       setSettlementCountdown(elapsed < 10_000 ? Math.max(1, 10 - Math.floor(elapsed / 1000)) : 0)
     }
     tick()
     const id = window.setInterval(tick, 100)
     return () => window.clearInterval(id)
-  }, [event?.status, event?.settlement_started_at])
+  }, [event?.status, event?.settlement_started_at, data?.serverTime])
 
   async function sendDontCopy() {
     const token = getPlayerToken()
