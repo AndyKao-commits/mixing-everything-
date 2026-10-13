@@ -8,6 +8,7 @@ export const QUESTION_GROUPS = [
   { id: 'moment', label: '九宮格・瞬間', game: '九宮格' },
   { id: 'creative', label: '九宮格・創意', game: '九宮格' },
   { id: 'mystery', label: '九宮格・神秘任務', game: '九宮格' },
+  { id: 'named', label: '九宮格・指定玩家合照', game: '九宮格' },
   { id: 'secret', label: '秘密任務', game: '秘密任務' },
   { id: 'target', label: '目標懸賞', game: '目標懸賞' },
   { id: 'bounty', label: '懸賞牆', game: '懸賞牆' },
@@ -29,6 +30,7 @@ export function defaultQuestionBank(): QuestionBankEntry[] {
     .map(p => ({ ...p }))
   return [
     ...bingo,
+    { id:'named_default',category:'named' as const,text:'跟指定玩家合照' },
     ...SECRET_TASK_TEMPLATES.map((p, i) => ({...p, id: 'secret_' + i, category:'secret' as const})),
     ...TARGET_TASKS.map((p, i) => ({...p, id:'target_' + i, category:'target' as const})),
     ...BOUNTY_TEMPLATES.map((p, i) => ({...p, id:'bounty_' + i, category:'bounty' as const})),
