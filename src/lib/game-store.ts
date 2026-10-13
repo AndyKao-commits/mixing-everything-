@@ -8,6 +8,7 @@ import {
   PEOPLE_PROMPTS,
   type BingoPrompt,
 } from '../data/bingo'
+import { defaultQuestionBank, isQuestionCategory, type QuestionBankEntry, type QuestionCategory } from '../data/question-bank'
 import {
   BOUNTY_TEMPLATES,
   DONT_COPY_PROMPTS,
@@ -53,6 +54,7 @@ import type {
 } from '../types'
 
 interface Store {
+  questionBank: QuestionBankEntry[] | null
   event: Event | null
   players: Map<string, Player>
   sessions: Map<string, PlayerSession>
@@ -73,6 +75,7 @@ interface Store {
 
 function createStore(): Store {
   return {
+    questionBank: null,
     event: null,
     players: new Map(),
     sessions: new Map(),
@@ -185,13 +188,23 @@ function takeUnique(prompts: BingoPrompt[], used: Set<string>, n: number): Bingo
   return out
 }
 
+function questionBank(): QuestionBankEntry[] {
+  return store().questionBank || defaultQuestionBank()
+}
+function questions(category: QuestionCategory): QuestionBankEntry[] {
+  return questionBank().filter(p => p.category === category)
+}
+function bingoQuestions(category: 'food' | 'object' | 'people' | 'moment' | 'creative' | 'mystery'): BingoPrompt[] {
+  return questions(category).map(p => ({ id:p.id, category, text:p.text, pool:p.pool }))
+}
+
 function buildBingoCard(eventId: string, playerId: string, playerNames: string[]): BingoCard {
   const used = new Set<string>()
-  const food = takeUnique(FOOD_PROMPTS, used, 1)
-  const object = takeUnique(OBJECT_PROMPTS, used, 1)
-  const people = takeUnique(PEOPLE_PROMPTS, used, 2)
-  const moment = takeUnique(MOMENT_PROMPTS, used, 1)
-  const creative = takeUnique(CREATIVE_PROMPTS, used, 1)
+  const food = takeUnique(bingoQuestions('food'), used, 1)
+  const object = takeUnique(bingoQuestions('object'), used, 1)
+  const people = takeUnique(bingoQuestions('people'), used, 2)
+  const moment = takeUnique(bingoQuestions('moment'), used, 1)
+  const creative = takeUnique(bingoQuestions('creative'), used, 1)
   const others = playerNames.filter((n) => n)
   const namedText = others.length
     ? `跟 ${pick(others)} 合照`
@@ -201,8 +214,8 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
     category: 'named',
     text: namedText,
   }
-  const mysteryPool = MYSTERY_PROMPTS.filter((p) => !store().mysteryUsed.has(p.id))
-  const mysterySource = mysteryPool.length ? mysteryPool : MYSTERY_PROMPTS
+  const mysteryPool = bingoQuestions('mystery').filter((p) => !store().mysteryUsed.has(p.id))
+  const mysterySource = mysteryPool.length ? mysteryPool : bingoQuestions('mystery')
   const mystery = takeUnique(mysterySource, store().mysteryUsed, 2)
   mystery.forEach((m) => store().mysteryUsed.add(m.id))
 
@@ -217,7 +230,7 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
   ])
 
   while (selected.length < 9) {
-    selected.push(pick(OBJECT_PROMPTS))
+    selected.push(pick(bingoQuestions('object')))
   }
 
   const cells: BingoCell[] = selected.map((p, index) => ({
@@ -259,7 +272,7 @@ function ensurePlayerAssignments(event: Event) {
       store().bingoCards.set(player.id, buildBingoCard(event.id, player.id, names))
     }
     if (![...store().secretTasks.values()].some((t) => t.player_id === player.id)) {
-      const tpl = pick(SECRET_TASK_TEMPLATES)
+      const tpl = pick(questions('secret'))
       const others = players.filter((p) => p.id !== player.id)
       const target = tpl.needsTarget && others.length ? pick(others) : null
       const text = target ? tpl.text.replace('指定玩家', target.name) : tpl.text
@@ -280,7 +293,7 @@ function ensurePlayerAssignments(event: Event) {
   if (store().targets.size === 0 && players.length >= 2) {
     const pairs = buildTargetCycle(players.map((p) => p.id))
     for (const [from, to] of pairs) {
-      const tpl = pick(TARGET_TASKS)
+      const tpl = pick(questions('target'))
       const targetPlayer = store().players.get(to)!
       const row: PlayerTarget = {
         id: uid(),
@@ -297,7 +310,7 @@ function ensurePlayerAssignments(event: Event) {
   }
 
   if (store().bounties.length === 0) {
-    store().bounties = shuffle(BOUNTY_TEMPLATES)
+    store().bounties = shuffle(questions('bounty'))
       .slice(0, 20)
       .map((b) => ({
         id: uid(),
@@ -383,6 +396,7 @@ function requireAdmin(token?: string | null) {
 }
 
 type SerializedStore = {
+  questionBank?: QuestionBankEntry[] | null
   event: Event | null
   players: Player[]
   sessions: PlayerSession[]
@@ -415,6 +429,7 @@ function serializeStore(): SerializedStore {
     }),
   }))
   return {
+    questionBank: store().questionBank,
     event: store().event,
     players: [...store().players.values()],
     sessions: [...store().sessions.values()],
@@ -437,6 +452,7 @@ function serializeStore(): SerializedStore {
 
 function hydrateStore(data: SerializedStore) {
   const next = store()
+  next.questionBank = Array.isArray(data.questionBank) ? data.questionBank : null
   next.event = data.event
     ? {
         ...data.event,
@@ -611,6 +627,7 @@ export const gameStore = {
     } = event
     return {
       event: safeEvent,
+      questionBank: questionBank(),
       presence: { online: [...store().players.values()].filter((p) => p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() < 60000).length, total: store().players.size, checkedAt: nowIso() },
       players: [...store().players.values()].map((p) => ({
         ...p,
@@ -715,6 +732,44 @@ export const gameStore = {
     store().adminSessions = currentAdminSessions
     this.bootstrap()
     return this.getAdminState()
+  },
+
+  updateQuestion(adminToken: string, input: { id?: string; category: string; text: string; points?: number; needsTarget?: boolean; pool?: string }) {
+    requireAdmin(adminToken)
+    if (!isQuestionCategory(input.category)) throw new Error('題庫分類無效')
+    const text = String(input.text || '').trim().slice(0, 220)
+    if (!text) throw new Error('題目不可空白')
+    const current = [...questionBank()]
+    const index = current.findIndex(q => q.id === input.id && q.category === input.category)
+    if (input.id && index < 0) throw new Error('找不到要修改的題目')
+    const category = input.category
+    const entry: QuestionBankEntry = {
+      id: index >= 0 ? current[index].id : 'custom_' + uid(),
+      category, text,
+    }
+    if (['secret','target','bounty'].includes(category)) {
+      const points = Math.floor(Number(input.points ?? 1))
+      if (!Number.isFinite(points) || points < 1 || points > 20) throw new Error('分數必須介於 1 至 20')
+      entry.points = points
+    }
+    if (category === 'secret') entry.needsTarget = Boolean(input.needsTarget)
+    if (['food','object','people','moment','creative','mystery'].includes(category) && input.pool?.trim()) {
+      entry.pool = input.pool.trim().slice(0, 64)
+    }
+    if (index >= 0) current[index] = entry
+    else current.push(entry)
+    store().questionBank = current
+    return { ok:true, questionBank:current }
+  },
+
+  deleteQuestion(adminToken: string, category: string, questionId: string) {
+    requireAdmin(adminToken)
+    if (!isQuestionCategory(category)) throw new Error('題庫分類無效')
+    const current = questionBank()
+    if (!current.some(q => q.id === questionId && q.category === category)) throw new Error('題目不存在')
+    if (current.filter(q => q.category === category).length <= 1) throw new Error('每個分類至少保留一題')
+    store().questionBank = current.filter(q => !(q.category === category && q.id === questionId))
+    return { ok:true, questionBank:store().questionBank }
   },
 
   createPlayer(adminToken: string, name: string) {
@@ -878,7 +933,7 @@ export const gameStore = {
         target.target_player_id = replacement.id
         target.text = target.text.includes(player.name)
           ? target.text.replace(player.name, replacement.name)
-          : pick(TARGET_TASKS).text.replace('目標', replacement.name)
+          : pick(questions('target')).text.replace('目標', replacement.name)
       }
       store().messages.delete(playerId)
       store().prizeDecisions.delete(playerId)
@@ -1270,7 +1325,7 @@ export const gameStore = {
       status: 'playing',
       round: 1,
       payload: {
-        prompts: shuffle(DONT_COPY_PROMPTS).slice(0, 8),
+        prompts: shuffle(questions('dont_copy').map(p => p.text)).slice(0, 8),
         currentPromptIndex: 0,
         answers: {},
         scoredRounds: [],
@@ -1353,7 +1408,7 @@ export const gameStore = {
         prompt: '題庫會先不重複發放，用完後才重新使用',
         promptsByPlayer: (() => {
           const playerIds = [...store().players.keys()]
-          const shuffled = shuffle(WHO_WROTE_PROMPTS)
+          const shuffled = shuffle(questions('who_wrote').map(p => p.text))
           return Object.fromEntries(
             playerIds.map((playerId, index) => [playerId, shuffled[index % shuffled.length]]),
           )
