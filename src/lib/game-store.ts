@@ -281,7 +281,7 @@ function ensurePlayerAssignments(event: Event) {
         event_id: event.id,
         player_id: player.id,
         text,
-        points: tpl.points,
+        points: tpl.points ?? 1,
         target_player_id: target?.id ?? null,
         completed: false,
         completed_at: null,
@@ -301,7 +301,7 @@ function ensurePlayerAssignments(event: Event) {
         player_id: from,
         target_player_id: to,
         text: tpl.text.replace('目標', targetPlayer.name),
-        points: tpl.points,
+        points: tpl.points ?? 1,
         completed: false,
         completed_at: null,
       }
@@ -316,7 +316,7 @@ function ensurePlayerAssignments(event: Event) {
         id: uid(),
         event_id: event.id,
         text: b.text,
-        points: b.points,
+        points: b.points ?? 1,
       }))
   }
 }
