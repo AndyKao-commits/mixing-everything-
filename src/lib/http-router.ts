@@ -168,6 +168,19 @@ export async function routeApiRequest(input: {
         case 'simulate_test_bots':
           result = { status: 200, data: gameStore.simulateTestBots(adminToken) }
           break
+        case 'update_question':
+          result = { status: 200, data: gameStore.updateQuestion(adminToken, {
+            id: body.id ? String(body.id) : undefined,
+            category: String(body.category || ''),
+            text: String(body.text || ''),
+            points: body.points == null ? undefined : Number(body.points),
+            needsTarget: Boolean(body.needsTarget),
+            pool: String(body.pool || ''),
+          }) }
+          break
+        case 'delete_question':
+          result = { status: 200, data: gameStore.deleteQuestion(adminToken, String(body.category || ''), String(body.id || '')) }
+          break
         case 'create_player':
           result = { status: 200, data: gameStore.createPlayer(adminToken, String(body.name || '')) }
           break
