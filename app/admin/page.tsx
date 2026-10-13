@@ -2,16 +2,23 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { PinPad } from '@/components/PinPad'
+import { QUESTION_GROUPS } from '@/data/question-bank'
 import { api } from '@/lib/api'
 import { exportBingoImage } from '@/lib/bingo-export'
 import { clearAdminToken, getAdminToken, setAdminToken } from '@/lib/client-session'
 
-type Tab = 'overview' | 'players' | 'tasks' | 'games' | 'notify' | 'settle'
+type Tab = 'overview' | 'players' | 'tasks' | 'questions' | 'games' | 'notify' | 'settle'
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null)
   const [pin, setPin] = useState('')
   const [tab, setTab] = useState<Tab>('overview')
+  const [questionCategory, setQuestionCategory] = useState<string>('food')
+  const [questionEditing, setQuestionEditing] = useState<string | null>(null)
+  const [questionText, setQuestionText] = useState('')
+  const [questionPoints, setQuestionPoints] = useState(1)
+  const [questionNeedsTarget, setQuestionNeedsTarget] = useState(false)
+  const [questionPool, setQuestionPool] = useState('')
   const [state, setState] = useState<any>(null)
   const [error, setError] = useState('')
   const [name, setName] = useState('')
@@ -251,6 +258,7 @@ export default function AdminPage() {
             ['overview', '總覽'],
             ['players', '玩家'],
             ['tasks', '任務'],
+            ['questions', '題庫'],
             ['games', '團康'],
             ['notify', '通知'],
             ['settle', '結算'],
@@ -521,6 +529,71 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {tab === 'questions' ? (
+        <div className="space-y-3">
+          <div className="card space-y-2">
+            <h2 className="text-lg font-bold">全部遊戲題庫管理</h2>
+            <p className="text-sm text-soft">依照遊戲與類別編排。修改後自動儲存於活動資料庫，重新整理不會遺失。已發出的九宮格與任務不會被回溯修改；新分配、新回合會採用更新後的題目。</p>
+            <label htmlFor="question-category" className="text-sm font-semibold">選擇題庫分類</label>
+            <select id="question-category" className="field" value={questionCategory} onChange={(e) => {
+              setQuestionCategory(e.target.value)
+              setQuestionEditing(null)
+            }}>
+              {QUESTION_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}（{(state?.questionBank || []).filter((q: any) => q.category === g.id).length} 題）</option>)}
+            </select>
+          </div>
+          {(state?.questionBank || []).filter((q: any) => q.category === questionCategory).map((q: any, index: number) => (
+            <div className="card space-y-2" key={q.id}>
+              <p className="text-xs font-semibold text-soft">第 {index + 1} 題</p>
+              {questionEditing === q.id ? (
+                <div className="space-y-2">
+                  <textarea className="field min-h-24" maxLength={220} value={questionText} onChange={e => setQuestionText(e.target.value)} />
+                  {['secret','target','bounty'].includes(questionCategory) ? <label className="flex items-center gap-2 text-sm">分數 <input className="field !w-24" type="number" min={1} max={20} value={questionPoints} onChange={e => setQuestionPoints(Number(e.target.value))} /></label> : null}
+                  {questionCategory === 'secret' ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={questionNeedsTarget} onChange={e => setQuestionNeedsTarget(e.target.checked)} /> 需要指定玩家</label> : null}
+                  {['food','object','people','moment','creative','mystery'].includes(questionCategory) ? <input className="field" value={questionPool} placeholder="互斥組別（選填）" onChange={e => setQuestionPool(e.target.value)} /> : null}
+                  <div className="flex gap-2">
+                    <button type="button" className="btn-primary" disabled={busy || !questionText.trim()} onClick={async () => {
+                      await act('update_question',{ id:q.id,category:questionCategory,text:questionText,points:questionPoints,needsTarget:questionNeedsTarget,pool:questionPool })
+                      setQuestionEditing(null)
+                    }}>儲存這一題</button>
+                    <button type="button" className="btn-secondary" onClick={() => setQuestionEditing(null)}>取消</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="whitespace-pre-wrap">{q.text}</p>
+                  {typeof q.points === 'number' ? <p className="text-sm text-soft">{q.points} 分{q.needsTarget ? ' · 指定玩家' : ''}</p> : null}
+                  <div className="flex gap-2">
+                    <button type="button" className="btn-secondary" disabled={busy} onClick={() => {
+                      setQuestionEditing(q.id);setQuestionText(q.text);setQuestionPoints(q.points ?? 1);setQuestionNeedsTarget(Boolean(q.needsTarget));setQuestionPool(q.pool || '')
+                    }}>修改</button>
+                    <button type="button" className="btn-ghost text-ember" disabled={busy} onClick={() => {
+                      if (confirm('確定刪除此題？之後新分配的遊戲不會再使用它。')) void act('delete_question',{category:questionCategory,id:q.id})
+                    }}>刪除</button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          <div className="card space-y-2">
+            <h3 className="font-semibold">新增一題</h3>
+            <textarea className="field min-h-24" maxLength={220} value={questionEditing === 'new' ? questionText : ''} onFocus={() => {
+              if(questionEditing !== 'new'){setQuestionEditing('new');setQuestionText('');setQuestionPoints(1);setQuestionNeedsTarget(questionCategory === 'secret');setQuestionPool('')}
+            }} onChange={e => { setQuestionEditing('new');setQuestionText(e.target.value) }} placeholder="輸入新的遊戲題目..." />
+            {questionEditing === 'new' ? (
+              <>
+                {['secret','target','bounty'].includes(questionCategory) ? <label className="flex items-center gap-2 text-sm">分數 <input type="number" className="field !w-24" min={1} max={20} value={questionPoints} onChange={e => setQuestionPoints(Number(e.target.value))} /></label> : null}
+                {questionCategory === 'secret' ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={questionNeedsTarget} onChange={e => setQuestionNeedsTarget(e.target.checked)} /> 需要指定玩家</label> : null}
+                <button type="button" className="btn-primary" disabled={busy || !questionText.trim()} onClick={async () => {
+                  await act('update_question',{category:questionCategory,text:questionText,points:questionPoints,needsTarget:questionNeedsTarget,pool:questionPool})
+                  setQuestionEditing(null);setQuestionText('')
+                }}>新增到這個分類</button>
+              </>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
