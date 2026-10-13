@@ -206,9 +206,8 @@ function buildBingoCard(eventId: string, playerId: string, playerNames: string[]
   const moment = takeUnique(bingoQuestions('moment'), used, 1)
   const creative = takeUnique(bingoQuestions('creative'), used, 1)
   const others = playerNames.filter((n) => n)
-  const namedText = others.length
-    ? `跟 ${pick(others)} 合照`
-    : '跟指定玩家合照'
+  const namedTemplate = pick(questions('named')).text
+  const namedText = namedTemplate.replace('指定玩家', others.length ? pick(others) : '指定玩家')
   const named: BingoPrompt = {
     id: `named_${uid()}`,
     category: 'named',
